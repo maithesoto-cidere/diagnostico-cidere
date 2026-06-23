@@ -729,7 +729,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   const dInicial = emp.diags.find(d=>d.tipo==="entrada");
                   const dFinal   = emp.diags.find(d=>d.tipo==="salida");
                   const pgI = dInicial?pglobal(dims, dInicial.datosEntrada||{}):null;
-                  const pgF = dFinal?pglobal(dims, dFinal.datosSalida||dFinal.datosEntrada||{}):null;
+                  const pgF = dFinal?pglobal(dims, Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{})):null;
                   const nvI = pgI!==null?getNivel(pgI):null;
                   const nvF = pgF!==null?getNivel(pgF):null;
                   const tieneAmbos = !!(dInicial && dFinal);
@@ -779,7 +779,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                               <div style={{ fontSize:28, fontWeight:800, color:nvF?.color, lineHeight:1 }}>{a5to100(pgF)}%</div>
                               <div style={{ fontSize:12, color:nvF?.color, fontWeight:700, marginBottom:6 }}>{nvF?.label}</div>
                               <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dFinal.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
-                              {dims.map(dim=>{ const v=pdim(dim,dFinal.datosSalida||dFinal.datosEntrada||{}); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:C.verde}}/></div></div>; })}
+                              {dims.map(dim=>{ const v=pdim(dim, Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{})); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:C.verde}}/></div></div>; })}
                               <button onClick={()=>onAbrirDiag(dFinal)} style={{ marginTop:10, padding:"7px 16px", background:`${C.verde}12`, border:`1px solid ${C.verde}33`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
                             </div>
                           ) : dInicial ? (
@@ -938,14 +938,14 @@ function EditorContenido({ dims, onSave, onClose }) {
 ═══════════════════════════════════════════ */
 function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, programa, modo, onCerrar }) {
   const tieneE = Object.keys(datosE||{}).length>0;
-  const tieneS = Object.keys(datosS||{}).length>0;
+  const tieneS = Object.keys(datosS||{}).length>0 || (modo==="salida" && Object.keys(datosE||{}).length>0);
   const esComparativa = tieneE && tieneS;
   // Tab por defecto: si es final, mostrar ficha final; si tiene ambos, comparativo
   const defaultTab = (modo==="salida" || !tieneE) ? (tieneS?"final":"inicial") : esComparativa ? "comparativo" : "inicial";
   const [tab, setTab] = useState(defaultTab);
 
   const pgE = pglobal(dims, datosE||{});
-  const pgS = tieneS ? pglobal(dims, datosS||{}) : null;
+  const pgS = tieneS ? pglobal(dims, Object.keys(datosS||{}).length>0 ? datosS : datosE) : null;
   const nivelE = pgE!==null ? getNivel(pgE) : null;
   const nivelS = pgS!==null ? getNivel(pgS) : null;
   const interpE = generarInterpretacion(dims, datosE||{});
@@ -954,8 +954,12 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
 
   // Para tab final: si datosS está vacío pero datosE tiene datos (modo salida_nueva en edición),
   // usar datosE como fallback temporal
-  const datosActivos = tab==="final" ? (Object.keys(datosS||{}).length>0 ? datosS : datosE) : (datosE||{});
-  const indsActivos  = tab==="final" ? (Object.keys(indS||{}).length>0 ? indS : indE) : (indE||{});
+  const datosActivos = tab==="final"
+    ? (Object.keys(datosS||{}).length>0 ? datosS||{} : datosE||{})
+    : (datosE||{});
+  const indsActivos = tab==="final"
+    ? (Object.keys(indS||{}).length>0 ? indS||{} : indE||{})
+    : (indE||{});
   const dimRows = dims.map(d => ({
     d, pe: pdim(d, datosE||{}), ps: tieneS ? pdim(d, datosS||{}) : null,
     indE: indE?.[d.id], indS: indS?.[d.id],
@@ -1391,17 +1395,19 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
   const tieneInicial = esSalidaNueva || (diagActual?.tipo === "salida") || 
     !!(diagActual?.datosEntrada && Object.keys(diagActual.datosEntrada).length > 0 && diagActual?.tipo === "entrada" && diagActual?.fechaInicial);
   const guardar = (tipo) => {
-    // Si es una salida nueva, el ID viene con sufijo _final_new — limpiarlo
     const baseId = (diagActual?.id||Date.now().toString()).replace("_final_new","").replace("_final","");
+    // El formulario siempre escribe en datosE/datosS según modo
+    // Si modo="salida", las respuestas están en datosS; si modo="entrada", en datosE
+    const respuestasActuales = modo==="salida" ? datosS : datosE;
+    const indicadoresActuales = modo==="salida" ? indS : indE;
     const rec = {
       id: tipo==="salida" ? baseId+"_final" : baseId,
       tipo,
       infoGeneral:{...infoGeneral},
-      // Para entrada: usar datosE actuales. Para salida: datos actuales van en datosSalida
-      datosEntrada: tipo==="entrada" ? {...datosE} : (diagActual?.datosEntrada||{}),
-      datosSalida:  tipo==="salida"  ? {...datosE} : {},
-      indicadoresEntrada: tipo==="entrada" ? {...indE} : (diagActual?.indicadoresEntrada||{}),
-      indicadoresSalida:  tipo==="salida"  ? {...indE} : {},
+      datosEntrada: tipo==="entrada" ? {...respuestasActuales} : (diagActual?.datosEntrada||{}),
+      datosSalida:  tipo==="salida"  ? {...respuestasActuales} : {},
+      indicadoresEntrada: tipo==="entrada" ? {...indicadoresActuales} : (diagActual?.indicadoresEntrada||{}),
+      indicadoresSalida:  tipo==="salida"  ? {...indicadoresActuales} : {},
       evidencias:{...evids},
       fechaInicial: tipo==="entrada" ? new Date().toISOString() : (diagActual?.fechaInicial||new Date().toISOString()),
       fechaFinal:   tipo==="salida"  ? new Date().toISOString() : null,
