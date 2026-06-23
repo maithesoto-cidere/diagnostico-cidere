@@ -295,8 +295,6 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
   const [logoUrl, setLogoUrl] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [color, setColor] = useState("#2B7BBF");
-  const fileRef = useRef();
-  const fileRef2 = useRef();
 
   const abrirEditar = (p) => {
     setEditando(p);
@@ -311,13 +309,7 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
     setEditando(null);
   };
 
-  const handleFile = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = ev => setLogoUrl(ev.target.result);
-    reader.readAsDataURL(f);
-  };
+
 
   const crear = () => {
     if (!nombre.trim()) return;
@@ -413,11 +405,10 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                 </div>
               </div>
               <div>
-                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Logo</label>
-                <input ref={fileRef2} type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setLogoUrl(ev.target.result);r.readAsDataURL(f);}} style={{ display:"none" }}/>
-                <button onClick={()=>fileRef2.current.click()} style={{ padding:"8px 14px", border:`1px dashed ${C.borde}`, borderRadius:8, background:C.fondo, color:C.gris, fontSize:12, cursor:"pointer", width:"100%" }}>
-                  {logoUrl?"✓ Logo cargado":"📎 Cambiar logo"}
-                </button>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Logo (URL)</label>
+                <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} placeholder="https://ejemplo.com/logo.png"
+                  style={{ width:"100%", padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", boxSizing:"border-box" }}/>
+                <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>URL directa de la imagen</div>
               </div>
             </div>
             {logoUrl && (
@@ -456,11 +447,10 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                 </div>
               </div>
               <div>
-                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Logo empresa colaboradora</label>
-                <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display:"none" }}/>
-                <button onClick={()=>fileRef.current.click()} style={{ padding:"8px 14px", border:`1px dashed ${C.borde}`, borderRadius:8, background:C.fondo, color:C.gris, fontSize:12, cursor:"pointer", width:"100%" }}>
-                  {logoUrl?"✓ Logo cargado":"📎 Subir logo"}
-                </button>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Logo empresa colaboradora (URL)</label>
+                <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} placeholder="https://ejemplo.com/logo.png"
+                  style={{ width:"100%", padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", boxSizing:"border-box" }}/>
+                <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>Pega la URL directa de la imagen (PNG, JPG, SVG)</div>
               </div>
             </div>
             {/* Preview logos juntos */}
