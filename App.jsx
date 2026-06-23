@@ -367,7 +367,7 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                   </div>
                   <div style={{ borderTop:`1px solid ${C.borde}`, display:"flex" }}>
                     <button onClick={()=>onSeleccionar(p)} style={{ flex:1, padding:"10px", border:"none", background:"transparent", color:C.azul, fontWeight:700, fontSize:12, cursor:"pointer" }}>Abrir →</button>
-                    <button onClick={e=>{e.stopPropagation();onEliminar(p.id);}} style={{ padding:"10px 14px", border:"none", background:"transparent", color:"#CCC", fontSize:13, cursor:"pointer" }}>✕</button>
+                    <button onClick={e=>{e.stopPropagation();const pw=window.prompt(`Para eliminar "${p.nombre}" escribe la contraseña:`);if(pw==="Cidere123")onEliminar(p.id);else if(pw!==null)window.alert("Contraseña incorrecta.");}} style={{ padding:"10px 14px", border:"none", background:"transparent", color:"#CCC", fontSize:13, cursor:"pointer" }}>✕</button>
                   </div>
                 </div>
               );
@@ -580,8 +580,8 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     </div>
                   </div>
 
-                  {/* Gráfico de barras por proveedor */}
-                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                  {/* Ranking de Proveedores */}
+                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginBottom:16 }}>
                     <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Ranking de Proveedores</div>
                     {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
                       const nv=getNivel(p.pg); const pct=a5to100(p.pg);
@@ -597,6 +597,42 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Contador por consultor */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Diagnósticos por Consultor</div>
+                      {(() => {
+                        const porConsultor = {};
+                        ds.forEach(d => {
+                          const c = d.infoGeneral?.consultor||"Sin asignar";
+                          porConsultor[c] = (porConsultor[c]||0) + 1;
+                        });
+                        return Object.entries(porConsultor).sort((a,b)=>b[1]-a[1]).map(([consultor, count],i)=>(
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.borde}` }}>
+                            <span style={{ fontSize:13, color:C.oscuro }}>👤 {consultor}</span>
+                            <span style={{ fontSize:14, fontWeight:800, color:pColor, background:`${pColor}12`, padding:"3px 10px", borderRadius:6 }}>{count}</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Diagnósticos por Empresa</div>
+                      {(() => {
+                        const porEmpresa = {};
+                        ds.forEach(d => {
+                          const e = d.infoGeneral?.empresa||"Sin nombre";
+                          porEmpresa[e] = (porEmpresa[e]||0) + 1;
+                        });
+                        return Object.entries(porEmpresa).sort((a,b)=>b[1]-a[1]).map(([empresa, count],i)=>(
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.borde}` }}>
+                            <span style={{ fontSize:13, color:C.oscuro }}>🏢 {empresa}</span>
+                            <span style={{ fontSize:14, fontWeight:800, color:C.verde, background:`${C.verde}12`, padding:"3px 10px", borderRadius:6 }}>{count}</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
                   </div>
                 </>
               )}
@@ -818,7 +854,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
           )}
           <button onClick={()=>{
             const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, tab==="ficha"&&esComparativa?datosS:datosE, tab==="ficha"&&esComparativa?indS:indE, programa, tab==="ficha"&&esComparativa);
-            const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 Selecciona <strong>"Guardar como PDF"</strong> como destino de impresión</span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
+            const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 En el diálogo de impresión: selecciona <strong>"Guardar como PDF"</strong> y asegúrate que la orientación sea <strong>Vertical (Portrait)</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
             const w = window.open("","_blank");
             if(w){ w.document.write(htmlFinal); w.document.close(); w.focus(); setTimeout(()=>w.print(),900); }
@@ -1055,20 +1091,29 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   const brechasHTML = interp ? interp.brechas.map(f=>`<li>${f.d.icono} ${f.d.nombre} (${a5to100(f.prom)}%)</li>`).join("") : "";
   const prioridadesHTML = interp ? interp.prioritarias.map(f=>`<li>${f.d.icono} ${f.d.nombre}</li>`).join("") : "";
 
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Ficha – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4;margin:12mm}
-body{font-family:Arial,sans-serif;color:#1C2B3A;margin:0;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Ficha – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4 portrait;margin:12mm 14mm}
+html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
 h1,h2{margin:0}
 ul{margin:4px 0;padding-left:16px}
 li{font-size:11px;margin-bottom:2px}
-.pb{page-break-before:always}
+table{width:100%;border-collapse:collapse}
+.page-break{page-break-before:always;break-before:always}
+@media screen{body{max-width:210mm;padding:10mm;box-shadow:0 0 20px rgba(0,0,0,0.15)}}
 @media print{
-  body{margin:0}
-  button{display:none}
+  html,body{width:auto;max-width:none;padding:0;box-shadow:none}
+  button,.no-print{display:none!important}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 }</style></head><body>
-<div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:14px 20px;border-radius:6px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-  <div><div style="font-size:10px;letter-spacing:3px;color:#90C8F0;text-transform:uppercase;margin-bottom:4px">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div><h1 style="font-size:16px;font-weight:bold">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</h1></div>
-  <div style="text-align:right"><div style="font-size:10px;color:#90C8F0">Fecha</div><div style="font-size:14px;font-weight:bold">${fecha}</div></div>
+<div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:14px 20px;border-radius:6px;margin-bottom:10px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:12px">
+      ${CIDERE_LOGO_B64?`<img src="${CIDERE_LOGO_B64}" style="height:36px;object-fit:contain" alt="CIDERE"/>`:""}
+      ${programa?.logoUrl?`<div style="width:1px;height:36px;background:rgba(255,255,255,0.3)"></div><img src="${programa.logoUrl}" style="height:36px;object-fit:contain;background:rgba(255,255,255,0.9);border-radius:4px;padding:2px 6px" alt="${programa.nombre}"/>`:""}
+    </div>
+    <div style="text-align:right"><div style="font-size:10px;color:#90C8F0">Fecha</div><div style="font-size:13px;font-weight:bold">${fecha}</div></div>
+  </div>
+  <div style="font-size:10px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase;margin-bottom:3px">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div>
+  <div style="font-size:16px;font-weight:bold">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</div>
 </div>
 <div style="background:#F5F7FA;border-radius:6px;padding:10px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
   <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Empresa</div><strong style="font-size:13px">${infoGeneral.empresa||"—"}</strong></div>
@@ -1106,15 +1151,17 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   }).join("");
   const indicadores = dims.map(d=>`<tr><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;font-size:12px">${d.icono} ${d.indicadorObjetivo.label}</td><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-size:12px"><strong style="color:#2B7BBF">${indE?.[d.id]||"—"}</strong> → <strong style="color:#3BAD8A">${indS?.[d.id]||"—"}</strong></td></tr>`).join("");
 
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Informe Comparativo – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4;margin:12mm}
-body{font-family:Arial,sans-serif;color:#1C2B3A;margin:0;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Informe Comparativo – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4 portrait;margin:12mm 14mm}
+html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
 h1,h2{margin:0}
 ul{margin:4px 0;padding-left:16px}
 li{font-size:11px;margin-bottom:2px}
-.pb{page-break-before:always}
+table{width:100%;border-collapse:collapse}
+.page-break{page-break-before:always;break-before:always}
+@media screen{body{max-width:210mm;padding:10mm;box-shadow:0 0 20px rgba(0,0,0,0.15)}}
 @media print{
-  body{margin:0}
-  button{display:none}
+  html,body{width:auto;max-width:none;padding:0;box-shadow:none}
+  button,.no-print{display:none!important}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 }</style></head><body>
 <div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:24px 28px;border-radius:8px;margin-bottom:18px">
