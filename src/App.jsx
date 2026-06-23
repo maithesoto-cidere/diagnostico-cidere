@@ -739,7 +739,10 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       {/* Header empresa */}
                       <div style={{ padding:"14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.borde}`, background:`${pColor}06` }}>
                         <div>
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                          {(() => { const logoE = emp.diags[0]?.infoGeneral?.logoEmpresa; return logoE ? <img src={logoE} alt="" style={{ height:32, objectFit:"contain", background:C.fondo, borderRadius:6, padding:"2px 6px", border:`1px solid ${C.borde}` }}/> : null; })()}
                           <div style={{ fontSize:15, fontWeight:800, color:C.oscuro }}>{emp.nombre}</div>
+                        </div>
                           <div style={{ fontSize:12, color:C.gris, marginTop:2 }}>
                             {info.respondente&&`${info.respondente}`}{info.cargo&&` · ${info.cargo}`}
                             {info.consultor&&<span style={{marginLeft:6}}>👤 {info.consultor}</span>}
@@ -747,8 +750,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           </div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          {tieneAmbos && <span style={{ fontSize:11, fontWeight:700, color:C.verde, background:`${C.verde}15`, padding:"4px 10px", borderRadius:6 }}>✓ Completo</span>}
-                          {!dFinal && dInicial && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>⏳ En progreso</span>}
+                          {tieneAmbos && !dFinal?._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.verde, background:`${C.verde}15`, padding:"4px 10px", borderRadius:6 }}>✓ Completo</span>}
+                          {dInicial?._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>📝 Borrador</span>}
+                          {!dFinal && dInicial && !dInicial._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>⏳ En progreso</span>}
                           {info.estado && <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:info.estado==="Validado"?"#EAF7F2":info.estado==="Descartado"?"#FFF0F0":"#FFFBF0", color:info.estado==="Validado"?"#16A085":info.estado==="Descartado"?"#E74C3C":"#A07820" }}>{info.estado==="Validado"?"🟢":info.estado==="Descartado"?"🔴":"🟡"} {info.estado}</span>}
                         </div>
                       </div>
@@ -1234,7 +1238,7 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   }).join("");
   const barras = dims.map(d=>{
     const p = pdim(d,datos||{}); const pct = p!==null?a5to100(p):0; const n = p!==null?getNivel(p):NV_CFG[0];
-    return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:#1C2B3A">${d.nombre}</span><span style="font-size:11px;font-weight:bold;color:${n.color}">${pct}%</span></div><div style="height:5px;background:#DDE6EF;border-radius:3px"><div style="height:100%;width:${pct}%;background:${n.color};border-radius:3px"></div></div></div>`;
+    return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:rgba(255,255,255,0.9)">${d.nombre}</span><span style="font-size:11px;font-weight:bold;color:#ffffff">${pct}%</span></div><div style="height:5px;background:rgba(255,255,255,0.2);border-radius:3px"><div style="height:100%;width:${pct}%;background:rgba(255,255,255,0.9);border-radius:3px"></div></div></div>`;
   }).join("");
   const fortalezasHTML = interp ? interp.fortalezas.map(f=>`<li>${f.d.icono} ${f.d.nombre} (${a5to100(f.prom)}%)</li>`).join("") : "";
   const brechasHTML = interp ? interp.brechas.map(f=>`<li>${f.d.icono} ${f.d.nombre} (${a5to100(f.prom)}%)</li>`).join("") : "";
@@ -1364,7 +1368,26 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
   const setD  = modo==="salida"?setDatosS:setDatosE;
   const inds  = modo==="salida"?indS:indE;
   const setI  = modo==="salida"?setIndS:setIndE;
-  const setR  = (pid,v) => setD(p=>({...p,[pid]:v}));
+  const setR = (pid,v) => {
+    setD(p=>({...p,[pid]:v}));
+    // Autoguardar borrador
+    const baseId = (diagActual?.id||"borrador_"+Date.now()).replace("_final_new","").replace("_final","");
+    const borrador = {
+      id: modo==="salida" ? baseId+"_final" : baseId,
+      tipo: modo==="salida" ? "salida" : "entrada",
+      _borrador: true,
+      infoGeneral:{...infoGeneral},
+      datosEntrada: modo==="entrada" ? {...datos, [pid]:v} : (diagActual?.datosEntrada||{}),
+      datosSalida:  modo==="salida"  ? {...datos, [pid]:v} : {},
+      indicadoresEntrada: modo==="entrada" ? {...inds} : (diagActual?.indicadoresEntrada||{}),
+      indicadoresSalida:  modo==="salida"  ? {...inds} : {},
+      evidencias:{...evids},
+      fechaInicial: diagActual?.fechaInicial||new Date().toISOString(),
+      fechaFinal: modo==="salida" ? null : null,
+      fechaGuardado: new Date().toISOString()
+    };
+    onGuardar(borrador);
+  };
   const setInd = (did,v) => setI(p=>({...p,[did]:v}));
   const setEv  = (pid,t) => setEvids(p=>({...p,[pid]:t}));
 
@@ -1494,6 +1517,24 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
             <p style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Paso 1 de {dims.length+1}</p>
             <h1 style={{ fontSize:24, fontWeight:800, color:C.oscuro, margin:"0 0 22px 0" }}>Información del Proveedor</h1>
             <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
+              {/* Logo de la empresa proveedor */}
+              <div style={{ background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:10, padding:16 }}>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:8 }}>Logo de la empresa (opcional)</label>
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  {infoGeneral.logoEmpresa && <img src={infoGeneral.logoEmpresa} alt="logo" style={{ height:40, objectFit:"contain", background:C.blanco, borderRadius:6, padding:"3px 8px", border:`1px solid ${C.borde}` }}/>}
+                  <label style={{ padding:"8px 16px", border:`1px dashed ${C.borde}`, borderRadius:8, background:C.blanco, color:C.gris, fontSize:12, cursor:"pointer" }}>
+                    {infoGeneral.logoEmpresa ? "✓ Cambiar logo" : "📎 Subir logo"}
+                    <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{
+                      const f=e.target.files[0]; if(!f) return;
+                      const r=new FileReader();
+                      r.onload=ev=>setInfoGeneral(p=>({...p,logoEmpresa:ev.target.result}));
+                      r.readAsDataURL(f);
+                    }}/>
+                  </label>
+                  {infoGeneral.logoEmpresa && <button onClick={()=>setInfoGeneral(p=>({...p,logoEmpresa:""}))} style={{ fontSize:11, color:"#E74C3C", background:"none", border:"none", cursor:"pointer" }}>✕ Quitar</button>}
+                </div>
+              </div>
+
               {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"},{k:"facturacionCMPC",l:`Facturación con ${programa.nombre} 2025 (MM$)`,ph:"Ej: 45"}].map(f=>(
                 <div key={f.k}>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{f.l}</label>
@@ -1715,6 +1756,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
 
       {/* Botones header diagnóstico */}
       <div style={{ position:"absolute",top:12,right:20,display:"flex",gap:8,zIndex:50 }}>
+        <button onClick={onVolver} style={{ padding:"7px 13px",borderRadius:6,border:`1px solid ${C.borde}`,background:C.blanco,color:C.gris,cursor:"pointer",fontSize:12,fontWeight:600,boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>← Volver</button>
         <button onClick={()=>setShowPw(true)} style={{ padding:"7px 13px",borderRadius:6,border:`1px solid ${C.borde}`,background:C.blanco,color:C.gris,cursor:"pointer",fontSize:12,fontWeight:600,boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>✏️ Editar</button>
       </div>
     </div>
