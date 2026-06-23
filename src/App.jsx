@@ -1117,9 +1117,24 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               {esComparativa && <button onClick={()=>setTab("comparativo")} style={{ padding:"7px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:700, background:tab==="comparativo"?"linear-gradient(135deg,#9B59B6,#8E44AD)":"transparent", color:tab==="comparativo"?"#fff":"rgba(255,255,255,0.6)" }}>📈 Comparativo</button>}
               {!tieneE && !tieneS && <span style={{color:"rgba(255,255,255,0.5)",fontSize:12,padding:"7px 14px"}}>Sin datos disponibles</span>}
             </div>
-          <button onClick={()=>{
-            const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, datosActivos, indsActivos, programa, tab==="final");
-            const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 En el diálogo de impresión: selecciona <strong>"Guardar como PDF"</strong> y asegúrate que la orientación sea <strong>Vertical (Portrait)</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
+          <button onClick={async()=>{
+            // Convertir URLs externas a base64 para que funcionen en la ventana de impresión
+            const urlToB64 = async(url) => {
+              if(!url || url.startsWith('data:')) return url;
+              try {
+                const r = await fetch(url);
+                const blob = await r.blob();
+                return new Promise(res => { const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(blob); });
+              } catch(e) { return url; }
+            };
+            const logoProgB64 = await urlToB64(programa?.logoUrl);
+            const logoEmpB64  = await urlToB64(infoGeneral?.logoEmpresa);
+            const programaConLogo = {...(programa||{}), logoUrl: logoProgB64};
+            const infoConLogo = {...infoGeneral, logoEmpresa: logoEmpB64};
+            const html = tab==="comparativo"
+              ? buildComparativoHTML(dims, infoConLogo, datosE, datosS, indE, indS, programaConLogo)
+              : buildFichaIndividualHTML(dims, infoConLogo, datosActivos, indsActivos, programaConLogo, tab==="final");
+            const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 Selecciona <strong>"Guardar como PDF"</strong> y orientación <strong>Vertical</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
             const w = window.open("","_blank");
             if(w){ w.document.write(htmlFinal); w.document.close(); w.focus(); setTimeout(()=>w.print(),900); }
