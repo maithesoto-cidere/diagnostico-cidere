@@ -367,7 +367,7 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                   </div>
                   <div style={{ borderTop:`1px solid ${C.borde}`, display:"flex" }}>
                     <button onClick={()=>onSeleccionar(p)} style={{ flex:1, padding:"10px", border:"none", background:"transparent", color:C.azul, fontWeight:700, fontSize:12, cursor:"pointer" }}>Abrir →</button>
-                    <button onClick={e=>{e.stopPropagation();onEliminar(p.id);}} style={{ padding:"10px 14px", border:"none", background:"transparent", color:"#CCC", fontSize:13, cursor:"pointer" }}>✕</button>
+                    <button onClick={e=>{e.stopPropagation();const pw=window.prompt(`Para eliminar "${p.nombre}" escribe la contraseña:`);if(pw==="Cidere123")onEliminar(p.id);else if(pw!==null)window.alert("Contraseña incorrecta.");}} style={{ padding:"10px 14px", border:"none", background:"transparent", color:"#CCC", fontSize:13, cursor:"pointer" }}>✕</button>
                   </div>
                 </div>
               );
@@ -449,7 +449,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             <h2 style={{ fontSize:26, fontWeight:800, color:C.oscuro, margin:0 }}>{programa.nombre}</h2>
             {programa.descripcion && <div style={{ fontSize:13, color:C.gris, marginTop:2 }}>{programa.descripcion}</div>}
           </div>
-          <button onClick={onNuevoDiag} style={{ marginLeft:"auto", padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Nuevo diagnóstico</button>
+          <button onClick={onNuevoDiag} style={{ marginLeft:"auto", padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Nueva empresa</button>
         </div>
         {/* Stats */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
@@ -580,8 +580,8 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     </div>
                   </div>
 
-                  {/* Gráfico de barras por proveedor */}
-                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                  {/* Ranking de Proveedores */}
+                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginBottom:16 }}>
                     <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Ranking de Proveedores</div>
                     {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
                       const nv=getNivel(p.pg); const pct=a5to100(p.pg);
@@ -598,6 +598,42 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       );
                     })}
                   </div>
+
+                  {/* Contador por consultor */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Diagnósticos por Consultor</div>
+                      {(() => {
+                        const porConsultor = {};
+                        ds.forEach(d => {
+                          const c = d.infoGeneral?.consultor||"Sin asignar";
+                          porConsultor[c] = (porConsultor[c]||0) + 1;
+                        });
+                        return Object.entries(porConsultor).sort((a,b)=>b[1]-a[1]).map(([consultor, count],i)=>(
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.borde}` }}>
+                            <span style={{ fontSize:13, color:C.oscuro }}>👤 {consultor}</span>
+                            <span style={{ fontSize:14, fontWeight:800, color:pColor, background:`${pColor}12`, padding:"3px 10px", borderRadius:6 }}>{count}</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Diagnósticos por Empresa</div>
+                      {(() => {
+                        const porEmpresa = {};
+                        ds.forEach(d => {
+                          const e = d.infoGeneral?.empresa||"Sin nombre";
+                          porEmpresa[e] = (porEmpresa[e]||0) + 1;
+                        });
+                        return Object.entries(porEmpresa).sort((a,b)=>b[1]-a[1]).map(([empresa, count],i)=>(
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.borde}` }}>
+                            <span style={{ fontSize:13, color:C.oscuro }}>🏢 {empresa}</span>
+                            <span style={{ fontSize:14, fontWeight:800, color:C.verde, background:`${C.verde}12`, padding:"3px 10px", borderRadius:6 }}>{count}</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
                 </>
               )}
             </div>
@@ -605,49 +641,114 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
         })()}
 
         {/* ── LISTA DIAGNÓSTICOS ── */}
-        {vistaTab==="diagnosticos" && <>
-        {/* Buscar */}
-        <input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="🔍  Buscar por empresa proveedor…"
-          style={{ width:"100%", padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", boxSizing:"border-box", marginBottom:14 }}/>
-        {diags.length===0 ? (
-          <div style={{ background:C.blanco, border:`2px dashed ${C.borde}`, borderRadius:14, padding:48, textAlign:"center" }}>
-            <div style={{ fontSize:36, marginBottom:8 }}>📋</div>
-            <p style={{ color:C.gris, fontSize:14 }}>{filtro?"Sin resultados.":"Aún no hay diagnósticos. Crea uno nuevo."}</p>
-          </div>
-        ) : (
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {diags.map(d => {
-              const pg = pglobal(dims, d.datosEntrada||{});
-              const nv = pg!==null?getNivel(pg):null;
-              const fecha = new Date(d.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"});
-              return (
-                <div key={d.id} style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:"15px 18px", display:"flex", alignItems:"center", gap:14, boxShadow:"0 1px 6px rgba(0,0,0,0.05)" }}>
-                  <div style={{ width:46, textAlign:"center", padding:"8px 6px", background:d.tipo==="entrada"?`${pColor}18`:`${C.verde}12`, border:`1px solid ${d.tipo==="entrada"?pColor:C.verde}33`, borderRadius:8 }}>
-                    <div style={{ fontSize:18 }}>{d.tipo==="entrada"?"📋":"📊"}</div>
-                    <div style={{ fontSize:9, color:d.tipo==="entrada"?pColor:C.verde, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>{d.tipo==="entrada"?"Base":"Final"}</div>
-                  </div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:15, fontWeight:700, color:C.oscuro }}>{d.infoGeneral?.empresa||<span style={{color:C.grisCl,fontStyle:"italic"}}>Sin nombre</span>}</div>
-                    <div style={{ fontSize:12, color:C.gris }}>{fecha}{d.infoGeneral?.respondente?` · ${d.infoGeneral.respondente}`:""}{d.infoGeneral?.consultor?` · 👤 ${d.infoGeneral.consultor}`:""}</div>
-                  {d.infoGeneral?.estado && (
-                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:4, marginTop:3, display:"inline-block",
-                      background:d.infoGeneral.estado==="Validado"?"#EAF7F2":d.infoGeneral.estado==="Descartado"?"#FFF0F0":"#FFFBF0",
-                      color:d.infoGeneral.estado==="Validado"?"#16A085":d.infoGeneral.estado==="Descartado"?"#E74C3C":"#A07820"
-                    }}>{d.infoGeneral.estado==="Validado"?"🟢":d.infoGeneral.estado==="Descartado"?"🔴":"🟡"} {d.infoGeneral.estado}</span>
-                  )}
-                  {d.infoGeneral?.modalidad && <span style={{ fontSize:10, color:C.gris, marginLeft:4 }}>· {d.infoGeneral.modalidad}</span>}
-                  </div>
-                  {pg!==null&&<div style={{ textAlign:"center" }}><div style={{ fontSize:24, fontWeight:800, color:nv.color }}>{pg.toFixed(1)}</div><div style={{ fontSize:10, color:nv.color, fontWeight:700 }}>{nv.label}</div></div>}
-                  <div style={{ display:"flex", gap:7 }}>
-                    <button onClick={()=>onAbrirDiag(d)} style={{ padding:"7px 14px", background:`${pColor}12`, border:`1px solid ${pColor}33`, borderRadius:7, color:pColor, fontSize:12, fontWeight:700, cursor:"pointer" }}>Abrir</button>
-                    <button onClick={()=>onEliminarDiag(d.id)} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>✕</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        </>}
+        {vistaTab==="diagnosticos" && (() => {
+          const ds = programa.diagnosticos||[];
+          const empresasMap = {};
+          ds.forEach(d => {
+            const key = d.infoGeneral?.empresa||d.id;
+            if (!empresasMap[key]) empresasMap[key] = { nombre:key, diags:[] };
+            empresasMap[key].diags.push(d);
+          });
+          const empresas = Object.values(empresasMap).filter(e =>
+            !filtro || e.nombre.toLowerCase().includes(filtro.toLowerCase())
+          );
+          return (
+            <>
+            <div style={{ display:"flex", gap:10, marginBottom:14 }}>
+              <input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="🔍 Buscar empresa…"
+                style={{ flex:1, padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none" }}/>
+              <button onClick={onNuevoDiag} style={{ padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>+ Nueva empresa</button>
+            </div>
+            {empresas.length===0 ? (
+              <div style={{ background:C.blanco, border:`2px dashed ${C.borde}`, borderRadius:14, padding:48, textAlign:"center" }}>
+                <div style={{ fontSize:36, marginBottom:8 }}>📋</div>
+                <p style={{ color:C.gris }}>Aún no hay empresas evaluadas. Crea una nueva.</p>
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                {empresas.map((emp,ei) => {
+                  const dInicial = emp.diags.find(d=>d.tipo==="entrada");
+                  const dFinal   = emp.diags.find(d=>d.tipo==="salida");
+                  const pgI = dInicial?pglobal(dims, dInicial.datosEntrada||{}):null;
+                  const pgF = dFinal?pglobal(dims, dFinal.datosSalida||dFinal.datosEntrada||{}):null;
+                  const nvI = pgI!==null?getNivel(pgI):null;
+                  const nvF = pgF!==null?getNivel(pgF):null;
+                  const tieneAmbos = !!(dInicial && dFinal);
+                  const info = dInicial?.infoGeneral || emp.diags[0]?.infoGeneral || {};
+                  return (
+                    <div key={ei} style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden", boxShadow:"0 1px 6px rgba(0,0,0,0.05)" }}>
+                      {/* Header empresa */}
+                      <div style={{ padding:"14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.borde}`, background:`${pColor}06` }}>
+                        <div>
+                          <div style={{ fontSize:15, fontWeight:800, color:C.oscuro }}>{emp.nombre}</div>
+                          <div style={{ fontSize:12, color:C.gris, marginTop:2 }}>
+                            {info.respondente&&`${info.respondente}`}{info.cargo&&` · ${info.cargo}`}
+                            {info.consultor&&<span style={{marginLeft:6}}>👤 {info.consultor}</span>}
+                            {info.modalidad&&<span style={{marginLeft:6, color:C.grisCl}}>· {info.modalidad}</span>}
+                          </div>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                          {tieneAmbos && <span style={{ fontSize:11, fontWeight:700, color:C.verde, background:`${C.verde}15`, padding:"4px 10px", borderRadius:6 }}>✓ Completo</span>}
+                          {!dFinal && dInicial && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>⏳ En progreso</span>}
+                          {info.estado && <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:info.estado==="Validado"?"#EAF7F2":info.estado==="Descartado"?"#FFF0F0":"#FFFBF0", color:info.estado==="Validado"?"#16A085":info.estado==="Descartado"?"#E74C3C":"#A07820" }}>{info.estado==="Validado"?"🟢":info.estado==="Descartado"?"🔴":"🟡"} {info.estado}</span>}
+                        </div>
+                      </div>
+                      {/* Columnas inicial / final */}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
+                        <div style={{ padding:"16px 18px", borderRight:`1px solid ${C.borde}` }}>
+                          <div style={{ fontSize:10, fontWeight:700, color:dInicial?C.azul:C.grisCl, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>📋 Diagnóstico Inicial</div>
+                          {dInicial ? (
+                            <div>
+                              <div style={{ fontSize:28, fontWeight:800, color:nvI?.color, lineHeight:1 }}>{a5to100(pgI)}%</div>
+                              <div style={{ fontSize:12, color:nvI?.color, fontWeight:700, marginBottom:6 }}>{nvI?.label}</div>
+                              <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dInicial.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
+                              {/* Barras rápidas */}
+                              {dims.map(dim=>{ const v=pdim(dim,dInicial.datosEntrada||{}); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:pColor}}/></div></div>; })}
+                              <button onClick={()=>onAbrirDiag(dInicial)} style={{ marginTop:10, padding:"7px 16px", background:`${C.azul}12`, border:`1px solid ${C.azul}33`, borderRadius:7, color:C.azul, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{ color:C.grisCl, fontSize:13, fontStyle:"italic", marginBottom:10 }}>No completado</div>
+                              <button onClick={onNuevoDiag} style={{ padding:"7px 14px", background:`${C.azul}12`, border:`1px dashed ${C.azul}`, borderRadius:7, color:C.azul, fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Agregar inicial</button>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ padding:"16px 18px" }}>
+                          <div style={{ fontSize:10, fontWeight:700, color:dFinal?C.verde:C.grisCl, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>📊 Diagnóstico Final</div>
+                          {dFinal ? (
+                            <div>
+                              <div style={{ fontSize:28, fontWeight:800, color:nvF?.color, lineHeight:1 }}>{a5to100(pgF)}%</div>
+                              <div style={{ fontSize:12, color:nvF?.color, fontWeight:700, marginBottom:6 }}>{nvF?.label}</div>
+                              <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dFinal.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
+                              {dims.map(dim=>{ const v=pdim(dim,dFinal.datosSalida||dFinal.datosEntrada||{}); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:C.verde}}/></div></div>; })}
+                              <button onClick={()=>onAbrirDiag(dFinal)} style={{ marginTop:10, padding:"7px 16px", background:`${C.verde}12`, border:`1px solid ${C.verde}33`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
+                            </div>
+                          ) : dInicial ? (
+                            <div>
+                              <div style={{ color:C.grisCl, fontSize:13, fontStyle:"italic", marginBottom:6 }}>Pendiente al cierre del programa</div>
+                              <p style={{ fontSize:11, color:C.grisCl, marginBottom:10 }}>Se completará cuando finalice el programa de acompañamiento.</p>
+                              <button onClick={()=>onAbrirDiag({...dInicial, id:dInicial.id+"_final_new", tipo:"salida_nueva", datosEntrada:{}, indicadoresEntrada:{}})} style={{ padding:"7px 14px", background:`${C.verde}12`, border:`1px dashed ${C.verde}`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Agregar diagnóstico final</button>
+                            </div>
+                          ) : (
+                            <div style={{ color:C.grisCl, fontSize:13, fontStyle:"italic" }}>Primero completa el diagnóstico inicial</div>
+                          )}
+                        </div>
+                      </div>
+                      {/* Footer */}
+                      <div style={{ padding:"10px 18px", borderTop:`1px solid ${C.borde}`, display:"flex", justifyContent:"space-between", alignItems:"center", background:C.fondo }}>
+                        {tieneAmbos ? (
+                          <button onClick={()=>onAbrirDiag({...dInicial, _verComparativo:true, _dFinal:dFinal})} style={{ padding:"7px 16px", background:"#9B59B615", border:"1px solid #9B59B633", borderRadius:7, color:"#9B59B6", fontSize:12, fontWeight:700, cursor:"pointer" }}>📈 Ver informe comparativo</button>
+                        ) : <div/>}
+                        <button onClick={()=>{ const pw=window.prompt(`Para eliminar "${emp.nombre}" escribe la contraseña:`); if(pw==="Cidere123") emp.diags.forEach(d=>onEliminarDiag(d.id)); else if(pw!==null) window.alert("Contraseña incorrecta."); }} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>✕ Eliminar</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );
@@ -656,23 +757,21 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 /* ═══════════════════════════════════════════
    MODAL GUARDAR DIAGNÓSTICO
 ═══════════════════════════════════════════ */
-function ModalGuardar({ infoGeneral, onGuardar, onCerrar }) {
-  const [tipo, setTipo] = useState("entrada");
+function ModalGuardar({ infoGeneral, tieneInicial, onGuardar, onCerrar }) {
+  const tipo = tieneInicial ? "salida" : "entrada";
   return (
     <Modal onClose={onCerrar} width={440}>
       <h2 style={{ fontSize:20, fontWeight:800, color:C.oscuro, margin:"0 0 4px 0" }}>Guardar diagnóstico</h2>
-      <p style={{ fontSize:13, color:C.gris, margin:"0 0 22px 0" }}>Proveedor: <strong style={{color:C.oscuro}}>{infoGeneral.empresa||"Sin nombre"}</strong></p>
-      <div style={{ display:"flex", gap:10, marginBottom:24 }}>
-        {[{k:"entrada",l:"📋 Diagnóstico Inicial",s:"Línea base antes del programa"},{k:"salida",l:"📊 Diagnóstico Final",s:"Línea de salida al cierre"}].map(t=>(
-          <div key={t.k} onClick={()=>setTipo(t.k)} style={{ flex:1, padding:"14px 12px", borderRadius:10, cursor:"pointer", textAlign:"center", border:`2px solid ${tipo===t.k?(t.k==="entrada"?C.azul:C.verde):C.borde}`, background:tipo===t.k?(t.k==="entrada"?`${C.azul}10`:`${C.verde}10`):"transparent" }}>
-            <div style={{ fontSize:13, fontWeight:700, color:tipo===t.k?(t.k==="entrada"?C.azul:C.verde):C.gris, marginBottom:3 }}>{t.l}</div>
-            <div style={{ fontSize:11, color:C.gris }}>{t.s}</div>
-          </div>
-        ))}
+      <p style={{ fontSize:13, color:C.gris, margin:"0 0 20px 0" }}>Proveedor: <strong style={{color:C.oscuro}}>{infoGeneral.empresa||"Sin nombre"}</strong></p>
+      <div style={{ background:tipo==="entrada"?`${C.azul}10`:`${C.verde}10`, border:`2px solid ${tipo==="entrada"?C.azul:C.verde}`, borderRadius:12, padding:18, marginBottom:20, textAlign:"center" }}>
+        <div style={{ fontSize:22, marginBottom:6 }}>{tipo==="entrada"?"📋":"📊"}</div>
+        <div style={{ fontSize:15, fontWeight:700, color:tipo==="entrada"?C.azul:C.verde }}>{tipo==="entrada"?"Diagnóstico Inicial":"Diagnóstico Final"}</div>
+        <div style={{ fontSize:12, color:C.gris, marginTop:4 }}>{tipo==="entrada"?"Línea base — inicio del programa":"Línea de salida — cierre del programa"}</div>
       </div>
+      {tieneInicial && <p style={{ fontSize:12, color:C.verde, marginBottom:16, textAlign:"center" }}>✓ Ya existe diagnóstico inicial. Este se guardará como diagnóstico final.</p>}
       <div style={{ display:"flex", gap:10 }}>
         <button onClick={onCerrar} style={{ flex:1, padding:"11px", border:`1px solid ${C.borde}`, borderRadius:8, background:"transparent", color:C.gris, cursor:"pointer" }}>Cancelar</button>
-        <button onClick={()=>onGuardar(tipo)} style={{ flex:2, padding:"11px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontWeight:700, cursor:"pointer" }}>Guardar</button>
+        <button onClick={()=>onGuardar(tipo)} style={{ flex:2, padding:"11px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontWeight:700, cursor:"pointer" }}>Guardar {tipo==="entrada"?"diagnóstico inicial":"diagnóstico final"}</button>
       </div>
     </Modal>
   );
@@ -818,7 +917,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
           )}
           <button onClick={()=>{
             const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, tab==="ficha"&&esComparativa?datosS:datosE, tab==="ficha"&&esComparativa?indS:indE, programa, tab==="ficha"&&esComparativa);
-            const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 Selecciona <strong>"Guardar como PDF"</strong> como destino de impresión</span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
+            const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 En el diálogo de impresión: selecciona <strong>"Guardar como PDF"</strong> y asegúrate que la orientación sea <strong>Vertical (Portrait)</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
             const w = window.open("","_blank");
             if(w){ w.document.write(htmlFinal); w.document.close(); w.focus(); setTimeout(()=>w.print(),900); }
@@ -1055,20 +1154,29 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   const brechasHTML = interp ? interp.brechas.map(f=>`<li>${f.d.icono} ${f.d.nombre} (${a5to100(f.prom)}%)</li>`).join("") : "";
   const prioridadesHTML = interp ? interp.prioritarias.map(f=>`<li>${f.d.icono} ${f.d.nombre}</li>`).join("") : "";
 
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Ficha – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4;margin:12mm}
-body{font-family:Arial,sans-serif;color:#1C2B3A;margin:0;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Ficha – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4 portrait;margin:12mm 14mm}
+html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
 h1,h2{margin:0}
 ul{margin:4px 0;padding-left:16px}
 li{font-size:11px;margin-bottom:2px}
-.pb{page-break-before:always}
+table{width:100%;border-collapse:collapse}
+.page-break{page-break-before:always;break-before:always}
+@media screen{body{max-width:210mm;padding:10mm;box-shadow:0 0 20px rgba(0,0,0,0.15)}}
 @media print{
-  body{margin:0}
-  button{display:none}
+  html,body{width:auto;max-width:none;padding:0;box-shadow:none}
+  button,.no-print{display:none!important}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 }</style></head><body>
-<div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:14px 20px;border-radius:6px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-  <div><div style="font-size:10px;letter-spacing:3px;color:#90C8F0;text-transform:uppercase;margin-bottom:4px">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div><h1 style="font-size:16px;font-weight:bold">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</h1></div>
-  <div style="text-align:right"><div style="font-size:10px;color:#90C8F0">Fecha</div><div style="font-size:14px;font-weight:bold">${fecha}</div></div>
+<div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:14px 20px;border-radius:6px;margin-bottom:10px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:12px">
+      ${CIDERE_LOGO_B64?`<img src="${CIDERE_LOGO_B64}" style="height:36px;object-fit:contain" alt="CIDERE"/>`:""}
+      ${programa?.logoUrl?`<div style="width:1px;height:36px;background:rgba(255,255,255,0.3)"></div><img src="${programa.logoUrl}" style="height:36px;object-fit:contain;background:rgba(255,255,255,0.9);border-radius:4px;padding:2px 6px" alt="${programa.nombre}"/>`:""}
+    </div>
+    <div style="text-align:right"><div style="font-size:10px;color:#90C8F0">Fecha</div><div style="font-size:13px;font-weight:bold">${fecha}</div></div>
+  </div>
+  <div style="font-size:10px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase;margin-bottom:3px">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div>
+  <div style="font-size:16px;font-weight:bold">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</div>
 </div>
 <div style="background:#F5F7FA;border-radius:6px;padding:10px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
   <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Empresa</div><strong style="font-size:13px">${infoGeneral.empresa||"—"}</strong></div>
@@ -1106,15 +1214,17 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   }).join("");
   const indicadores = dims.map(d=>`<tr><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;font-size:12px">${d.icono} ${d.indicadorObjetivo.label}</td><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-size:12px"><strong style="color:#2B7BBF">${indE?.[d.id]||"—"}</strong> → <strong style="color:#3BAD8A">${indS?.[d.id]||"—"}</strong></td></tr>`).join("");
 
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Informe Comparativo – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4;margin:12mm}
-body{font-family:Arial,sans-serif;color:#1C2B3A;margin:0;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Informe Comparativo – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4 portrait;margin:12mm 14mm}
+html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
 h1,h2{margin:0}
 ul{margin:4px 0;padding-left:16px}
 li{font-size:11px;margin-bottom:2px}
-.pb{page-break-before:always}
+table{width:100%;border-collapse:collapse}
+.page-break{page-break-before:always;break-before:always}
+@media screen{body{max-width:210mm;padding:10mm;box-shadow:0 0 20px rgba(0,0,0,0.15)}}
 @media print{
-  body{margin:0}
-  button{display:none}
+  html,body{width:auto;max-width:none;padding:0;box-shadow:none}
+  button,.no-print{display:none!important}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 }</style></head><body>
 <div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:24px 28px;border-radius:8px;margin-bottom:18px">
@@ -1144,14 +1254,17 @@ li{font-size:11px;margin-bottom:2px}
 
 function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
   const scrollRef = useRef(null);
-  const [pagina, setPagina] = useState(0);
-  const [modo, setModo] = useState("entrada");
-  const [validErr, setValidErr] = useState([]); // ids de preguntas obligatorias sin responder
+  const esSalidaNueva = diagActual?.tipo === "salida_nueva" || (diagActual?.id||"").endsWith("_final_new");
+  const verComparativo = !!diagActual?._verComparativo;
+  const dFinalRef = diagActual?._dFinal;
+  const [pagina, setPagina] = useState(verComparativo ? 7 : 0);
+  const [modo, setModo] = useState(esSalidaNueva ? "salida" : verComparativo ? "comparacion" : "entrada");
+  const [validErr, setValidErr] = useState([]);
   const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",facturacionCMPC:"",consultor:"",modalidad:"",observaciones:"",estado:"Pendiente revisión"});
-  const [datosE, setDatosE] = useState(diagActual?.datosEntrada||{});
-  const [datosS, setDatosS] = useState(diagActual?.datosSalida||{});
-  const [indE, setIndE] = useState(diagActual?.indicadoresEntrada||{});
-  const [indS, setIndS] = useState(diagActual?.indicadoresSalida||{});
+  const [datosE, setDatosE] = useState(esSalidaNueva ? {} : (diagActual?.datosEntrada||{}));
+  const [datosS, setDatosS] = useState(esSalidaNueva ? {} : (dFinalRef?.datosSalida||diagActual?.datosSalida||{}));
+  const [indE, setIndE] = useState(esSalidaNueva ? {} : (diagActual?.indicadoresEntrada||{}));
+  const [indS, setIndS] = useState(esSalidaNueva ? {} : (dFinalRef?.indicadoresSalida||diagActual?.indicadoresSalida||{}));
   const [evids, setEvids] = useState(diagActual?.evidencias||{});
   const [showModal, setShowModal] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
@@ -1192,8 +1305,21 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
 
   const showT = (msg,c=C.verde) => { setToast({msg,c}); setTimeout(()=>setToast(null),3000); };
 
+  const tieneInicial = !!(diagActual?.datosEntrada && Object.keys(diagActual.datosEntrada).length > 0);
   const guardar = (tipo) => {
-    const rec = { id:diagActual?.id||Date.now().toString(), tipo, infoGeneral:{...infoGeneral}, datosEntrada:{...datosE}, datosSalida:{...datosS}, indicadoresEntrada:{...indE}, indicadoresSalida:{...indS}, evidencias:{...evids}, fechaGuardado:new Date().toISOString() };
+    const rec = {
+      id: diagActual?.id||Date.now().toString(),
+      tipo,
+      infoGeneral:{...infoGeneral},
+      datosEntrada: tipo==="entrada"?{...datosE}:(diagActual?.datosEntrada||{}),
+      datosSalida: tipo==="salida"?{...datosE}:{},
+      indicadoresEntrada: tipo==="entrada"?{...indE}:(diagActual?.indicadoresEntrada||{}),
+      indicadoresSalida: tipo==="salida"?{...indE}:{},
+      evidencias:{...evids},
+      fechaInicial: tipo==="entrada"?new Date().toISOString():(diagActual?.fechaInicial||new Date().toISOString()),
+      fechaFinal: tipo==="salida"?new Date().toISOString():null,
+      fechaGuardado:new Date().toISOString()
+    };
     onGuardar(rec); setShowModal(false); showT("✓ Diagnóstico guardado");
   };
 
@@ -1214,7 +1340,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
           </div>
         </Modal>
       )}
-      {showModal && <ModalGuardar infoGeneral={infoGeneral} onGuardar={guardar} onCerrar={()=>setShowModal(false)}/>}
+      {showModal && <ModalGuardar infoGeneral={infoGeneral} tieneInicial={tieneInicial} onGuardar={guardar} onCerrar={()=>setShowModal(false)}/>}
       {showFicha && <FichaDiagnostico dims={dims} infoGeneral={infoGeneral} datosE={datosE} datosS={datosS} indE={indE} indS={indS} programa={programa} onCerrar={()=>setShowFicha(false)}/>}
       {showEditor && <EditorContenido dims={dims} onSave={d=>{showT("✓ Cambios guardados");}} onClose={()=>setShowEditor(false)}/>}
 
@@ -1593,15 +1719,21 @@ export default function App() {
     setProyectoActivo(updated.find(p=>p.id===proyectoActivo.id));
   };
   const guardarDiag = (rec) => {
+    // Si el id termina en _final_new, es un diagnóstico final nuevo — quitar el sufijo
+    const recFinal = rec.id.endsWith("_final_new")
+      ? {...rec, id: rec.id.replace("_final_new","")+"_final"}
+      : rec;
     const updated = proyectos.map(p=>{
       if(p.id!==proyectoActivo.id) return p;
-      const existe = (p.diagnosticos||[]).some(d=>d.id===rec.id);
-      const diags = existe?(p.diagnosticos||[]).map(d=>d.id===rec.id?rec:d):[...(p.diagnosticos||[]),rec];
+      const existe = (p.diagnosticos||[]).some(d=>d.id===recFinal.id);
+      const diags = existe
+        ? (p.diagnosticos||[]).map(d=>d.id===recFinal.id?recFinal:d)
+        : [...(p.diagnosticos||[]),recFinal];
       return {...p,diagnosticos:diags};
     });
     saveProyectos(updated);
     setProyectoActivo(updated.find(p=>p.id===proyectoActivo.id));
-    setDiagActivo({diag:rec,esNuevo:false});
+    setDiagActivo({diag:recFinal,esNuevo:false});
   };
 
   if(!logueado) return <PantallaLogin onOk={()=>setLogueado(true)}/>;
