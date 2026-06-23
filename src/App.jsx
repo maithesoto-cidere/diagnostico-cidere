@@ -980,7 +980,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               {!tieneE && !tieneS && <span style={{color:"rgba(255,255,255,0.5)",fontSize:12,padding:"7px 14px"}}>Sin datos disponibles</span>}
             </div>
           <button onClick={()=>{
-            const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, datosActivos, indsActivos, programa, tab==="final");
+            const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, datosActivos, indsActivos, programa, tab==="final", CIDERE_LOGO_B64, programa?.logoUrl);
             const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 En el diálogo de impresión: selecciona <strong>"Guardar como PDF"</strong> y asegúrate que la orientación sea <strong>Vertical (Portrait)</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
             const w = window.open("","_blank");
@@ -1217,7 +1217,7 @@ function ComparativoView({ dims, infoGeneral, datosE, datosS, indE, indS, pgE, p
 }
 
 /* ── Generadores de HTML para exportar PDF ── */
-function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSalida) {
+function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSalida, logoCidere, logoEmpresaPrograma) {
   const pg = pglobal(dims, datos||{});
   const nivel = pg!==null ? getNivel(pg) : null;
   const interp = generarInterpretacion(dims, datos||{});
@@ -1250,18 +1250,21 @@ table{width:100%;border-collapse:collapse}
 <div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:14px 20px;border-radius:6px;margin-bottom:10px;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:12px">
-      ${CIDERE_LOGO_B64?`<img src="${CIDERE_LOGO_B64}" style="height:36px;object-fit:contain" alt="CIDERE"/>`:""}
-      ${programa?.logoUrl?`<div style="width:1px;height:36px;background:rgba(255,255,255,0.3)"></div><img src="${programa.logoUrl}" style="height:36px;object-fit:contain;background:rgba(255,255,255,0.9);border-radius:4px;padding:2px 6px" alt="${programa.nombre}"/>`:""}
+      ${logoCidere?`<img src="${logoCidere}" style="height:36px;object-fit:contain" alt="CIDERE"/>`:`<span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:1px">CIDERE Biobío</span>`}
+      ${logoEmpresaPrograma?`<div style="width:1px;height:36px;background:rgba(255,255,255,0.3)"></div><img src="${logoEmpresaPrograma}" style="height:36px;object-fit:contain;background:rgba(255,255,255,0.9);border-radius:4px;padding:2px 6px" alt="${programa?.nombre||''}"/>`:""}
     </div>
     <div style="text-align:right"><div style="font-size:10px;color:#90C8F0">Fecha</div><div style="font-size:13px;font-weight:bold">${fecha}</div></div>
   </div>
   <div style="font-size:10px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase;margin-bottom:3px">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div>
   <div style="font-size:16px;font-weight:bold">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</div>
 </div>
-<div style="background:#F5F7FA;border-radius:6px;padding:10px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-  <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Empresa</div><strong style="font-size:13px">${infoGeneral.empresa||"—"}</strong></div>
-  <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Representante</div><span style="font-size:13px">${infoGeneral.respondente||"—"}</span></div>
-  <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Cargo</div><span style="font-size:13px">${infoGeneral.cargo||"—"}</span></div>
+<div style="background:#F5F7FA;border-radius:6px;padding:10px;margin-bottom:10px;display:flex;align-items:center;gap:16px">
+  ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:44px;object-fit:contain;background:#fff;border-radius:6px;padding:3px 8px;border:1px solid #DDE6EF" alt="${infoGeneral.empresa}"/>`:""}
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;flex:1">
+    <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Empresa</div><strong style="font-size:13px">${infoGeneral.empresa||"—"}</strong></div>
+    <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Representante</div><span style="font-size:13px">${infoGeneral.respondente||"—"}</span></div>
+    <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Cargo</div><span style="font-size:13px">${infoGeneral.cargo||"—"}</span></div>
+  </div>
 </div>
 <div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);border-radius:6px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:16px">
   <div style="text-align:center;min-width:100px"><div style="font-size:9px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase">Puntaje General</div><div style="font-size:26px;font-weight:bold;color:${nivel?nivel.color:"#fff"}">${pg!==null?a5to100(pg):"—"}%</div>${nivel?`<div style="font-size:11px;color:${nivel.color};font-weight:bold">${nivel.label}</div>`:""}</div>
