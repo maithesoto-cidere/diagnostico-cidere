@@ -552,21 +552,159 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                 </div>
               ) : (
                 <>
-                  {/* KPIs */}
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }}>
+                  {/* KPIs fila superior */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:10, marginBottom:20 }}>
                     {[
-                      {l:"Proveedores evaluados", v:entradasConPG.length, c:pColor},
+                      {l:"Proveedores", v:entradasConPG.length, c:pColor},
                       {l:"Puntaje promedio", v:pgPromedio!==null?`${a5to100(pgPromedio)}%`:"—", c:pgPromedio!==null?getNivel(pgPromedio).color:C.gris},
                       {l:"Nivel promedio", v:nivelPromedio?.label||"—", c:nivelPromedio?.color||C.gris},
                       {l:"Con comparativo", v:provsConAmbos.length, c:"#9B59B6"},
                       {l:"Mejor dimensión", v:mejorDim?mejorDim.dim.nombre:"—", c:C.verde, small:true},
-                      {l:"Dimensión a reforzar", v:peorDim?peorDim.dim.nombre:"—", c:"#E74C3C", small:true},
+                      {l:"A reforzar", v:peorDim?peorDim.dim.nombre:"—", c:"#E74C3C", small:true},
                     ].map(s=>(
-                      <div key={s.l} style={{ background:C.blanco, border:`1px solid ${s.c}33`, borderRadius:12, padding:"14px 16px", textAlign:"center" }}>
-                        <div style={{ fontSize:10, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>{s.l}</div>
-                        <div style={{ fontSize:s.small?14:26, fontWeight:800, color:s.c, lineHeight:1.2 }}>{s.v}</div>
+                      <div key={s.l} style={{ background:C.blanco, border:`1px solid ${s.c}33`, borderRadius:10, padding:"12px 10px", textAlign:"center" }}>
+                        <div style={{ fontSize:9, color:C.gris, textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>{s.l}</div>
+                        <div style={{ fontSize:s.small?12:22, fontWeight:800, color:s.c, lineHeight:1.2 }}>{s.v}</div>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Fila principal: gráficos izquierda + tabla derecha */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+
+                    {/* Izquierda: Radar promedio + barras por dimensión */}
+                    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                      {/* Radar promedio de todos los proveedores */}
+                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Radar Promedio del Programa</div>
+                        <div style={{ fontSize:11, color:C.grisCl, marginBottom:12 }}>Promedio de todos los proveedores evaluados</div>
+                        <RadarChart dims={dims} series={[{
+                          data: (() => {
+                            const obj = {};
+                            dims.forEach(d => {
+                              const vals = ds.filter(x=>x.tipo==="entrada").map(x=>pdim(d,x.datosEntrada||{})).filter(v=>v!==null);
+                              if(vals.length) {
+                                // Crear datos fake por pregunta para el radar
+                                d.preguntas.forEach(p => { obj[p.id] = vals.reduce((a,b)=>a+b,0)/vals.length; });
+                              }
+                            });
+                            return obj;
+                          })(),
+                          color: pColor, label:"Promedio"
+                        }]} size={220}/>
+                      </div>
+
+                      {/* Barras por dimensión */}
+                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Promedio por Dimensión</div>
+                        {dimPromedios.map(({dim,prom})=>{
+                          const n=prom!==null?getNivel(prom):null; const pct=prom!==null?a5to100(prom):0;
+                          return (
+                            <div key={dim.id} style={{ marginBottom:10 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                                <span style={{ fontSize:12, color:C.oscuro }}>{dim.icono} {dim.nombre}</span>
+                                <span style={{ fontSize:11, fontWeight:700, color:n?.color||C.gris }}>{prom!==null?`${pct}%`:"—"} {n?`· ${n.label}`:""}</span>
+                              </div>
+                              <div style={{ height:8, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
+                                <div style={{ width:`${pct}%`, height:"100%", background:n?.color||pColor, borderRadius:4 }}/>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Derecha: tabla comparativa + ranking */}
+                    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                      {/* Tabla comparativa */}
+                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden" }}>
+                        <div style={{ padding:"12px 16px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>Comparativo Proveedores</div>
+                        <div style={{ overflowX:"auto" }}>
+                          <table style={{ width:"100%", borderCollapse:"collapse", minWidth:400 }}>
+                            <thead>
+                              <tr style={{ background:`${pColor}08` }}>
+                                <th style={{ padding:"8px 12px", textAlign:"left", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Empresa</th>
+                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Base</th>
+                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Final</th>
+                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Var.</th>
+                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Estado</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+                                const nv=getNivel(p.pg);
+                                const dF = ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
+                                const pgF = dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
+                                const delta = pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
+                                return (
+                                  <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}>
+                                    <td style={{ padding:"8px 12px", fontSize:12, color:C.oscuro, fontWeight:600 }}>{p.empresa}</td>
+                                    <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:nv.color }}>{a5to100(p.pg)}%</td>
+                                    <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:pgF!==null?getNivel(pgF).color:C.grisCl }}>{pgF!==null?`${a5to100(pgF)}%`:"—"}</td>
+                                    <td style={{ padding:"8px 8px", textAlign:"center", fontSize:12, fontWeight:700, color:delta!==null?(delta>=0?"#16A085":"#E74C3C"):C.grisCl }}>{delta!==null?`${delta>=0?"+":""}${delta}`:""}</td>
+                                    <td style={{ padding:"8px 8px", textAlign:"center" }}>
+                                      <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:4,
+                                        background:p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0",
+                                        color:p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"
+                                      }}>{p.estado==="Validado"?"🟢":p.estado==="Descartado"?"🔴":"🟡"} {p.estado||"Pendiente"}</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Evolución / ranking visual */}
+                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Ranking de Proveedores</div>
+                        {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+                          const nv=getNivel(p.pg); const pct=a5to100(p.pg);
+                          const dF=ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
+                          const pgF=dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
+                          const pctF=pgF!==null?a5to100(pgF):null;
+                          return (
+                            <div key={i} style={{ marginBottom:12 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, alignItems:"center" }}>
+                                <span style={{ fontSize:12, color:C.oscuro, fontWeight:600 }}>{i+1}. {p.empresa}</span>
+                                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                                  <span style={{ fontSize:11, color:nv.color, fontWeight:700 }}>{pct}%</span>
+                                  {pctF!==null&&<span style={{ fontSize:11, color:C.verde, fontWeight:700 }}>→ {pctF}%</span>}
+                                </div>
+                              </div>
+                              <div style={{ position:"relative", height:10, background:C.fondo, borderRadius:5, overflow:"hidden" }}>
+                                <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}88`, borderRadius:5 }}/>
+                                {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:5, opacity:0.7 }}/>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {provsConAmbos.length>0&&<div style={{ fontSize:11, color:C.grisCl, marginTop:8 }}>Barra oscura = base · barra verde = final</div>}
+                      </div>
+
+                      {/* Contadores consultor/empresa */}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                        <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:16 }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Por Consultor</div>
+                          {(()=>{ const m={}; ds.forEach(d=>{const c=d.infoGeneral?.consultor||"Sin asignar";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
+                            <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.borde}`, fontSize:12 }}>
+                              <span style={{ color:C.oscuro }}>👤 {k}</span>
+                              <span style={{ fontWeight:800, color:pColor }}>{v}</span>
+                            </div>
+                          )); })()}
+                        </div>
+                        <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:16 }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Por Modalidad</div>
+                          {(()=>{ const m={}; ds.forEach(d=>{const c=d.infoGeneral?.modalidad||"Sin definir";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
+                            <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.borde}`, fontSize:12 }}>
+                              <span style={{ color:C.oscuro }}>{k}</span>
+                              <span style={{ fontWeight:800, color:C.verde }}>{v}</span>
+                            </div>
+                          )); })()}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Promedios por dimensión */}
@@ -980,7 +1118,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               {!tieneE && !tieneS && <span style={{color:"rgba(255,255,255,0.5)",fontSize:12,padding:"7px 14px"}}>Sin datos disponibles</span>}
             </div>
           <button onClick={()=>{
-            const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, datosActivos, indsActivos, programa, tab==="final", CIDERE_LOGO_B64, programa?.logoUrl);
+            const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, datosActivos, indsActivos, programa, tab==="final");
             const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 En el diálogo de impresión: selecciona <strong>"Guardar como PDF"</strong> y asegúrate que la orientación sea <strong>Vertical (Portrait)</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
             const w = window.open("","_blank");
@@ -1217,7 +1355,9 @@ function ComparativoView({ dims, infoGeneral, datosE, datosS, indE, indS, pgE, p
 }
 
 /* ── Generadores de HTML para exportar PDF ── */
-function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSalida, logoCidere, logoEmpresaPrograma) {
+function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSalida) {
+  const logoCidere = CIDERE_LOGO_B64;
+  const logoEmpresaPrograma = programa?.logoUrl||"";
   const pg = pglobal(dims, datos||{});
   const nivel = pg!==null ? getNivel(pg) : null;
   const interp = generarInterpretacion(dims, datos||{});
