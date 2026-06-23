@@ -290,19 +290,26 @@ function Modal({ onClose, children, width=480 }) {
 ═══════════════════════════════════════════ */
 function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onEliminar }) {
   const [showNew, setShowNew] = useState(false);
+  const [editando, setEditando] = useState(null); // programa que se está editando
   const [nombre, setNombre] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [color, setColor] = useState("#2B7BBF");
-  const fileRef = useRef();
 
-  const handleFile = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = ev => setLogoUrl(ev.target.result);
-    reader.readAsDataURL(f);
+  const abrirEditar = (p) => {
+    setEditando(p);
+    setNombre(p.nombre);
+    setLogoUrl(p.logoUrl||"");
+    setDescripcion(p.descripcion||"");
+    setColor(p.color||"#2B7BBF");
   };
+  const guardarEdicion = () => {
+    if (!nombre.trim()) return;
+    onEditar({...editando, nombre:nombre.trim(), logoUrl, descripcion, color});
+    setEditando(null);
+  };
+
+
 
   const crear = () => {
     if (!nombre.trim()) return;
@@ -367,6 +374,7 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                   </div>
                   <div style={{ borderTop:`1px solid ${C.borde}`, display:"flex" }}>
                     <button onClick={()=>onSeleccionar(p)} style={{ flex:1, padding:"10px", border:"none", background:"transparent", color:C.azul, fontWeight:700, fontSize:12, cursor:"pointer" }}>Abrir →</button>
+                    <button onClick={e=>{e.stopPropagation();abrirEditar(p);}} style={{ padding:"10px 14px", border:"none", background:"transparent", color:C.gris, fontSize:12, cursor:"pointer" }}>✏️</button>
                     <button onClick={e=>{e.stopPropagation();const pw=window.prompt(`Para eliminar "${p.nombre}" escribe la contraseña:`);if(pw==="Cidere123")onEliminar(p.id);else if(pw!==null)window.alert("Contraseña incorrecta.");}} style={{ padding:"10px 14px", border:"none", background:"transparent", color:"#CCC", fontSize:13, cursor:"pointer" }}>✕</button>
                   </div>
                 </div>
@@ -375,6 +383,48 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
           </div>
         )}
       </div>
+
+      {editando && (
+        <Modal onClose={()=>setEditando(null)} width={460}>
+          <h2 style={{ fontSize:20, fontWeight:800, color:C.oscuro, margin:"0 0 4px 0" }}>Editar programa</h2>
+          <p style={{ fontSize:13, color:C.gris, margin:"0 0 24px 0" }}>Modifica los datos del programa <strong>{editando.nombre}</strong>.</p>
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            {[{label:"Nombre *",val:nombre,set:setNombre,ph:"Ej: CMPC, Arauco…"},{label:"Descripción",val:descripcion,set:setDescripcion,ph:"Descripción del programa"}].map(f=>(
+              <div key={f.label}>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{f.label}</label>
+                <input value={f.val} onChange={e=>f.set(e.target.value)} placeholder={f.ph}
+                  style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }} />
+              </div>
+            ))}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Color</label>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{ width:44, height:36, border:"none", background:"none", cursor:"pointer", padding:0 }}/>
+                  <span style={{ fontSize:12, color:C.gris }}>{color}</span>
+                </div>
+              </div>
+              <div>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Logo (URL)</label>
+                <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} placeholder="https://ejemplo.com/logo.png"
+                  style={{ width:"100%", padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", boxSizing:"border-box" }}/>
+                <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>URL directa de la imagen</div>
+              </div>
+            </div>
+            {logoUrl && (
+              <div style={{ display:"flex", alignItems:"center", gap:12, background:C.headerBg, borderRadius:8, padding:"10px 14px" }}>
+                <img src={CIDERE_LOGO_B64} alt="CIDERE" style={{ height:28, objectFit:"contain" }}/>
+                <div style={{ width:1, height:28, background:"rgba(255,255,255,0.2)" }}/>
+                <img src={logoUrl} alt="" style={{ height:28, objectFit:"contain", background:"rgba(255,255,255,0.9)", borderRadius:4, padding:"2px 6px" }}/>
+              </div>
+            )}
+          </div>
+          <div style={{ display:"flex", gap:10, marginTop:24 }}>
+            <button onClick={()=>setEditando(null)} style={{ flex:1, padding:"11px", border:`1px solid ${C.borde}`, borderRadius:8, background:"transparent", color:C.gris, cursor:"pointer" }}>Cancelar</button>
+            <button onClick={guardarEdicion} style={{ flex:2, padding:"11px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontWeight:700, cursor:"pointer" }}>Guardar cambios</button>
+          </div>
+        </Modal>
+      )}
 
       {showNew && (
         <Modal onClose={()=>setShowNew(false)} width={460}>
@@ -397,11 +447,10 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                 </div>
               </div>
               <div>
-                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Logo empresa colaboradora</label>
-                <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display:"none" }}/>
-                <button onClick={()=>fileRef.current.click()} style={{ padding:"8px 14px", border:`1px dashed ${C.borde}`, borderRadius:8, background:C.fondo, color:C.gris, fontSize:12, cursor:"pointer", width:"100%" }}>
-                  {logoUrl?"✓ Logo cargado":"📎 Subir logo"}
-                </button>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Logo empresa colaboradora (URL)</label>
+                <input value={logoUrl} onChange={e=>setLogoUrl(e.target.value)} placeholder="https://ejemplo.com/logo.png"
+                  style={{ width:"100%", padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", boxSizing:"border-box" }}/>
+                <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>Pega la URL directa de la imagen (PNG, JPG, SVG)</div>
               </div>
             </div>
             {/* Preview logos juntos */}
@@ -503,135 +552,220 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                 </div>
               ) : (
                 <>
-                  {/* KPIs */}
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:20 }}>
+                  {/* KPIs fila superior */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:10, marginBottom:20 }}>
                     {[
-                      {l:"Proveedores evaluados", v:entradasConPG.length, c:pColor},
+                      {l:"Proveedores", v:entradasConPG.length, c:pColor},
                       {l:"Puntaje promedio", v:pgPromedio!==null?`${a5to100(pgPromedio)}%`:"—", c:pgPromedio!==null?getNivel(pgPromedio).color:C.gris},
                       {l:"Nivel promedio", v:nivelPromedio?.label||"—", c:nivelPromedio?.color||C.gris},
                       {l:"Con comparativo", v:provsConAmbos.length, c:"#9B59B6"},
                       {l:"Mejor dimensión", v:mejorDim?mejorDim.dim.nombre:"—", c:C.verde, small:true},
-                      {l:"Dimensión a reforzar", v:peorDim?peorDim.dim.nombre:"—", c:"#E74C3C", small:true},
+                      {l:"A reforzar", v:peorDim?peorDim.dim.nombre:"—", c:"#E74C3C", small:true},
                     ].map(s=>(
-                      <div key={s.l} style={{ background:C.blanco, border:`1px solid ${s.c}33`, borderRadius:12, padding:"14px 16px", textAlign:"center" }}>
-                        <div style={{ fontSize:10, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:6 }}>{s.l}</div>
-                        <div style={{ fontSize:s.small?14:26, fontWeight:800, color:s.c, lineHeight:1.2 }}>{s.v}</div>
+                      <div key={s.l} style={{ background:C.blanco, border:`1px solid ${s.c}33`, borderRadius:10, padding:"12px 10px", textAlign:"center" }}>
+                        <div style={{ fontSize:9, color:C.gris, textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>{s.l}</div>
+                        <div style={{ fontSize:s.small?12:22, fontWeight:800, color:s.c, lineHeight:1.2 }}>{s.v}</div>
                       </div>
                     ))}
                   </div>
 
-                  {/* Promedios por dimensión */}
-                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginBottom:16 }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Promedio por Dimensión</div>
-                    {dimPromedios.map(({dim,prom})=>{
-                      const n = prom!==null?getNivel(prom):null;
-                      const pct = prom!==null?a5to100(prom):0;
-                      return (
-                        <div key={dim.id} style={{ marginBottom:12 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                            <span style={{ fontSize:13, color:C.oscuro }}>{dim.icono} {dim.nombre}</span>
-                            <span style={{ fontSize:12, fontWeight:700, color:n?.color||C.gris }}>{prom!==null?`${pct}%`:"—"}{n?` · ${n.label}`:""}</span>
-                          </div>
-                          <div style={{ height:8, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
-                            <div style={{ width:`${pct}%`, height:"100%", background:n?.color||pColor, borderRadius:4 }}/>
+                  {/* Fila principal: gráficos izquierda + tabla derecha */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+
+                    {/* Izquierda: Radar promedio + barras por dimensión */}
+                    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                      {/* Radar promedio de todos los proveedores */}
+                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Radar Promedio del Programa</div>
+                        <div style={{ fontSize:11, color:C.grisCl, marginBottom:12 }}>Promedio de todos los proveedores evaluados</div>
+                        <RadarChart dims={dims} series={[{
+                          data: (() => {
+                            const obj = {};
+                            dims.forEach(d => {
+                              const vals = ds.filter(x=>x.tipo==="entrada").map(x=>pdim(d,x.datosEntrada||{})).filter(v=>v!==null);
+                              if(vals.length) {
+                                // Crear datos fake por pregunta para el radar
+                                d.preguntas.forEach(p => { obj[p.id] = vals.reduce((a,b)=>a+b,0)/vals.length; });
+                              }
+                            });
+                            return obj;
+                          })(),
+                          color: pColor, label:"Promedio"
+                        }]} size={220}/>
+                      </div>
+
+                      {/* Gráfico barras horizontales: puntaje por empresa */}
+                      {entradasConPG.length > 1 && (
+                        <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Puntaje por Empresa</div>
+                          <div style={{ fontSize:11, color:C.grisCl, marginBottom:12 }}>Barras ordenadas de mayor a menor</div>
+                          <div style={{ position:"relative" }}>
+                            {/* Líneas de referencia */}
+                            {[25,50,75,100].map(ref=>(
+                              <div key={ref} style={{ position:"absolute", left:`${ref}%`, top:0, bottom:0, borderLeft:`1px dashed ${C.borde}`, zIndex:0 }}/>
+                            ))}
+                            {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+                              const nv=getNivel(p.pg); const pct=a5to100(p.pg);
+                              const dF=ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
+                              const pgF=dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
+                              const pctF=pgF!==null?a5to100(pgF):null;
+                              return (
+                                <div key={i} style={{ marginBottom:10, position:"relative", zIndex:1 }}>
+                                  <div style={{ fontSize:11, color:C.oscuro, marginBottom:3, fontWeight:600 }}>{p.empresa}</div>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                    <div style={{ flex:1, position:"relative", height:18, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
+                                      <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}70`, borderRadius:4 }}/>
+                                      {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:4, opacity:0.8 }}/>}
+                                    </div>
+                                    <span style={{ fontSize:11, fontWeight:700, color:nv.color, minWidth:36 }}>{pct}%</span>
+                                    {pctF!==null&&<span style={{ fontSize:11, fontWeight:700, color:C.verde, minWidth:36 }}>→{pctF}%</span>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            <div style={{ display:"flex", justifyContent:"space-between", marginTop:6 }}>
+                              {[0,25,50,75,100].map(r=><span key={r} style={{fontSize:9,color:C.grisCl}}>{r}%</span>)}
+                            </div>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      )}
 
-                  {/* Tabla comparativa de proveedores */}
-                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
-                    <div style={{ padding:"12px 20px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>Comparativo entre Proveedores</div>
-                    <div style={{ overflowX:"auto" }}>
-                      <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
-                        <thead>
-                          <tr style={{ background:`${pColor}08` }}>
-                            <th style={{ padding:"10px 16px", textAlign:"left", fontSize:11, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Empresa</th>
-                            <th style={{ padding:"10px 12px", textAlign:"center", fontSize:11, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Puntaje</th>
-                            <th style={{ padding:"10px 12px", textAlign:"center", fontSize:11, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Nivel</th>
-                            {dims.map(d=><th key={d.id} style={{ padding:"10px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}`, whiteSpace:"nowrap" }}>{d.icono}</th>)}
-                            <th style={{ padding:"10px 12px", textAlign:"center", fontSize:11, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
-                            const nv = getNivel(p.pg);
-                            return (
-                              <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}>
-                                <td style={{ padding:"10px 16px", fontSize:13, color:C.oscuro, fontWeight:600 }}>{p.empresa}<br/><span style={{ fontSize:10, color:C.gris, fontWeight:400 }}>👤 {p.consultor}</span></td>
-                                <td style={{ padding:"10px 12px", textAlign:"center", fontSize:15, fontWeight:800, color:nv.color }}>{a5to100(p.pg)}%</td>
-                                <td style={{ padding:"10px 12px", textAlign:"center" }}><span style={{ fontSize:11, fontWeight:700, color:nv.color, background:`${nv.color}15`, padding:"3px 8px", borderRadius:5 }}>{nv.label}</span></td>
-                                {p.dims.map(({dim,val})=>{
-                                  const nv2=val!==null?getNivel(val):null;
-                                  return <td key={dim.id} style={{ padding:"10px 8px", textAlign:"center", fontSize:12, fontWeight:700, color:nv2?.color||C.grisCl }}>{val!==null?`${a5to100(val)}%`:"—"}</td>;
-                                })}
-                                <td style={{ padding:"10px 12px", textAlign:"center" }}>
-                                  <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4,
-                                    background:p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0",
-                                    color:p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"
-                                  }}>{p.estado==="Validado"?"🟢":p.estado==="Descartado"?"🔴":"🟡"} {p.estado}</span>
-                                </td>
+                      {/* Barras por dimensión */}
+                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Promedio por Dimensión</div>
+                        {dimPromedios.map(({dim,prom})=>{
+                          const n=prom!==null?getNivel(prom):null; const pct=prom!==null?a5to100(prom):0;
+                          return (
+                            <div key={dim.id} style={{ marginBottom:10 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                                <span style={{ fontSize:12, color:C.oscuro }}>{dim.icono} {dim.nombre}</span>
+                                <span style={{ fontSize:11, fontWeight:700, color:n?.color||C.gris }}>{prom!==null?`${pct}%`:"—"} {n?`· ${n.label}`:""}</span>
+                              </div>
+                              <div style={{ height:8, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
+                                <div style={{ width:`${pct}%`, height:"100%", background:n?.color||pColor, borderRadius:4 }}/>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Derecha: tabla comparativa + ranking */}
+                    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                      {/* Tabla comparativa */}
+                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden" }}>
+                        <div style={{ padding:"12px 16px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>Comparativo Proveedores</div>
+                        <div style={{ overflowX:"auto" }}>
+                          <table style={{ width:"100%", borderCollapse:"collapse", minWidth:400 }}>
+                            <thead>
+                              <tr style={{ background:`${pColor}08` }}>
+                                <th style={{ padding:"8px 12px", textAlign:"left", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Empresa</th>
+                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Base</th>
+                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Final</th>
+                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Var.</th>
+                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Estado</th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Ranking de Proveedores */}
-                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginBottom:16 }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Ranking de Proveedores</div>
-                    {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
-                      const nv=getNivel(p.pg); const pct=a5to100(p.pg);
-                      return (
-                        <div key={i} style={{ marginBottom:10 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                            <span style={{ fontSize:12, color:C.oscuro }}>{i+1}. {p.empresa}</span>
-                            <span style={{ fontSize:12, fontWeight:700, color:nv.color }}>{pct}%</span>
-                          </div>
-                          <div style={{ height:10, background:C.fondo, borderRadius:5, overflow:"hidden" }}>
-                            <div style={{ width:`${pct}%`, height:"100%", background:`linear-gradient(90deg,${pColor},${nv.color})`, borderRadius:5 }}/>
-                          </div>
+                            </thead>
+                            <tbody>
+                              {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+                                const nv=getNivel(p.pg);
+                                const dF = ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
+                                const pgF = dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
+                                const delta = pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
+                                return (
+                                  <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}>
+                                    <td style={{ padding:"8px 12px", fontSize:12, color:C.oscuro, fontWeight:600 }}>{p.empresa}</td>
+                                    <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:nv.color }}>{a5to100(p.pg)}%</td>
+                                    <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:pgF!==null?getNivel(pgF).color:C.grisCl }}>{pgF!==null?`${a5to100(pgF)}%`:"—"}</td>
+                                    <td style={{ padding:"8px 8px", textAlign:"center", fontSize:12, fontWeight:700, color:delta!==null?(delta>=0?"#16A085":"#E74C3C"):C.grisCl }}>{delta!==null?`${delta>=0?"+":""}${delta}`:""}</td>
+                                    <td style={{ padding:"8px 8px", textAlign:"center" }}>
+                                      <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:4,
+                                        background:p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0",
+                                        color:p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"
+                                      }}>{p.estado==="Validado"?"🟢":p.estado==="Descartado"?"🔴":"🟡"} {p.estado||"Pendiente"}</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
 
-                  {/* Contador por consultor */}
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Diagnósticos por Consultor</div>
-                      {(() => {
-                        const porConsultor = {};
-                        ds.forEach(d => {
-                          const c = d.infoGeneral?.consultor||"Sin asignar";
-                          porConsultor[c] = (porConsultor[c]||0) + 1;
-                        });
-                        return Object.entries(porConsultor).sort((a,b)=>b[1]-a[1]).map(([consultor, count],i)=>(
-                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.borde}` }}>
-                            <span style={{ fontSize:13, color:C.oscuro }}>👤 {consultor}</span>
-                            <span style={{ fontSize:14, fontWeight:800, color:pColor, background:`${pColor}12`, padding:"3px 10px", borderRadius:6 }}>{count}</span>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Diagnósticos por Empresa</div>
-                      {(() => {
-                        const porEmpresa = {};
-                        ds.forEach(d => {
-                          const e = d.infoGeneral?.empresa||"Sin nombre";
-                          porEmpresa[e] = (porEmpresa[e]||0) + 1;
-                        });
-                        return Object.entries(porEmpresa).sort((a,b)=>b[1]-a[1]).map(([empresa, count],i)=>(
-                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.borde}` }}>
-                            <span style={{ fontSize:13, color:C.oscuro }}>🏢 {empresa}</span>
-                            <span style={{ fontSize:14, fontWeight:800, color:C.verde, background:`${C.verde}12`, padding:"3px 10px", borderRadius:6 }}>{count}</span>
-                          </div>
-                        ));
-                      })()}
+                      {/* Gráfico: Distribución de niveles de madurez */}
+                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Distribución de Niveles</div>
+                        {(() => {
+                          const conteo = {};
+                          NV_CFG.forEach(n => conteo[n.label] = 0);
+                          entradasConPG.forEach(p => { const nv=getNivel(p.pg); conteo[nv.label]=(conteo[nv.label]||0)+1; });
+                          const total = entradasConPG.length || 1;
+                          return NV_CFG.map((nv,i) => {
+                            const cnt = conteo[nv.label]||0;
+                            const pct = Math.round((cnt/total)*100);
+                            return cnt > 0 ? (
+                              <div key={i} style={{ marginBottom:10 }}>
+                                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                                  <span style={{ fontSize:12, color:C.oscuro, fontWeight:600 }}>{nv.label}</span>
+                                  <span style={{ fontSize:12, fontWeight:700, color:nv.color }}>{cnt} empresa{cnt!==1?"s":""} · {pct}%</span>
+                                </div>
+                                <div style={{ height:12, background:C.fondo, borderRadius:6, overflow:"hidden" }}>
+                                  <div style={{ width:`${pct}%`, height:"100%", background:nv.color, borderRadius:6, transition:"width 0.5s" }}/>
+                                </div>
+                              </div>
+                            ) : null;
+                          });
+                        })()}
+                      </div>
+
+                      {/* Evolución / ranking visual */}
+                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Ranking de Proveedores</div>
+                        {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+                          const nv=getNivel(p.pg); const pct=a5to100(p.pg);
+                          const dF=ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
+                          const pgF=dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
+                          const pctF=pgF!==null?a5to100(pgF):null;
+                          return (
+                            <div key={i} style={{ marginBottom:12 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, alignItems:"center" }}>
+                                <span style={{ fontSize:12, color:C.oscuro, fontWeight:600 }}>{i+1}. {p.empresa}</span>
+                                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                                  <span style={{ fontSize:11, color:nv.color, fontWeight:700 }}>{pct}%</span>
+                                  {pctF!==null&&<span style={{ fontSize:11, color:C.verde, fontWeight:700 }}>→ {pctF}%</span>}
+                                </div>
+                              </div>
+                              <div style={{ position:"relative", height:10, background:C.fondo, borderRadius:5, overflow:"hidden" }}>
+                                <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}88`, borderRadius:5 }}/>
+                                {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:5, opacity:0.7 }}/>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {provsConAmbos.length>0&&<div style={{ fontSize:11, color:C.grisCl, marginTop:8 }}>Barra oscura = base · barra verde = final</div>}
+                      </div>
+
+                      {/* Contadores consultor/empresa */}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                        <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:16 }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Por Consultor</div>
+                          {(()=>{ const m={}; ds.forEach(d=>{const c=d.infoGeneral?.consultor||"Sin asignar";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
+                            <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.borde}`, fontSize:12 }}>
+                              <span style={{ color:C.oscuro }}>👤 {k}</span>
+                              <span style={{ fontWeight:800, color:pColor }}>{v}</span>
+                            </div>
+                          )); })()}
+                        </div>
+                        <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:16 }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Por Modalidad</div>
+                          {(()=>{ const m={}; ds.forEach(d=>{const c=d.infoGeneral?.modalidad||"Sin definir";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
+                            <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.borde}`, fontSize:12 }}>
+                              <span style={{ color:C.oscuro }}>{k}</span>
+                              <span style={{ fontWeight:800, color:C.verde }}>{v}</span>
+                            </div>
+                          )); })()}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -670,7 +804,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   const dInicial = emp.diags.find(d=>d.tipo==="entrada");
                   const dFinal   = emp.diags.find(d=>d.tipo==="salida");
                   const pgI = dInicial?pglobal(dims, dInicial.datosEntrada||{}):null;
-                  const pgF = dFinal?pglobal(dims, dFinal.datosSalida||dFinal.datosEntrada||{}):null;
+                  const pgF = dFinal?pglobal(dims, Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{})):null;
                   const nvI = pgI!==null?getNivel(pgI):null;
                   const nvF = pgF!==null?getNivel(pgF):null;
                   const tieneAmbos = !!(dInicial && dFinal);
@@ -680,7 +814,10 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       {/* Header empresa */}
                       <div style={{ padding:"14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.borde}`, background:`${pColor}06` }}>
                         <div>
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                          {(() => { const logoE = emp.diags[0]?.infoGeneral?.logoEmpresa; return logoE ? <img src={logoE} alt="" style={{ height:32, objectFit:"contain", background:C.fondo, borderRadius:6, padding:"2px 6px", border:`1px solid ${C.borde}` }}/> : null; })()}
                           <div style={{ fontSize:15, fontWeight:800, color:C.oscuro }}>{emp.nombre}</div>
+                        </div>
                           <div style={{ fontSize:12, color:C.gris, marginTop:2 }}>
                             {info.respondente&&`${info.respondente}`}{info.cargo&&` · ${info.cargo}`}
                             {info.consultor&&<span style={{marginLeft:6}}>👤 {info.consultor}</span>}
@@ -688,8 +825,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           </div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          {tieneAmbos && <span style={{ fontSize:11, fontWeight:700, color:C.verde, background:`${C.verde}15`, padding:"4px 10px", borderRadius:6 }}>✓ Completo</span>}
-                          {!dFinal && dInicial && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>⏳ En progreso</span>}
+                          {tieneAmbos && !dFinal?._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.verde, background:`${C.verde}15`, padding:"4px 10px", borderRadius:6 }}>✓ Completo</span>}
+                          {dInicial?._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>📝 Borrador</span>}
+                          {!dFinal && dInicial && !dInicial._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>⏳ En progreso</span>}
                           {info.estado && <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:info.estado==="Validado"?"#EAF7F2":info.estado==="Descartado"?"#FFF0F0":"#FFFBF0", color:info.estado==="Validado"?"#16A085":info.estado==="Descartado"?"#E74C3C":"#A07820" }}>{info.estado==="Validado"?"🟢":info.estado==="Descartado"?"🔴":"🟡"} {info.estado}</span>}
                         </div>
                       </div>
@@ -720,7 +858,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                               <div style={{ fontSize:28, fontWeight:800, color:nvF?.color, lineHeight:1 }}>{a5to100(pgF)}%</div>
                               <div style={{ fontSize:12, color:nvF?.color, fontWeight:700, marginBottom:6 }}>{nvF?.label}</div>
                               <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dFinal.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
-                              {dims.map(dim=>{ const v=pdim(dim,dFinal.datosSalida||dFinal.datosEntrada||{}); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:C.verde}}/></div></div>; })}
+                              {dims.map(dim=>{ const v=pdim(dim, Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{})); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:C.verde}}/></div></div>; })}
                               <button onClick={()=>onAbrirDiag(dFinal)} style={{ marginTop:10, padding:"7px 16px", background:`${C.verde}12`, border:`1px solid ${C.verde}33`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
                             </div>
                           ) : dInicial ? (
@@ -877,19 +1015,30 @@ function EditorContenido({ dims, onSave, onClose }) {
 /* ═══════════════════════════════════════════
    FICHA DE DIAGNÓSTICO (individual + comparativa)
 ═══════════════════════════════════════════ */
-function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, programa, onCerrar }) {
+function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, programa, modo, onCerrar }) {
   const tieneE = Object.keys(datosE||{}).length>0;
-  const tieneS = Object.keys(datosS||{}).length>0;
+  const tieneS = Object.keys(datosS||{}).length>0 || (modo==="salida" && Object.keys(datosE||{}).length>0);
   const esComparativa = tieneE && tieneS;
-  const [tab, setTab] = useState(esComparativa ? "comparativo" : "ficha");
+  // Tab por defecto: si es final, mostrar ficha final; si tiene ambos, comparativo
+  const defaultTab = (modo==="salida" || !tieneE) ? (tieneS?"final":"inicial") : esComparativa ? "comparativo" : "inicial";
+  const [tab, setTab] = useState(defaultTab);
 
   const pgE = pglobal(dims, datosE||{});
-  const pgS = tieneS ? pglobal(dims, datosS||{}) : null;
+  const pgS = tieneS ? pglobal(dims, Object.keys(datosS||{}).length>0 ? datosS : datosE) : null;
   const nivelE = pgE!==null ? getNivel(pgE) : null;
   const nivelS = pgS!==null ? getNivel(pgS) : null;
   const interpE = generarInterpretacion(dims, datosE||{});
+  const interpS = tieneS ? generarInterpretacion(dims, datosS||{}) : null;
   const conclusion = esComparativa ? generarConclusion(dims, datosE, datosS, infoGeneral.empresa) : "";
 
+  // Para tab final: si datosS está vacío pero datosE tiene datos (modo salida_nueva en edición),
+  // usar datosE como fallback temporal
+  const datosActivos = tab==="final"
+    ? (Object.keys(datosS||{}).length>0 ? datosS||{} : datosE||{})
+    : (datosE||{});
+  const indsActivos = tab==="final"
+    ? (Object.keys(indS||{}).length>0 ? indS||{} : indE||{})
+    : (indE||{});
   const dimRows = dims.map(d => ({
     d, pe: pdim(d, datosE||{}), ps: tieneS ? pdim(d, datosS||{}) : null,
     indE: indE?.[d.id], indS: indS?.[d.id],
@@ -909,15 +1058,30 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
           </div>
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          {esComparativa && (
-            <div style={{ display:"flex", gap:3, background:"rgba(255,255,255,0.08)", borderRadius:8, padding:3 }}>
-              <button onClick={()=>setTab("ficha")} style={{ padding:"7px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:700, background:tab==="ficha"?`linear-gradient(135deg,${C.verde},${C.azul})`:"transparent", color:tab==="ficha"?"#fff":"rgba(255,255,255,0.6)" }}>Ficha Individual</button>
-              <button onClick={()=>setTab("comparativo")} style={{ padding:"7px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:700, background:tab==="comparativo"?`linear-gradient(135deg,${C.verde},${C.azul})`:"transparent", color:tab==="comparativo"?"#fff":"rgba(255,255,255,0.6)" }}>📊 Informe Comparativo</button>
+          <div style={{ display:"flex", gap:3, background:"rgba(255,255,255,0.08)", borderRadius:8, padding:3 }}>
+              {tieneE && <button onClick={()=>setTab("inicial")} style={{ padding:"7px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:700, background:tab==="inicial"?`linear-gradient(135deg,${C.azul},#1A5A9A)`:"transparent", color:tab==="inicial"?"#fff":"rgba(255,255,255,0.6)" }}>📋 Ficha Inicial</button>}
+              {tieneS && <button onClick={()=>setTab("final")} style={{ padding:"7px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:700, background:tab==="final"?`linear-gradient(135deg,${C.verde},#16A085)`:"transparent", color:tab==="final"?"#fff":"rgba(255,255,255,0.6)" }}>📊 Ficha Final</button>}
+              {esComparativa && <button onClick={()=>setTab("comparativo")} style={{ padding:"7px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:700, background:tab==="comparativo"?"linear-gradient(135deg,#9B59B6,#8E44AD)":"transparent", color:tab==="comparativo"?"#fff":"rgba(255,255,255,0.6)" }}>📈 Comparativo</button>}
+              {!tieneE && !tieneS && <span style={{color:"rgba(255,255,255,0.5)",fontSize:12,padding:"7px 14px"}}>Sin datos disponibles</span>}
             </div>
-          )}
-          <button onClick={()=>{
-            const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, tab==="ficha"&&esComparativa?datosS:datosE, tab==="ficha"&&esComparativa?indS:indE, programa, tab==="ficha"&&esComparativa);
-            const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 En el diálogo de impresión: selecciona <strong>"Guardar como PDF"</strong> y asegúrate que la orientación sea <strong>Vertical (Portrait)</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
+          <button onClick={async()=>{
+            // Convertir URLs externas a base64 para que funcionen en la ventana de impresión
+            const urlToB64 = async(url) => {
+              if(!url || url.startsWith('data:')) return url;
+              try {
+                const r = await fetch(url);
+                const blob = await r.blob();
+                return new Promise(res => { const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(blob); });
+              } catch(e) { return url; }
+            };
+            const logoProgB64 = await urlToB64(programa?.logoUrl);
+            const logoEmpB64  = await urlToB64(infoGeneral?.logoEmpresa);
+            const programaConLogo = {...(programa||{}), logoUrl: logoProgB64};
+            const infoConLogo = {...infoGeneral, logoEmpresa: logoEmpB64};
+            const html = tab==="comparativo"
+              ? buildComparativoHTML(dims, infoConLogo, datosE, datosS, indE, indS, programaConLogo)
+              : buildFichaIndividualHTML(dims, infoConLogo, datosActivos, indsActivos, programaConLogo, tab==="final");
+            const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 Selecciona <strong>"Guardar como PDF"</strong> y orientación <strong>Vertical</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
             const w = window.open("","_blank");
             if(w){ w.document.write(htmlFinal); w.document.close(); w.focus(); setTimeout(()=>w.print(),900); }
@@ -931,7 +1095,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
       <div style={{ flex:1, overflowY:"auto", background:C.fondo, padding:"28px 0" }}>
         <div style={{ maxWidth:920, margin:"0 auto", padding:"0 24px" }}>
 
-          {tab==="ficha" && (
+          {(tab==="inicial" || tab==="final") && (
             <>
               {/* Datos Generales */}
               <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:24, marginBottom:18 }}>
@@ -954,49 +1118,62 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               </div>
 
               {/* Resumen Ejecutivo */}
-              <div style={{ background:`linear-gradient(135deg,${C.headerBg},${C.azul})`, borderRadius:14, padding:24, marginBottom:18, color:"#fff" }}>
-                <div style={{ fontSize:11, letterSpacing:2, textTransform:"uppercase", color:"rgba(255,255,255,0.6)", marginBottom:16 }}>Resumen Ejecutivo</div>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:16 }}>
-                  <div>
-                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Puntaje General</div>
-                    <div style={{ fontSize:36, fontWeight:800 }}>{pgE!==null?`${a5to100(pgE)}%`:"—"}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Nivel de Madurez</div>
-                    <div style={{ fontSize:18, fontWeight:700, color:nivelE?.color||"#fff" }}>{nivelE?.label||"—"}</div>
-                  </div>
-                  {interpE && (
-                    <>
+              {(() => {
+                const pgActivo = tab==="final" ? pgS : pgE;
+                const nivelActivo = pgActivo!==null ? getNivel(pgActivo) : null;
+                const interpActivo = tab==="final" ? interpS : interpE;
+                return (
+                  <div style={{ background:`linear-gradient(135deg,${C.headerBg},${tab==="final"?C.verde:C.azul})`, borderRadius:14, padding:24, marginBottom:18, color:"#fff" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                      <div style={{ fontSize:11, letterSpacing:2, textTransform:"uppercase", color:"rgba(255,255,255,0.6)" }}>
+                        {tab==="final"?"📊 Diagnóstico Final — Línea de Salida":"📋 Diagnóstico Inicial — Línea Base"}
+                      </div>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:16 }}>
                       <div>
-                        <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Mejor Dimensión</div>
-                        <div style={{ fontSize:14, fontWeight:700 }}>{interpE.mejor.d.icono} {interpE.mejor.d.nombre}</div>
+                        <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Puntaje General</div>
+                        <div style={{ fontSize:36, fontWeight:800 }}>{pgActivo!==null?`${a5to100(pgActivo)}%`:"—"}</div>
                       </div>
                       <div>
-                        <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Dimensión a Reforzar</div>
-                        <div style={{ fontSize:14, fontWeight:700 }}>{interpE.peor.d.icono} {interpE.peor.d.nombre}</div>
+                        <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Nivel de Madurez</div>
+                        <div style={{ fontSize:18, fontWeight:700, color:nivelActivo?.color||"#fff" }}>{nivelActivo?.label||"—"}</div>
                       </div>
-                    </>
-                  )}
-                </div>
-              </div>
+                      {interpActivo && (
+                        <>
+                          <div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Mejor Dimensión</div>
+                            <div style={{ fontSize:14, fontWeight:700 }}>{interpActivo.mejor.d.icono} {interpActivo.mejor.d.nombre}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Dimensión a Reforzar</div>
+                            <div style={{ fontSize:14, fontWeight:700 }}>{interpActivo.peor.d.icono} {interpActivo.peor.d.nombre}</div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Radar + resultados por dimensión */}
               <div style={{ display:"grid", gridTemplateColumns:"320px 1fr", gap:18, marginBottom:18 }}>
                 <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, display:"flex", flexDirection:"column", alignItems:"center" }}>
                   <div style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:12, alignSelf:"flex-start" }}>Gráfico Radar</div>
-                  <RadarChart dims={dims} series={[{ data:datosE, color:C.azul, label:"Diagnóstico" }]} size={260}/>
+                  <RadarChart dims={dims} series={[{ data:datosActivos, color:tab==="final"?C.verde:C.azul, label:tab==="final"?"Final":"Inicial" }]} size={260}/>
                 </div>
                 <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
                   <div style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:14 }}>Resultados por Dimensión</div>
-                  {dimRows.map(({d,pe,indE:ie})=>{
-                    const n = pe!==null?getNivel(pe):null;
-                    const pct = pe!==null?a5to100(pe):0;
+                  {dimRows.map(({d,pe,ps,indE:ie,indS:is})=>{
+                    const pActivo = tab==="final" ? ps : pe;
+                    const n = pActivo!==null?getNivel(pActivo):null;
+                    const pct = pActivo!==null?a5to100(pActivo):0;
+                    const ie2 = tab==="final" ? is : ie;
                     return (
                       <div key={d.id} style={{ marginBottom:14 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
                           <span style={{ fontSize:13, color:C.oscuro, fontWeight:600 }}>{d.icono} {d.nombre}</span>
                           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                            {ie && <span style={{ fontSize:11, color:C.gris }}>{d.indicadorObjetivo.label.split("(")[0].trim()}: <strong style={{color:C.oscuro}}>{ie}</strong></span>}
+                            {ie2 && <span style={{ fontSize:11, color:C.gris }}>{d.indicadorObjetivo.label.split("(")[0].trim()}: <strong style={{color:C.oscuro}}>{ie2}</strong></span>}
                             {n && <span style={{ fontSize:12, fontWeight:700, color:n.color, background:`${n.color}15`, padding:"2px 9px", borderRadius:5 }}>{pct}% · {n.label}</span>}
                           </div>
                         </div>
@@ -1010,32 +1187,35 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               </div>
 
               {/* Interpretación automática */}
-              {interpE && (
-                <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:24, marginBottom:18 }}>
-                  <div style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:14 }}>📋 Interpretación Automática</div>
-                  <p style={{ fontSize:14, color:C.oscuro, lineHeight:1.8, margin:"0 0 18px 0", background:C.fondo, padding:16, borderRadius:10 }}>{interpE.narrativa}</p>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:16 }}>
-                    <div style={{ background:`${C.verde}0A`, border:`1px solid ${C.verde}33`, borderRadius:10, padding:16 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.verde, marginBottom:8 }}>✓ Principales Fortalezas</div>
-                      {interpE.fortalezas.map(f=>(
-                        <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.icono} {f.d.nombre} <span style={{ color:C.gris, fontSize:11 }}>({a5to100(f.prom)}%)</span></div>
-                      ))}
-                    </div>
-                    <div style={{ background:"#FFF3E8", border:"1px solid #E67E2233", borderRadius:10, padding:16 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:"#D17A1F", marginBottom:8 }}>⚠ Principales Brechas</div>
-                      {interpE.brechas.map(f=>(
-                        <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.icono} {f.d.nombre} <span style={{ color:C.gris, fontSize:11 }}>({a5to100(f.prom)}%)</span></div>
-                      ))}
-                    </div>
-                    <div style={{ background:`${C.azul}0A`, border:`1px solid ${C.azul}33`, borderRadius:10, padding:16 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.azul, marginBottom:8 }}>🎯 Áreas Prioritarias</div>
-                      {interpE.prioritarias.map(f=>(
-                        <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.icono} {f.d.nombre}</div>
-                      ))}
+              {(() => {
+                const interpActivo2 = tab==="final" ? interpS : interpE;
+                return interpActivo2 && (
+                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:24, marginBottom:18 }}>
+                    <div style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:14 }}>📋 Interpretación Automática</div>
+                    <p style={{ fontSize:14, color:C.oscuro, lineHeight:1.8, margin:"0 0 18px 0", background:C.fondo, padding:16, borderRadius:10 }}>{interpActivo2.narrativa}</p>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:16 }}>
+                      <div style={{ background:`${C.verde}0A`, border:`1px solid ${C.verde}33`, borderRadius:10, padding:16 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.verde, marginBottom:8 }}>✓ Principales Fortalezas</div>
+                        {interpActivo2.fortalezas.map(f=>(
+                          <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.icono} {f.d.nombre} <span style={{ color:C.gris, fontSize:11 }}>({a5to100(f.prom)}%)</span></div>
+                        ))}
+                      </div>
+                      <div style={{ background:"#FFF3E8", border:"1px solid #E67E2233", borderRadius:10, padding:16 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:"#D17A1F", marginBottom:8 }}>⚠ Principales Brechas</div>
+                        {interpActivo2.brechas.map(f=>(
+                          <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.icono} {f.d.nombre} <span style={{ color:C.gris, fontSize:11 }}>({a5to100(f.prom)}%)</span></div>
+                        ))}
+                      </div>
+                      <div style={{ background:`${C.azul}0A`, border:`1px solid ${C.azul}33`, borderRadius:10, padding:16 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.azul, marginBottom:8 }}>🎯 Áreas Prioritarias</div>
+                        {interpActivo2.prioritarias.map(f=>(
+                          <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.icono} {f.d.nombre}</div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Escala */}
               <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden", marginBottom:18 }}>
@@ -1138,6 +1318,8 @@ function ComparativoView({ dims, infoGeneral, datosE, datosS, indE, indS, pgE, p
 
 /* ── Generadores de HTML para exportar PDF ── */
 function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSalida) {
+  const logoCidere = CIDERE_LOGO_B64;
+  const logoEmpresaPrograma = programa?.logoUrl||"";
   const pg = pglobal(dims, datos||{});
   const nivel = pg!==null ? getNivel(pg) : null;
   const interp = generarInterpretacion(dims, datos||{});
@@ -1148,7 +1330,7 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   }).join("");
   const barras = dims.map(d=>{
     const p = pdim(d,datos||{}); const pct = p!==null?a5to100(p):0; const n = p!==null?getNivel(p):NV_CFG[0];
-    return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:#1C2B3A">${d.nombre}</span><span style="font-size:11px;font-weight:bold;color:${n.color}">${pct}%</span></div><div style="height:5px;background:#DDE6EF;border-radius:3px"><div style="height:100%;width:${pct}%;background:${n.color};border-radius:3px"></div></div></div>`;
+    return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:rgba(255,255,255,0.9)">${d.nombre}</span><span style="font-size:11px;font-weight:bold;color:#ffffff">${pct}%</span></div><div style="height:5px;background:rgba(255,255,255,0.2);border-radius:3px"><div style="height:100%;width:${pct}%;background:rgba(255,255,255,0.9);border-radius:3px"></div></div></div>`;
   }).join("");
   const fortalezasHTML = interp ? interp.fortalezas.map(f=>`<li>${f.d.icono} ${f.d.nombre} (${a5to100(f.prom)}%)</li>`).join("") : "";
   const brechasHTML = interp ? interp.brechas.map(f=>`<li>${f.d.icono} ${f.d.nombre} (${a5to100(f.prom)}%)</li>`).join("") : "";
@@ -1170,18 +1352,21 @@ table{width:100%;border-collapse:collapse}
 <div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:14px 20px;border-radius:6px;margin-bottom:10px;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:12px">
-      ${CIDERE_LOGO_B64?`<img src="${CIDERE_LOGO_B64}" style="height:36px;object-fit:contain" alt="CIDERE"/>`:""}
-      ${programa?.logoUrl?`<div style="width:1px;height:36px;background:rgba(255,255,255,0.3)"></div><img src="${programa.logoUrl}" style="height:36px;object-fit:contain;background:rgba(255,255,255,0.9);border-radius:4px;padding:2px 6px" alt="${programa.nombre}"/>`:""}
+      ${logoCidere?`<img src="${logoCidere}" style="height:36px;object-fit:contain" alt="CIDERE"/>`:`<span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:1px">CIDERE Biobío</span>`}
+      ${logoEmpresaPrograma?`<div style="width:1px;height:36px;background:rgba(255,255,255,0.3)"></div><img src="${logoEmpresaPrograma}" style="height:36px;object-fit:contain;background:rgba(255,255,255,0.9);border-radius:4px;padding:2px 6px" alt="${programa?.nombre||''}"/>`:""}
     </div>
     <div style="text-align:right"><div style="font-size:10px;color:#90C8F0">Fecha</div><div style="font-size:13px;font-weight:bold">${fecha}</div></div>
   </div>
   <div style="font-size:10px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase;margin-bottom:3px">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div>
   <div style="font-size:16px;font-weight:bold">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</div>
 </div>
-<div style="background:#F5F7FA;border-radius:6px;padding:10px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-  <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Empresa</div><strong style="font-size:13px">${infoGeneral.empresa||"—"}</strong></div>
-  <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Representante</div><span style="font-size:13px">${infoGeneral.respondente||"—"}</span></div>
-  <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Cargo</div><span style="font-size:13px">${infoGeneral.cargo||"—"}</span></div>
+<div style="background:#F5F7FA;border-radius:6px;padding:10px;margin-bottom:10px;display:flex;align-items:center;gap:16px">
+  ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:44px;object-fit:contain;background:#fff;border-radius:6px;padding:3px 8px;border:1px solid #DDE6EF" alt="${infoGeneral.empresa}"/>`:""}
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;flex:1">
+    <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Empresa</div><strong style="font-size:13px">${infoGeneral.empresa||"—"}</strong></div>
+    <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Representante</div><span style="font-size:13px">${infoGeneral.respondente||"—"}</span></div>
+    <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Cargo</div><span style="font-size:13px">${infoGeneral.cargo||"—"}</span></div>
+  </div>
 </div>
 <div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);border-radius:6px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:16px">
   <div style="text-align:center;min-width:100px"><div style="font-size:9px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase">Puntaje General</div><div style="font-size:26px;font-weight:bold;color:${nivel?nivel.color:"#fff"}">${pg!==null?a5to100(pg):"—"}%</div>${nivel?`<div style="font-size:11px;color:${nivel.color};font-weight:bold">${nivel.label}</div>`:""}</div>
@@ -1278,7 +1463,26 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
   const setD  = modo==="salida"?setDatosS:setDatosE;
   const inds  = modo==="salida"?indS:indE;
   const setI  = modo==="salida"?setIndS:setIndE;
-  const setR  = (pid,v) => setD(p=>({...p,[pid]:v}));
+  const setR = (pid,v) => {
+    setD(p=>({...p,[pid]:v}));
+    // Autoguardar borrador
+    const baseId = (diagActual?.id||"borrador_"+Date.now()).replace("_final_new","").replace("_final","");
+    const borrador = {
+      id: modo==="salida" ? baseId+"_final" : baseId,
+      tipo: modo==="salida" ? "salida" : "entrada",
+      _borrador: true,
+      infoGeneral:{...infoGeneral},
+      datosEntrada: modo==="entrada" ? {...datos, [pid]:v} : (diagActual?.datosEntrada||{}),
+      datosSalida:  modo==="salida"  ? {...datos, [pid]:v} : {},
+      indicadoresEntrada: modo==="entrada" ? {...inds} : (diagActual?.indicadoresEntrada||{}),
+      indicadoresSalida:  modo==="salida"  ? {...inds} : {},
+      evidencias:{...evids},
+      fechaInicial: diagActual?.fechaInicial||new Date().toISOString(),
+      fechaFinal: modo==="salida" ? null : null,
+      fechaGuardado: new Date().toISOString()
+    };
+    onGuardar(borrador);
+  };
   const setInd = (did,v) => setI(p=>({...p,[did]:v}));
   const setEv  = (pid,t) => setEvids(p=>({...p,[pid]:t}));
 
@@ -1305,20 +1509,27 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
 
   const showT = (msg,c=C.verde) => { setToast({msg,c}); setTimeout(()=>setToast(null),3000); };
 
-  const tieneInicial = !!(diagActual?.datosEntrada && Object.keys(diagActual.datosEntrada).length > 0);
+  // tieneInicial = el diagActual ya tiene un diagnóstico inicial guardado Y no es uno nuevo de salida
+  const tieneInicial = esSalidaNueva || (diagActual?.tipo === "salida") || 
+    !!(diagActual?.datosEntrada && Object.keys(diagActual.datosEntrada).length > 0 && diagActual?.tipo === "entrada" && diagActual?.fechaInicial);
   const guardar = (tipo) => {
+    const baseId = (diagActual?.id||Date.now().toString()).replace("_final_new","").replace("_final","");
+    // El formulario siempre escribe en datosE/datosS según modo
+    // Si modo="salida", las respuestas están en datosS; si modo="entrada", en datosE
+    const respuestasActuales = modo==="salida" ? datosS : datosE;
+    const indicadoresActuales = modo==="salida" ? indS : indE;
     const rec = {
-      id: diagActual?.id||Date.now().toString(),
+      id: tipo==="salida" ? baseId+"_final" : baseId,
       tipo,
       infoGeneral:{...infoGeneral},
-      datosEntrada: tipo==="entrada"?{...datosE}:(diagActual?.datosEntrada||{}),
-      datosSalida: tipo==="salida"?{...datosE}:{},
-      indicadoresEntrada: tipo==="entrada"?{...indE}:(diagActual?.indicadoresEntrada||{}),
-      indicadoresSalida: tipo==="salida"?{...indE}:{},
+      datosEntrada: tipo==="entrada" ? {...respuestasActuales} : (diagActual?.datosEntrada||{}),
+      datosSalida:  tipo==="salida"  ? {...respuestasActuales} : {},
+      indicadoresEntrada: tipo==="entrada" ? {...indicadoresActuales} : (diagActual?.indicadoresEntrada||{}),
+      indicadoresSalida:  tipo==="salida"  ? {...indicadoresActuales} : {},
       evidencias:{...evids},
-      fechaInicial: tipo==="entrada"?new Date().toISOString():(diagActual?.fechaInicial||new Date().toISOString()),
-      fechaFinal: tipo==="salida"?new Date().toISOString():null,
-      fechaGuardado:new Date().toISOString()
+      fechaInicial: tipo==="entrada" ? new Date().toISOString() : (diagActual?.fechaInicial||new Date().toISOString()),
+      fechaFinal:   tipo==="salida"  ? new Date().toISOString() : null,
+      fechaGuardado: new Date().toISOString()
     };
     onGuardar(rec); setShowModal(false); showT("✓ Diagnóstico guardado");
   };
@@ -1341,7 +1552,12 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
         </Modal>
       )}
       {showModal && <ModalGuardar infoGeneral={infoGeneral} tieneInicial={tieneInicial} onGuardar={guardar} onCerrar={()=>setShowModal(false)}/>}
-      {showFicha && <FichaDiagnostico dims={dims} infoGeneral={infoGeneral} datosE={datosE} datosS={datosS} indE={indE} indS={indS} programa={programa} onCerrar={()=>setShowFicha(false)}/>}
+      {showFicha && <FichaDiagnostico dims={dims} infoGeneral={infoGeneral}
+        datosE={esSalidaNueva ? {} : datosE}
+        datosS={esSalidaNueva ? datosE : datosS}
+        indE={esSalidaNueva ? {} : indE}
+        indS={esSalidaNueva ? indE : indS}
+        programa={programa} modo={esSalidaNueva?"salida":"entrada"} onCerrar={()=>setShowFicha(false)}/>}
       {showEditor && <EditorContenido dims={dims} onSave={d=>{showT("✓ Cambios guardados");}} onClose={()=>setShowEditor(false)}/>}
 
       {/* SIDEBAR */}
@@ -1396,6 +1612,24 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
             <p style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Paso 1 de {dims.length+1}</p>
             <h1 style={{ fontSize:24, fontWeight:800, color:C.oscuro, margin:"0 0 22px 0" }}>Información del Proveedor</h1>
             <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
+              {/* Logo de la empresa proveedor */}
+              <div style={{ background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:10, padding:16 }}>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:8 }}>Logo de la empresa (opcional)</label>
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  {infoGeneral.logoEmpresa && <img src={infoGeneral.logoEmpresa} alt="logo" style={{ height:40, objectFit:"contain", background:C.blanco, borderRadius:6, padding:"3px 8px", border:`1px solid ${C.borde}` }}/>}
+                  <label style={{ padding:"8px 16px", border:`1px dashed ${C.borde}`, borderRadius:8, background:C.blanco, color:C.gris, fontSize:12, cursor:"pointer" }}>
+                    {infoGeneral.logoEmpresa ? "✓ Cambiar logo" : "📎 Subir logo"}
+                    <input type="file" accept="image/*" style={{ display:"none" }} onChange={e=>{
+                      const f=e.target.files[0]; if(!f) return;
+                      const r=new FileReader();
+                      r.onload=ev=>setInfoGeneral(p=>({...p,logoEmpresa:ev.target.result}));
+                      r.readAsDataURL(f);
+                    }}/>
+                  </label>
+                  {infoGeneral.logoEmpresa && <button onClick={()=>setInfoGeneral(p=>({...p,logoEmpresa:""}))} style={{ fontSize:11, color:"#E74C3C", background:"none", border:"none", cursor:"pointer" }}>✕ Quitar</button>}
+                </div>
+              </div>
+
               {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"},{k:"facturacionCMPC",l:`Facturación con ${programa.nombre} 2025 (MM$)`,ph:"Ej: 45"}].map(f=>(
                 <div key={f.k}>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{f.l}</label>
@@ -1617,6 +1851,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
 
       {/* Botones header diagnóstico */}
       <div style={{ position:"absolute",top:12,right:20,display:"flex",gap:8,zIndex:50 }}>
+        <button onClick={onVolver} style={{ padding:"7px 13px",borderRadius:6,border:`1px solid ${C.borde}`,background:C.blanco,color:C.gris,cursor:"pointer",fontSize:12,fontWeight:600,boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>← Volver</button>
         <button onClick={()=>setShowPw(true)} style={{ padding:"7px 13px",borderRadius:6,border:`1px solid ${C.borde}`,background:C.blanco,color:C.gris,cursor:"pointer",fontSize:12,fontWeight:600,boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>✏️ Editar</button>
       </div>
     </div>
@@ -1712,6 +1947,7 @@ export default function App() {
   };
 
   const crearPrograma = (p) => saveProyectos([...proyectos,{...p,diagnosticos:[]}]);
+  const editarPrograma = (p) => saveProyectos(proyectos.map(x=>x.id===p.id?{...x,...p,diagnosticos:x.diagnosticos}:x));
   const eliminarPrograma = (id) => saveProyectos(proyectos.filter(p=>p.id!==id));
   const eliminarDiag = (diagId) => {
     const updated = proyectos.map(p=>p.id===proyectoActivo.id?{...p,diagnosticos:(p.diagnosticos||[]).filter(d=>d.id!==diagId)}:p);
@@ -1773,7 +2009,7 @@ export default function App() {
       {/* BODY */}
       <div style={{ flex:1,display:"flex",minHeight:0,position:"relative" }}>
         {!proyectoActivo && (
-          <PantallaProyectos proyectos={proyectos} onSeleccionar={p=>{setProyectoActivo(p);setDiagActivo(null);}} onCrear={crearPrograma} onEliminar={eliminarPrograma}/>
+          <PantallaProyectos proyectos={proyectos} onSeleccionar={p=>{setProyectoActivo(p);setDiagActivo(null);}} onCrear={crearPrograma} onEditar={editarPrograma} onEliminar={eliminarPrograma}/>
         )}
         {proyectoActivo && !diagActivo && (
           <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={()=>{setProyectoActivo(null);setDiagActivo(null);}}/>
