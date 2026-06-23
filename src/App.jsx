@@ -941,7 +941,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
   const tieneS = Object.keys(datosS||{}).length>0;
   const esComparativa = tieneE && tieneS;
   // Tab por defecto: si es final, mostrar ficha final; si tiene ambos, comparativo
-  const defaultTab = modo==="salida" ? "final" : esComparativa ? "comparativo" : "inicial";
+  const defaultTab = (modo==="salida" || !tieneE) ? (tieneS?"final":"inicial") : esComparativa ? "comparativo" : "inicial";
   const [tab, setTab] = useState(defaultTab);
 
   const pgE = pglobal(dims, datosE||{});
@@ -952,8 +952,10 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
   const interpS = tieneS ? generarInterpretacion(dims, datosS||{}) : null;
   const conclusion = esComparativa ? generarConclusion(dims, datosE, datosS, infoGeneral.empresa) : "";
 
-  const datosActivos = tab==="final" ? (datosS||{}) : (datosE||{});
-  const indsActivos = tab==="final" ? (indS||{}) : (indE||{});
+  // Para tab final: si datosS está vacío pero datosE tiene datos (modo salida_nueva en edición),
+  // usar datosE como fallback temporal
+  const datosActivos = tab==="final" ? (Object.keys(datosS||{}).length>0 ? datosS : datosE) : (datosE||{});
+  const indsActivos  = tab==="final" ? (Object.keys(indS||{}).length>0 ? indS : indE) : (indE||{});
   const dimRows = dims.map(d => ({
     d, pe: pdim(d, datosE||{}), ps: tieneS ? pdim(d, datosS||{}) : null,
     indE: indE?.[d.id], indS: indS?.[d.id],
@@ -980,7 +982,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               {!tieneE && !tieneS && <span style={{color:"rgba(255,255,255,0.5)",fontSize:12,padding:"7px 14px"}}>Sin datos disponibles</span>}
             </div>
           <button onClick={()=>{
-            const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, tab==="ficha"&&esComparativa?datosS:datosE, tab==="ficha"&&esComparativa?indS:indE, programa, tab==="ficha"&&esComparativa);
+            const html = tab==="comparativo" ? buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) : buildFichaIndividualHTML(dims, infoGeneral, datosActivos, indsActivos, programa, tab==="final");
             const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 En el diálogo de impresión: selecciona <strong>"Guardar como PDF"</strong> y asegúrate que la orientación sea <strong>Vertical (Portrait)</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
             const w = window.open("","_blank");
@@ -1385,20 +1387,25 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
 
   const showT = (msg,c=C.verde) => { setToast({msg,c}); setTimeout(()=>setToast(null),3000); };
 
-  const tieneInicial = !!(diagActual?.datosEntrada && Object.keys(diagActual.datosEntrada).length > 0);
+  // tieneInicial = el diagActual ya tiene un diagnóstico inicial guardado Y no es uno nuevo de salida
+  const tieneInicial = esSalidaNueva || (diagActual?.tipo === "salida") || 
+    !!(diagActual?.datosEntrada && Object.keys(diagActual.datosEntrada).length > 0 && diagActual?.tipo === "entrada" && diagActual?.fechaInicial);
   const guardar = (tipo) => {
+    // Si es una salida nueva, el ID viene con sufijo _final_new — limpiarlo
+    const baseId = (diagActual?.id||Date.now().toString()).replace("_final_new","").replace("_final","");
     const rec = {
-      id: diagActual?.id||Date.now().toString(),
+      id: tipo==="salida" ? baseId+"_final" : baseId,
       tipo,
       infoGeneral:{...infoGeneral},
-      datosEntrada: tipo==="entrada"?{...datosE}:(diagActual?.datosEntrada||{}),
-      datosSalida: tipo==="salida"?{...datosE}:{},
-      indicadoresEntrada: tipo==="entrada"?{...indE}:(diagActual?.indicadoresEntrada||{}),
-      indicadoresSalida: tipo==="salida"?{...indE}:{},
+      // Para entrada: usar datosE actuales. Para salida: datos actuales van en datosSalida
+      datosEntrada: tipo==="entrada" ? {...datosE} : (diagActual?.datosEntrada||{}),
+      datosSalida:  tipo==="salida"  ? {...datosE} : {},
+      indicadoresEntrada: tipo==="entrada" ? {...indE} : (diagActual?.indicadoresEntrada||{}),
+      indicadoresSalida:  tipo==="salida"  ? {...indE} : {},
       evidencias:{...evids},
-      fechaInicial: tipo==="entrada"?new Date().toISOString():(diagActual?.fechaInicial||new Date().toISOString()),
-      fechaFinal: tipo==="salida"?new Date().toISOString():null,
-      fechaGuardado:new Date().toISOString()
+      fechaInicial: tipo==="entrada" ? new Date().toISOString() : (diagActual?.fechaInicial||new Date().toISOString()),
+      fechaFinal:   tipo==="salida"  ? new Date().toISOString() : null,
+      fechaGuardado: new Date().toISOString()
     };
     onGuardar(rec); setShowModal(false); showT("✓ Diagnóstico guardado");
   };
