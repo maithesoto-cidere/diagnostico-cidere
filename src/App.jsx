@@ -594,6 +594,42 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         }]} size={220}/>
                       </div>
 
+                      {/* Gráfico barras horizontales: puntaje por empresa */}
+                      {entradasConPG.length > 1 && (
+                        <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Puntaje por Empresa</div>
+                          <div style={{ fontSize:11, color:C.grisCl, marginBottom:12 }}>Barras ordenadas de mayor a menor</div>
+                          <div style={{ position:"relative" }}>
+                            {/* Líneas de referencia */}
+                            {[25,50,75,100].map(ref=>(
+                              <div key={ref} style={{ position:"absolute", left:`${ref}%`, top:0, bottom:0, borderLeft:`1px dashed ${C.borde}`, zIndex:0 }}/>
+                            ))}
+                            {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+                              const nv=getNivel(p.pg); const pct=a5to100(p.pg);
+                              const dF=ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
+                              const pgF=dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
+                              const pctF=pgF!==null?a5to100(pgF):null;
+                              return (
+                                <div key={i} style={{ marginBottom:10, position:"relative", zIndex:1 }}>
+                                  <div style={{ fontSize:11, color:C.oscuro, marginBottom:3, fontWeight:600 }}>{p.empresa}</div>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                    <div style={{ flex:1, position:"relative", height:18, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
+                                      <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}70`, borderRadius:4 }}/>
+                                      {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:4, opacity:0.8 }}/>}
+                                    </div>
+                                    <span style={{ fontSize:11, fontWeight:700, color:nv.color, minWidth:36 }}>{pct}%</span>
+                                    {pctF!==null&&<span style={{ fontSize:11, fontWeight:700, color:C.verde, minWidth:36 }}>→{pctF}%</span>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            <div style={{ display:"flex", justifyContent:"space-between", marginTop:6 }}>
+                              {[0,25,50,75,100].map(r=><span key={r} style={{fontSize:9,color:C.grisCl}}>{r}%</span>)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Barras por dimensión */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Promedio por Dimensión</div>
@@ -656,31 +692,30 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         </div>
                       </div>
 
-                      {/* Evolución / ranking visual */}
+                      {/* Gráfico: Distribución de niveles de madurez */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Ranking de Proveedores</div>
-                        {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
-                          const nv=getNivel(p.pg); const pct=a5to100(p.pg);
-                          const dF=ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
-                          const pgF=dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
-                          const pctF=pgF!==null?a5to100(pgF):null;
-                          return (
-                            <div key={i} style={{ marginBottom:12 }}>
-                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, alignItems:"center" }}>
-                                <span style={{ fontSize:12, color:C.oscuro, fontWeight:600 }}>{i+1}. {p.empresa}</span>
-                                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                                  <span style={{ fontSize:11, color:nv.color, fontWeight:700 }}>{pct}%</span>
-                                  {pctF!==null&&<span style={{ fontSize:11, color:C.verde, fontWeight:700 }}>→ {pctF}%</span>}
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Distribución de Niveles</div>
+                        {(() => {
+                          const conteo = {};
+                          NV_CFG.forEach(n => conteo[n.label] = 0);
+                          entradasConPG.forEach(p => { const nv=getNivel(p.pg); conteo[nv.label]=(conteo[nv.label]||0)+1; });
+                          const total = entradasConPG.length || 1;
+                          return NV_CFG.map((nv,i) => {
+                            const cnt = conteo[nv.label]||0;
+                            const pct = Math.round((cnt/total)*100);
+                            return cnt > 0 ? (
+                              <div key={i} style={{ marginBottom:10 }}>
+                                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                                  <span style={{ fontSize:12, color:C.oscuro, fontWeight:600 }}>{nv.label}</span>
+                                  <span style={{ fontSize:12, fontWeight:700, color:nv.color }}>{cnt} empresa{cnt!==1?"s":""} · {pct}%</span>
+                                </div>
+                                <div style={{ height:12, background:C.fondo, borderRadius:6, overflow:"hidden" }}>
+                                  <div style={{ width:`${pct}%`, height:"100%", background:nv.color, borderRadius:6, transition:"width 0.5s" }}/>
                                 </div>
                               </div>
-                              <div style={{ position:"relative", height:10, background:C.fondo, borderRadius:5, overflow:"hidden" }}>
-                                <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}88`, borderRadius:5 }}/>
-                                {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:5, opacity:0.7 }}/>}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {provsConAmbos.length>0&&<div style={{ fontSize:11, color:C.grisCl, marginTop:8 }}>Barra oscura = base · barra verde = final</div>}
+                            ) : null;
+                          });
+                        })()}
                       </div>
 
                       {/* Contadores consultor/empresa */}
@@ -704,121 +739,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           )); })()}
                         </div>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Promedios por dimensión */}
-                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginBottom:16 }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Promedio por Dimensión</div>
-                    {dimPromedios.map(({dim,prom})=>{
-                      const n = prom!==null?getNivel(prom):null;
-                      const pct = prom!==null?a5to100(prom):0;
-                      return (
-                        <div key={dim.id} style={{ marginBottom:12 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                            <span style={{ fontSize:13, color:C.oscuro }}>{dim.icono} {dim.nombre}</span>
-                            <span style={{ fontSize:12, fontWeight:700, color:n?.color||C.gris }}>{prom!==null?`${pct}%`:"—"}{n?` · ${n.label}`:""}</span>
-                          </div>
-                          <div style={{ height:8, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
-                            <div style={{ width:`${pct}%`, height:"100%", background:n?.color||pColor, borderRadius:4 }}/>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Tabla comparativa de proveedores */}
-                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
-                    <div style={{ padding:"12px 20px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>Comparativo entre Proveedores</div>
-                    <div style={{ overflowX:"auto" }}>
-                      <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
-                        <thead>
-                          <tr style={{ background:`${pColor}08` }}>
-                            <th style={{ padding:"10px 16px", textAlign:"left", fontSize:11, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Empresa</th>
-                            <th style={{ padding:"10px 12px", textAlign:"center", fontSize:11, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Puntaje</th>
-                            <th style={{ padding:"10px 12px", textAlign:"center", fontSize:11, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Nivel</th>
-                            {dims.map(d=><th key={d.id} style={{ padding:"10px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}`, whiteSpace:"nowrap" }}>{d.icono}</th>)}
-                            <th style={{ padding:"10px 12px", textAlign:"center", fontSize:11, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
-                            const nv = getNivel(p.pg);
-                            return (
-                              <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}>
-                                <td style={{ padding:"10px 16px", fontSize:13, color:C.oscuro, fontWeight:600 }}>{p.empresa}<br/><span style={{ fontSize:10, color:C.gris, fontWeight:400 }}>👤 {p.consultor}</span></td>
-                                <td style={{ padding:"10px 12px", textAlign:"center", fontSize:15, fontWeight:800, color:nv.color }}>{a5to100(p.pg)}%</td>
-                                <td style={{ padding:"10px 12px", textAlign:"center" }}><span style={{ fontSize:11, fontWeight:700, color:nv.color, background:`${nv.color}15`, padding:"3px 8px", borderRadius:5 }}>{nv.label}</span></td>
-                                {p.dims.map(({dim,val})=>{
-                                  const nv2=val!==null?getNivel(val):null;
-                                  return <td key={dim.id} style={{ padding:"10px 8px", textAlign:"center", fontSize:12, fontWeight:700, color:nv2?.color||C.grisCl }}>{val!==null?`${a5to100(val)}%`:"—"}</td>;
-                                })}
-                                <td style={{ padding:"10px 12px", textAlign:"center" }}>
-                                  <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4,
-                                    background:p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0",
-                                    color:p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"
-                                  }}>{p.estado==="Validado"?"🟢":p.estado==="Descartado"?"🔴":"🟡"} {p.estado}</span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Ranking de Proveedores */}
-                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginBottom:16 }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Ranking de Proveedores</div>
-                    {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
-                      const nv=getNivel(p.pg); const pct=a5to100(p.pg);
-                      return (
-                        <div key={i} style={{ marginBottom:10 }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                            <span style={{ fontSize:12, color:C.oscuro }}>{i+1}. {p.empresa}</span>
-                            <span style={{ fontSize:12, fontWeight:700, color:nv.color }}>{pct}%</span>
-                          </div>
-                          <div style={{ height:10, background:C.fondo, borderRadius:5, overflow:"hidden" }}>
-                            <div style={{ width:`${pct}%`, height:"100%", background:`linear-gradient(90deg,${pColor},${nv.color})`, borderRadius:5 }}/>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Contador por consultor */}
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Diagnósticos por Consultor</div>
-                      {(() => {
-                        const porConsultor = {};
-                        ds.forEach(d => {
-                          const c = d.infoGeneral?.consultor||"Sin asignar";
-                          porConsultor[c] = (porConsultor[c]||0) + 1;
-                        });
-                        return Object.entries(porConsultor).sort((a,b)=>b[1]-a[1]).map(([consultor, count],i)=>(
-                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.borde}` }}>
-                            <span style={{ fontSize:13, color:C.oscuro }}>👤 {consultor}</span>
-                            <span style={{ fontSize:14, fontWeight:800, color:pColor, background:`${pColor}12`, padding:"3px 10px", borderRadius:6 }}>{count}</span>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Diagnósticos por Empresa</div>
-                      {(() => {
-                        const porEmpresa = {};
-                        ds.forEach(d => {
-                          const e = d.infoGeneral?.empresa||"Sin nombre";
-                          porEmpresa[e] = (porEmpresa[e]||0) + 1;
-                        });
-                        return Object.entries(porEmpresa).sort((a,b)=>b[1]-a[1]).map(([empresa, count],i)=>(
-                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${C.borde}` }}>
-                            <span style={{ fontSize:13, color:C.oscuro }}>🏢 {empresa}</span>
-                            <span style={{ fontSize:14, fontWeight:800, color:C.verde, background:`${C.verde}12`, padding:"3px 10px", borderRadius:6 }}>{count}</span>
-                          </div>
-                        ));
-                      })()}
                     </div>
                   </div>
                 </>
@@ -1140,6 +1060,22 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
             if(w){ w.document.write(htmlFinal); w.document.close(); w.focus(); setTimeout(()=>w.print(),900); }
             else alert("Permite ventanas emergentes para descargar el PDF.");
           }} style={{ padding:"9px 18px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>⬇ Exportar PDF</button>
+          <button onClick={async()=>{
+            const urlToB64 = async(url) => {
+              if(!url || url.startsWith('data:')) return url;
+              try { const r=await fetch(url); const blob=await r.blob(); return new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);}); } catch(e){return url;}
+            };
+            const logoProgB64 = await urlToB64(programa?.logoUrl);
+            const logoEmpB64  = await urlToB64(infoGeneral?.logoEmpresa);
+            const programaConLogo = {...(programa||{}), logoUrl: logoProgB64};
+            const infoConLogo = {...infoGeneral, logoEmpresa: logoEmpB64};
+            const html = buildFichaMentorHTML(dims, infoConLogo, datosE, indE, programaConLogo);
+            const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📋 Ficha para Mentor — <strong>Guardar como PDF</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
+            const htmlFinal = html.replace('<body>', '<body>' + instruccion);
+            const w = window.open("","_blank");
+            if(w){ w.document.write(htmlFinal); w.document.close(); w.focus(); setTimeout(()=>w.print(),900); }
+            else alert("Permite ventanas emergentes para descargar el PDF.");
+          }} style={{ padding:"9px 18px", background:"linear-gradient(135deg,#9B59B6,#8E44AD)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>📋 Ficha Mentor</button>
           <button onClick={onCerrar} style={{ padding:"9px 14px", background:"rgba(255,255,255,0.1)", border:"none", borderRadius:8, color:"#fff", fontSize:13, cursor:"pointer" }}>✕ Cerrar</button>
         </div>
       </div>
@@ -1369,6 +1305,157 @@ function ComparativoView({ dims, infoGeneral, datosE, datosS, indE, indS, pgE, p
   );
 }
 
+/* ── CSS compartido para PDFs (impresión con colores) ── */
+const PDF_BASE_CSS = `
+  @page { size: A4 portrait; margin: 12mm 14mm; }
+  html, body {
+    width: 210mm; margin: 0 auto;
+    font-family: Arial, sans-serif; color: #1C2B3A; font-size: 11px;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    background: #fff;
+  }
+  h1,h2 { margin: 0; }
+  ul { margin: 4px 0; padding-left: 16px; }
+  li { font-size: 11px; margin-bottom: 2px; }
+  table { width: 100%; border-collapse: collapse; }
+  .page-break { page-break-before: always; break-before: always; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+  @media screen { body { max-width: 210mm; padding: 10mm; box-shadow: 0 0 20px rgba(0,0,0,0.15); } }
+  @media print {
+    html,body { width: auto; max-width: none; padding: 0; box-shadow: none; }
+    button, .no-print { display: none !important; }
+  }
+`;
+
+/* ── Ficha para Mentores ── */
+function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa) {
+  const logoCidere = CIDERE_LOGO_B64;
+  const logoPrograma = programa?.logoUrl || "";
+  const pg = pglobal(dims, datosE || {});
+  const nivel = pg !== null ? getNivel(pg) : null;
+  const interp = generarInterpretacion(dims, datosE || {});
+  const fecha = new Date().toLocaleDateString("es-CL", { day: "2-digit", month: "long", year: "numeric" });
+
+  // Texto narrativo por dimensión
+  const dimRows = dims.map(d => {
+    const prom = pdim(d, datosE || {});
+    const n = prom !== null ? getNivel(prom) : null;
+    const pct = prom !== null ? a5to100(prom) : null;
+    const ind = indE?.[d.id];
+    // Obtener respuestas de cada pregunta
+    const respuestas = d.preguntas.map(p => {
+      const val = (datosE || {})[p.id];
+      if (val === undefined) return null;
+      return { pregunta: p.texto, criterio: p.criterio, nivel: NV_CFG[val - 1]?.label || "—", descripcion: p.niveles[val - 1] || "—", valor: val };
+    }).filter(Boolean);
+    return { d, prom, n, pct, ind, respuestas };
+  });
+
+  // Construir sección de contexto narrativo
+  const fortalezasTexto = interp ? interp.fortalezas.map(f => `${f.d.nombre} (${a5to100(f.prom)}%)`).join(" y ") : "—";
+  const brechasTexto = interp ? interp.brechas.map(f => `${f.d.nombre} (${a5to100(f.prom)}%)`).join(" y ") : "—";
+
+  const seccionesDimensiones = dimRows.map(({ d, prom, n, pct, ind, respuestas }) => `
+    <div style="margin-bottom:18px;padding:14px 16px;border:1px solid #DDE6EF;border-radius:8px;border-left:4px solid ${d.acento};background:#FAFBFC;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:bold;color:#1C2B3A;">${d.icono} ${d.nombre}</div>
+        ${n ? `<span style="background:${n.color};color:#fff;font-weight:bold;padding:3px 10px;border-radius:4px;font-size:11px;">${pct}% · ${n.label}</span>` : ""}
+      </div>
+      ${ind ? `<div style="font-size:11px;color:#5A7A9A;margin-bottom:8px;"><strong>${d.indicadorObjetivo.label}:</strong> ${ind}</div>` : ""}
+      <div style="font-size:11px;color:#5A7A9A;font-style:italic;margin-bottom:10px;">${d.objetivo}</div>
+      ${respuestas.length > 0 ? `
+        <table style="width:100%;border-collapse:collapse;font-size:11px;">
+          <thead><tr style="background:#EEF3F8;">
+            <th style="padding:6px 8px;text-align:left;color:#5A7A9A;text-transform:uppercase;font-size:9px;">Criterio evaluado</th>
+            <th style="padding:6px 8px;text-align:center;color:#5A7A9A;text-transform:uppercase;font-size:9px;width:80px;">Nivel</th>
+            <th style="padding:6px 8px;text-align:left;color:#5A7A9A;text-transform:uppercase;font-size:9px;">Descripción actual de la empresa</th>
+          </tr></thead>
+          <tbody>
+            ${respuestas.map((r, i) => `
+              <tr style="border-bottom:1px solid #EEF3F8;background:${i % 2 === 0 ? "#fff" : "#FAFBFC"};">
+                <td style="padding:7px 8px;color:#1C2B3A;font-weight:600;">${r.criterio}</td>
+                <td style="padding:7px 8px;text-align:center;"><span style="color:${NV_CFG[r.valor-1]?.color};font-weight:bold;">${r.nivel}</span></td>
+                <td style="padding:7px 8px;color:#3A5A7A;line-height:1.4;">${r.descripcion}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      ` : '<p style="font-size:11px;color:#A0B0C0;font-style:italic;">Sin respuestas registradas.</p>'}
+    </div>
+  `).join("");
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+    <title>Ficha Mentor – ${infoGeneral.empresa || "Sin nombre"}</title>
+    <style>${PDF_BASE_CSS}</style>
+  </head><body>
+  <!-- ENCABEZADO -->
+  <div style="background:#1A2E45;color:#fff;padding:16px 20px;border-radius:8px;margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        ${logoCidere ? `<img src="${logoCidere}" style="height:38px;object-fit:contain;" alt="CIDERE"/>` : `<span style="font-size:14px;font-weight:800;color:#fff;">CIDERE Biobío</span>`}
+        ${logoPrograma ? `<div style="width:1px;height:38px;background:rgba(255,255,255,0.3)"></div><img src="${logoPrograma}" style="height:38px;object-fit:contain;background:rgba(255,255,255,0.9);border-radius:4px;padding:2px 8px;" alt="${programa?.nombre || ""}"/>` : ""}
+      </div>
+      <div style="text-align:right;"><div style="font-size:9px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;">Fecha de preparación</div><div style="font-size:13px;font-weight:bold;">${fecha}</div></div>
+    </div>
+    <div style="font-size:10px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase;margin-bottom:3px;">${programa?.nombre || "Programa"} · Documento confidencial para mentores</div>
+    <div style="font-size:18px;font-weight:bold;">Ficha de Contexto Empresarial</div>
+    <div style="font-size:12px;color:#90C8F0;margin-top:3px;">Preparada para uso interno antes de la sesión de mentoría</div>
+  </div>
+
+  <!-- DATOS EMPRESA -->
+  <div style="background:#F5F7FA;border-radius:8px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:16px;">
+    ${infoGeneral.logoEmpresa ? `<img src="${infoGeneral.logoEmpresa}" style="height:48px;object-fit:contain;background:#fff;border-radius:6px;padding:3px 8px;border:1px solid #DDE6EF;" alt="${infoGeneral.empresa}"/>` : ""}
+    <div style="flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase;margin-bottom:2px;">Empresa</div><strong style="font-size:14px;">${infoGeneral.empresa || "—"}</strong></div>
+      <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase;margin-bottom:2px;">Contacto</div><span style="font-size:12px;">${infoGeneral.respondente || "—"} · ${infoGeneral.cargo || "—"}</span></div>
+      <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase;margin-bottom:2px;">Facturación 2025</div><span style="font-size:12px;font-weight:bold;">${infoGeneral.facturacionTotal ? `MM$ ${infoGeneral.facturacionTotal}` : "—"}</span>${infoGeneral.facturacionCMPC ? `<span style="font-size:11px;color:#5A7A9A;"> (con ${programa?.nombre || "programa"}: MM$ ${infoGeneral.facturacionCMPC})</span>` : ""}</div>
+    </div>
+  </div>
+
+  <!-- RESUMEN EJECUTIVO -->
+  <div style="background:#2B7BBF;color:#fff;border-radius:8px;padding:16px 20px;margin-bottom:14px;">
+    <div style="font-size:10px;letter-spacing:2px;color:rgba(255,255,255,0.7);text-transform:uppercase;margin-bottom:10px;">📋 Resumen Ejecutivo para la Mentoría</div>
+    <div style="display:grid;grid-template-columns:110px 1fr;gap:16px;align-items:start;">
+      <div style="text-align:center;">
+        <div style="font-size:9px;color:rgba(255,255,255,0.7);text-transform:uppercase;margin-bottom:4px;">Madurez general</div>
+        <div style="font-size:34px;font-weight:bold;color:${nivel ? nivel.color : "#fff"};">${pg !== null ? a5to100(pg) : "—"}%</div>
+        ${nivel ? `<div style="font-size:11px;font-weight:bold;color:${nivel.color};">${nivel.label}</div>` : ""}
+      </div>
+      <div>
+        <p style="font-size:12px;line-height:1.7;margin:0 0 10px 0;">${interp ? interp.narrativa : "Sin datos suficientes para generar interpretación."}</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
+          <div style="background:rgba(255,255,255,0.12);border-radius:6px;padding:10px;">
+            <div style="font-size:9px;color:rgba(255,255,255,0.7);text-transform:uppercase;margin-bottom:5px;">✓ Principales fortalezas</div>
+            <div style="font-size:12px;">${fortalezasTexto}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.12);border-radius:6px;padding:10px;">
+            <div style="font-size:9px;color:rgba(255,255,255,0.7);text-transform:uppercase;margin-bottom:5px;">⚠ Áreas a trabajar</div>
+            <div style="font-size:12px;">${brechasTexto}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUGERENCIAS PARA EL MENTOR -->
+  <div style="border:2px solid #3BAD8A;border-radius:8px;padding:14px 16px;margin-bottom:16px;background:#EAF7F2;">
+    <div style="font-size:10px;font-weight:bold;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎯 Sugerencias para la sesión de mentoría</div>
+    <ul style="margin:0;padding-left:18px;">
+      ${interp ? interp.brechas.map(f => `<li style="font-size:12px;color:#1C2B3A;margin-bottom:5px;"><strong>${f.d.nombre}:</strong> ${f.d.objetivo}</li>`).join("") : ""}
+      ${infoGeneral.observaciones ? `<li style="font-size:12px;color:#1C2B3A;margin-bottom:5px;"><strong>Nota del consultor:</strong> ${infoGeneral.observaciones}</li>` : ""}
+    </ul>
+  </div>
+
+  <!-- DETALLE POR DIMENSIÓN -->
+  <div style="font-size:10px;font-weight:bold;color:#5A7A9A;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;margin-top:4px;">Detalle del diagnóstico por dimensión</div>
+  ${seccionesDimensiones}
+
+  <div style="text-align:center;font-size:8px;color:#5A7A9A;margin-top:12px;border-top:1px solid #DDE6EF;padding-top:8px;">Documento confidencial preparado por CIDERE Biobío · Programa ${programa?.nombre || ""} · ${fecha}</div>
+  </body></html>`;
+}
+
 /* ── Generadores de HTML para exportar PDF ── */
 function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSalida) {
   const logoCidere = CIDERE_LOGO_B64;
@@ -1389,19 +1476,7 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   const brechasHTML = interp ? interp.brechas.map(f=>`<li>${f.d.icono} ${f.d.nombre} (${a5to100(f.prom)}%)</li>`).join("") : "";
   const prioridadesHTML = interp ? interp.prioritarias.map(f=>`<li>${f.d.icono} ${f.d.nombre}</li>`).join("") : "";
 
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Ficha – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4 portrait;margin:12mm 14mm}
-html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
-h1,h2{margin:0}
-ul{margin:4px 0;padding-left:16px}
-li{font-size:11px;margin-bottom:2px}
-table{width:100%;border-collapse:collapse}
-.page-break{page-break-before:always;break-before:always}
-@media screen{body{max-width:210mm;padding:10mm;box-shadow:0 0 20px rgba(0,0,0,0.15)}}
-@media print{
-  html,body{width:auto;max-width:none;padding:0;box-shadow:none}
-  button,.no-print{display:none!important}
-  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-}</style></head><body>
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Ficha – ${infoGeneral.empresa||"Sin nombre"}</title><style>${PDF_BASE_CSS}</style></head><body>
 <div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:14px 20px;border-radius:6px;margin-bottom:10px;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:12px">
@@ -1452,20 +1527,8 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   }).join("");
   const indicadores = dims.map(d=>`<tr><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;font-size:12px">${d.icono} ${d.indicadorObjetivo.label}</td><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-size:12px"><strong style="color:#2B7BBF">${indE?.[d.id]||"—"}</strong> → <strong style="color:#3BAD8A">${indS?.[d.id]||"—"}</strong></td></tr>`).join("");
 
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Informe Comparativo – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4 portrait;margin:12mm 14mm}
-html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
-h1,h2{margin:0}
-ul{margin:4px 0;padding-left:16px}
-li{font-size:11px;margin-bottom:2px}
-table{width:100%;border-collapse:collapse}
-.page-break{page-break-before:always;break-before:always}
-@media screen{body{max-width:210mm;padding:10mm;box-shadow:0 0 20px rgba(0,0,0,0.15)}}
-@media print{
-  html,body{width:auto;max-width:none;padding:0;box-shadow:none}
-  button,.no-print{display:none!important}
-  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-}</style></head><body>
-<div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:24px 28px;border-radius:8px;margin-bottom:18px">
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Informe Comparativo – ${infoGeneral.empresa||"Sin nombre"}</title><style>${PDF_BASE_CSS}</style></head><body>
+<div style="background:#1A2E45;color:#fff;padding:24px 28px;border-radius:8px;margin-bottom:18px">
   <div style="font-size:10px;letter-spacing:3px;color:#90C8F0;text-transform:uppercase;margin-bottom:4px">${programa?.nombre||"Programa"} · Informe Comparativo</div>
   <h1 style="font-size:22px;font-weight:bold">${infoGeneral.empresa||"Sin nombre"}</h1>
   <div style="font-size:12px;color:#90C8F0;margin-top:4px">Generado el ${fecha}</div>
