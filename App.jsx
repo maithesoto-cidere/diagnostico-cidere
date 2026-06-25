@@ -1331,239 +1331,337 @@ const PDF_BASE_CSS = `
 
 /* ── Ficha para Mentores ── */
 function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa) {
-  const logoCidere = CIDERE_LOGO_B64;
+  const logoCidere  = CIDERE_LOGO_B64;
   const logoPrograma = programa?.logoUrl || "";
-  const pg = pglobal(dims, datosE || {});
-  const nivel = pg !== null ? getNivel(pg) : null;
+  const pg     = pglobal(dims, datosE || {});
+  const nivel  = pg !== null ? getNivel(pg) : null;
   const interp = generarInterpretacion(dims, datosE || {});
-  const fecha = new Date().toLocaleDateString("es-CL", { day: "2-digit", month: "long", year: "numeric" });
+  const fecha  = new Date().toLocaleDateString("es-CL", { day:"2-digit", month:"long", year:"numeric" });
 
-  // Clasificar dimensiones por nivel
+  /* ── Clasificación de dimensiones ── */
   const dimRows = dims.map(d => {
     const prom = pdim(d, datosE || {});
-    const n = prom !== null ? getNivel(prom) : null;
-    const pct = prom !== null ? a5to100(prom) : null;
-    const ind = indE?.[d.id];
+    const n    = prom !== null ? getNivel(prom) : null;
+    const pct  = prom !== null ? a5to100(prom) : null;
     const respuestas = d.preguntas.map(p => {
       const val = (datosE || {})[p.id];
       if (val === undefined) return null;
-      return { pregunta: p.texto, criterio: p.criterio, nivelLabel: NV_CFG[val-1]?.label || "—", descripcion: p.niveles[val-1] || "—", valor: val, color: NV_CFG[val-1]?.color || "#999" };
+      return { criterio: p.criterio, descripcion: p.niveles[val-1] || "—", valor: val,
+               nivelLabel: NV_CFG[val-1]?.label || "—", color: NV_CFG[val-1]?.color || "#999" };
     }).filter(Boolean);
-    return { d, prom, n, pct, ind, respuestas };
+    return { d, prom, n, pct, respuestas };
   });
 
-  // Áreas críticas (puntaje < 3) y a reforzar (< 3.5)
-  const areasDebiles = dimRows.filter(x => x.prom !== null && x.prom < 3.5).sort((a,b) => a.prom - b.prom);
-  const areasFortaleza = dimRows.filter(x => x.prom !== null && x.prom >= 3.5).sort((a,b) => b.prom - a.prom);
+  const areasDebiles    = dimRows.filter(x => x.prom !== null && x.prom < 3.5).sort((a,b) => a.prom - b.prom);
+  const areasFortaleza  = dimRows.filter(x => x.prom !== null && x.prom >= 3.5).sort((a,b) => b.prom - a.prom);
+  const top2Debiles     = areasDebiles.slice(0, 2);
 
-  // Preguntas con puntaje bajo (1 o 2) de todas las dimensiones
-  const preguntasCriticas = dimRows.flatMap(({ d, respuestas }) =>
-    respuestas.filter(r => r.valor <= 2).map(r => ({ ...r, dim: d }))
-  );
-
-  // Plan de acción por área débil
-  const planesAccion = {
-    "Estratégica y Comercial": ["Definir y documentar la propuesta de valor en una página", "Crear planilla de seguimiento de ventas con metas mensuales", "Mapear clientes actuales y diversificar con al menos 2 nuevos clientes"],
-    "Operativa y Calidad": ["Levantar un procedimiento básico para el proceso principal", "Implementar checklist de entrega para cada servicio/producto", "Establecer indicador de cumplimiento de plazos y revisarlo semanalmente"],
-    "Financiera y Administrativa": ["Crear planilla simple de ingresos y gastos mensual", "Calcular costo unitario de al menos 1 servicio o producto", "Calcular margen bruto de los últimos 3 meses"],
-    "Personas y Cultura": ["Hacer un organigrama simple con roles y responsabilidades", "Establecer reunión semanal de 30 minutos con el equipo", "Verificar cumplimiento de contratos y obligaciones laborales"],
-    "Sostenibilidad": ["Identificar los 3 principales riesgos de seguridad y comunicarlos", "Implementar 1 medida de gestión de residuos", "Definir política básica de sostenibilidad por escrito"],
-    "Digitalización": ["Adoptar 1 herramienta digital para gestionar clientes o ventas", "Digitalizar registros básicos de clientes y pedidos", "Evaluar software de gestión adecuado al tamaño del negocio"],
+  /* ── Preguntas de conversación por dimensión débil ── */
+  const preguntasMentoria = {
+    "Estratégica y Comercial": [
+      "¿Cómo describiría en una frase lo que hace diferente a su empresa de la competencia?",
+      "¿Cuántos clientes activos tiene hoy y cuál representa el mayor riesgo si se va?",
+      "¿Tiene definidas metas de venta para este año? ¿Cómo las sigue?",
+    ],
+    "Operativa y Calidad": [
+      "¿Cómo asegura que el trabajo quede igual de bien cuando usted no está presente?",
+      "¿Cuántas veces al mes no cumple un plazo con un cliente? ¿Qué ocurre en esos casos?",
+      "¿Tiene algún proceso documentado? ¿Por qué sí o por qué no?",
+    ],
+    "Financiera y Administrativa": [
+      "¿Sabe cuánto le cuesta producir cada servicio o producto que vende?",
+      "¿Cómo sabe si terminó el mes con ganancia o pérdida?",
+      "¿Cuántos meses de gastos podría cubrir si dejara de vender hoy?",
+    ],
+    "Personas y Cultura": [
+      "Si usted se ausentara 2 semanas, ¿qué pasaría con la operación?",
+      "¿Su equipo sabe exactamente qué se espera de cada uno? ¿Cómo lo comunica?",
+      "¿Cuándo fue la última vez que alguien del equipo recibió alguna capacitación?",
+    ],
+    "Sostenibilidad": [
+      "¿Qué haría si mañana ocurre un accidente en su empresa? ¿Tiene un protocolo?",
+      "¿Sus clientes grandes ya le han pedido certificaciones o prácticas ambientales?",
+      "¿Qué impacto tiene su operación en el barrio o comunidad donde trabaja?",
+    ],
+    "Digitalización": [
+      "¿Qué pasaría si perdiera el teléfono hoy? ¿Dónde están sus datos de clientes?",
+      "¿Qué tarea repetitiva consume más tiempo en su empresa y podría automatizarse?",
+      "¿Ha probado alguna herramienta digital en el último año? ¿Qué resultó y qué no?",
+    ],
   };
 
-  // Barra de puntaje visual
-  const barraVisual = (pct, color) => `
-    <div style="display:flex;align-items:center;gap:8px;">
-      <div style="flex:1;height:8px;background:#E8EFF5;border-radius:4px;overflow:hidden;">
-        <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;"></div>
+  /* ── Desafíos detectados (desde preguntas con puntaje 1-2) ── */
+  const desafiosDetectados = dimRows.flatMap(({ d, respuestas }) =>
+    respuestas.filter(r => r.valor <= 2).map(r => ({ dim: d.nombre, icono: d.icono, acento: d.acento, texto: r.descripcion, criterio: r.criterio }))
+  ).slice(0, 4); // máximo 4 alertas
+
+  /* ── Foco recomendado (texto dinámico) ── */
+  const focoRecomendado = (() => {
+    if (!top2Debiles.length) return "La empresa muestra un nivel de madurez general adecuado. El foco de la mentoría puede orientarse a consolidar las dimensiones más desarrolladas y a planificar el crecimiento.";
+    const dim1 = top2Debiles[0];
+    const dim2 = top2Debiles[1];
+    const esCritica = dim1.prom < 2.5;
+    let texto = `Priorizar la sesión en <strong>${dim1.d.nombre}</strong> (${dim1.pct}%)`;
+    if (dim2) texto += ` y <strong>${dim2.d.nombre}</strong> (${dim2.pct}%)`;
+    texto += `. ${esCritica ? "Se detectan brechas críticas que pueden comprometer la continuidad operacional." : "Existen oportunidades concretas de mejora que pueden impactar directamente en los resultados."} `;
+    texto += `Se recomienda comenzar con preguntas abiertas para explorar la perspectiva del empresario antes de proponer cambios.`;
+    return texto;
+  })();
+
+  /* ── Objetivo de la mentoría (dinámico) ── */
+  const objetivoMentoria = (() => {
+    if (!top2Debiles.length) return `Acompañar a <strong>${infoGeneral.empresa || "la empresa"}</strong> en la consolidación de sus capacidades y en la definición de un plan de crecimiento sostenible dentro del Programa ${programa?.nombre || ""}.`;
+    return `Apoyar a <strong>${infoGeneral.empresa || "la empresa"}</strong> en fortalecer sus capacidades en <strong>${top2Debiles.map(x => x.d.nombre).join(" y ")}</strong>, identificando acciones concretas que puedan implementarse en el corto plazo dentro del Programa ${programa?.nombre || ""}.`;
+  })();
+
+  /* ── Helpers visuales ── */
+  const barra = (pct, color, h=6) =>
+    `<div style="height:${h}px;background:#E8EFF5;border-radius:3px;overflow:hidden;margin-top:4px;">
+       <div style="height:100%;width:${pct}%;background:${color};border-radius:3px;"></div>
+     </div>`;
+
+  const chip = (texto, color, bg) =>
+    `<span style="font-size:9px;font-weight:700;color:${color};background:${bg};padding:2px 7px;border-radius:4px;letter-spacing:0.3px;">${texto}</span>`;
+
+  /* ── HTML SECCIONES ── */
+
+  // 1. ENCABEZADO
+  const htmlHeader = `
+    <div style="background:#1A2E45;padding:13px 18px;border-radius:8px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        ${logoCidere ? `<img src="${logoCidere}" style="height:36px;object-fit:contain;" alt="CIDERE"/>` : `<span style="font-size:15px;font-weight:800;color:#fff;">CIDERE Biobío</span>`}
+        ${logoPrograma ? `<div style="width:1px;height:36px;background:rgba(255,255,255,0.25)"></div>
+          <img src="${logoPrograma}" style="height:36px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:5px;padding:2px 8px;" alt="${programa?.nombre || ""}"/>` : ""}
+        <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:14px;">
+          <div style="font-size:9px;color:#90C8F0;text-transform:uppercase;letter-spacing:1.5px;">Ficha de preparación · Mentoría empresarial</div>
+          <div style="font-size:16px;font-weight:800;color:#fff;margin-top:2px;">Ficha del Mentor</div>
+        </div>
       </div>
-      <span style="font-size:11px;font-weight:bold;color:${color};min-width:35px;">${pct}%</span>
+      <div style="text-align:right;">
+        <div style="font-size:9px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;">Confidencial · ${fecha}</div>
+        <div style="margin-top:4px;">${chip("Uso interno", "#90C8F0", "rgba(255,255,255,0.1)")}</div>
+      </div>
     </div>`;
 
-  // Sección: resumen visual de dimensiones (todas)
-  const resumenDimensiones = dimRows.map(({ d, prom, n, pct }) => {
-    if (prom === null) return "";
-    return `
-      <div style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <span style="font-size:12px;font-weight:600;color:#1C2B3A;">${d.icono} ${d.nombre}</span>
-          <span style="font-size:11px;font-weight:bold;color:${n.color};background:${n.color}18;padding:2px 8px;border-radius:4px;">${n.label}</span>
-        </div>
-        ${barraVisual(pct, n.color)}
-      </div>`;
-  }).join("");
+  // 2. EMPRESA + PUNTAJE (columnas)
+  const htmlEmpresaPuntaje = `
+    <div style="display:grid;grid-template-columns:1fr 150px;gap:10px;margin-bottom:10px;">
 
-  // Sección: ÁREAS A TRABAJAR (detalle completo)
-  const seccionesAreasDebiles = areasDebiles.map(({ d, prom, n, pct, ind, respuestas }) => {
-    const esCritica = prom < 2.5;
-    const accionesDir = planesAccion[d.nombre] || ["Trabajar en el desarrollo de esta dimensión con el mentor"];
-
-    const preguntasDebiles = respuestas.filter(r => r.valor <= 3);
-    const preguntasHTML = preguntasDebiles.map(r => `
-      <div style="margin-bottom:8px;padding:10px 12px;background:#fff;border-radius:6px;border-left:3px solid ${r.color};">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <span style="font-size:10px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:0.5px;">${r.criterio}</span>
-          <span style="font-size:10px;font-weight:bold;color:${r.color};background:${r.color}18;padding:2px 7px;border-radius:4px;">${r.nivelLabel}</span>
-        </div>
-        <p style="font-size:11px;color:#3A5A7A;margin:0;line-height:1.5;">${r.descripcion}</p>
-      </div>`).join("");
-
-    const accionesHTML = accionesDir.map((a, i) => `
-      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:7px;">
-        <div style="min-width:22px;height:22px;border-radius:50%;background:${d.acento};color:#fff;font-size:10px;font-weight:bold;display:flex;align-items:center;justify-content:center;margin-top:1px;">${i+1}</div>
-        <span style="font-size:11px;color:#1C2B3A;line-height:1.5;">${a}</span>
-      </div>`).join("");
-
-    return `
-      <div style="margin-bottom:20px;border-radius:10px;overflow:hidden;border:2px solid ${esCritica ? "#E74C3C" : d.acento};">
-        <!-- Header dimensión -->
-        <div style="background:${d.acento};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:20px;">${d.icono}</span>
-            <div>
-              <div style="font-size:13px;font-weight:bold;color:#fff;">${d.nombre}</div>
-              ${esCritica ? `<span style="font-size:9px;background:#E74C3C;color:#fff;padding:2px 7px;border-radius:3px;font-weight:bold;">⚠ ÁREA CRÍTICA</span>` : `<span style="font-size:9px;background:rgba(255,255,255,0.25);color:#fff;padding:2px 7px;border-radius:3px;">Requiere refuerzo</span>`}
-            </div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-size:28px;font-weight:bold;color:#fff;">${pct}%</div>
-            <div style="font-size:10px;color:rgba(255,255,255,0.8);">${n.label}</div>
-          </div>
-        </div>
-        <div style="padding:14px 16px;background:#FAFBFC;">
-          <!-- Objetivo -->
-          <p style="font-size:11px;color:#5A7A9A;font-style:italic;margin:0 0 12px 0;line-height:1.5;">${d.objetivo}</p>
-          ${ind ? `<div style="font-size:11px;color:#5A7A9A;margin-bottom:12px;"><strong>Indicador:</strong> ${d.indicadorObjetivo.label}: <strong style="color:#1C2B3A;">${ind}</strong></div>` : ""}
-
-          <!-- Preguntas con puntaje bajo -->
-          ${preguntasDebiles.length > 0 ? `
-            <div style="font-size:10px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📌 Situación actual detectada</div>
-            ${preguntasHTML}
-          ` : ""}
-
-          <!-- Plan de acción -->
-          <div style="margin-top:14px;padding:12px 14px;background:#F0F7FF;border-radius:8px;border:1px solid ${d.acento}33;">
-            <div style="font-size:10px;font-weight:700;color:${d.acento};text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">🎯 Acciones sugeridas para la mentoría</div>
-            ${accionesHTML}
-          </div>
-        </div>
-      </div>`;
-  }).join("");
-
-  // Sección: fortalezas (compacta)
-  const seccionFortalezas = areasFortaleza.length > 0 ? `
-    <div style="margin-bottom:16px;">
-      <div style="font-size:10px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
-        <span>✓</span> Áreas de fortaleza — mantener y potenciar
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        ${areasFortaleza.map(({ d, prom, n, pct }) => `
-          <div style="padding:12px 14px;background:#EAF7F2;border-radius:8px;border:1px solid #3BAD8A33;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <span style="font-size:12px;font-weight:700;color:#1C2B3A;">${d.icono} ${d.nombre}</span>
-              <span style="font-size:13px;font-weight:bold;color:#3BAD8A;">${pct}%</span>
-            </div>
-            ${barraVisual(pct, "#3BAD8A")}
-          </div>`).join("")}
-      </div>
-    </div>` : "";
-
-  // Preguntas críticas (puntaje 1 o 2) — resumen ejecutivo rápido para el mentor
-  const alertasCriticas = preguntasCriticas.length > 0 ? `
-    <div style="margin-bottom:16px;padding:14px 16px;background:#FFF5F5;border:2px solid #E74C3C;border-radius:10px;">
-      <div style="font-size:10px;font-weight:700;color:#E74C3C;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">🚨 Alertas prioritarias — puntaje crítico (nivel 1-2)</div>
-      ${preguntasCriticas.map(r => `
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #FFD5D5;">
-          <span style="font-size:16px;min-width:24px;">${r.dim.icono}</span>
+      <!-- Datos empresa -->
+      <div style="background:#F5F7FA;border-radius:8px;padding:12px 14px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+          ${infoGeneral.logoEmpresa ? `<img src="${infoGeneral.logoEmpresa}" style="height:38px;object-fit:contain;background:#fff;border-radius:6px;padding:2px 7px;border:1px solid #DDE6EF;" alt="${infoGeneral.empresa}"/>` : ""}
           <div>
-            <div style="font-size:11px;font-weight:700;color:#C0392B;">${r.dim.nombre} · ${r.criterio}</div>
-            <div style="font-size:11px;color:#3A5A7A;line-height:1.4;margin-top:2px;">${r.descripcion}</div>
+            <div style="font-size:16px;font-weight:800;color:#1C2B3A;line-height:1.1;">${infoGeneral.empresa || "—"}</div>
+            <div style="font-size:11px;color:#5A7A9A;margin-top:2px;">${infoGeneral.respondente || "—"}${infoGeneral.cargo ? ` · ${infoGeneral.cargo}` : ""}</div>
           </div>
-          <span style="font-size:10px;font-weight:bold;color:#fff;background:#E74C3C;padding:2px 7px;border-radius:4px;white-space:nowrap;margin-left:auto;">${r.nivelLabel}</span>
-        </div>`).join("")}
-    </div>` : "";
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+          ${[
+            ["Rubro / Actividad", infoGeneral.rubro || "No especificado"],
+            ["Tamaño", infoGeneral.tamano || (infoGeneral.dotacion ? `${infoGeneral.dotacion} personas` : "No especificado")],
+            ["Facturación 2025", infoGeneral.facturacionTotal ? `MM$ ${infoGeneral.facturacionTotal}` : "No registrada"],
+            ["Con " + (programa?.nombre || "programa"), infoGeneral.facturacionCMPC ? `MM$ ${infoGeneral.facturacionCMPC}` : "—"],
+          ].map(([l,v]) => `
+            <div style="background:#fff;border-radius:6px;padding:7px 9px;border:1px solid #DDE6EF;">
+              <div style="font-size:8px;color:#5A7A9A;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">${l}</div>
+              <div style="font-size:11px;font-weight:600;color:#1C2B3A;">${v}</div>
+            </div>`).join("")}
+        </div>
+      </div>
+
+      <!-- Puntaje global -->
+      <div style="background:#1A2E45;border-radius:8px;padding:14px;text-align:center;display:flex;flex-direction:column;justify-content:center;">
+        <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Madurez general</div>
+        <div style="font-size:40px;font-weight:800;color:${nivel ? nivel.color : "#fff"};line-height:1;">${pg !== null ? a5to100(pg) : "—"}%</div>
+        ${nivel ? `<div style="font-size:11px;font-weight:700;color:${nivel.color};margin-top:4px;">${nivel.label}</div>` : ""}
+        <div style="margin-top:8px;height:4px;background:rgba(255,255,255,0.12);border-radius:2px;overflow:hidden;">
+          <div style="height:100%;width:${pg !== null ? a5to100(pg) : 0}%;background:${nivel ? nivel.color : "#fff"};border-radius:2px;"></div>
+        </div>
+        <div style="font-size:8px;color:rgba(255,255,255,0.4);margin-top:6px;">${programa?.nombre || ""}</div>
+      </div>
+    </div>`;
+
+  // 3. OBJETIVO + FOCO (columnas)
+  const htmlObjetivoFoco = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <div style="background:#EAF1FA;border-radius:8px;padding:11px 14px;border-left:3px solid #2B7BBF;">
+        <div style="font-size:8px;font-weight:700;color:#2B7BBF;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">🎯 Objetivo de la mentoría</div>
+        <p style="font-size:11px;color:#1C2B3A;line-height:1.6;margin:0;">${objetivoMentoria}</p>
+      </div>
+      <div style="background:#FFF8EC;border-radius:8px;padding:11px 14px;border-left:3px solid #E8A020;">
+        <div style="font-size:8px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">🔍 Foco recomendado para el mentor</div>
+        <p style="font-size:11px;color:#1C2B3A;line-height:1.6;margin:0;">${focoRecomendado}</p>
+      </div>
+    </div>`;
+
+  // 4. RADAR DE DIMENSIONES + DESAFÍOS DETECTADOS (columnas)
+  const htmlRadarDesafios = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+
+      <!-- Dimensiones -->
+      <div style="background:#F5F7FA;border-radius:8px;padding:11px 14px;">
+        <div style="font-size:8px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📊 Diagnóstico por dimensión</div>
+        ${dimRows.map(({ d, prom, n, pct }) => {
+          if (prom === null) return "";
+          const esDebil = prom < 3.5;
+          return `
+          <div style="margin-bottom:7px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+              <span style="font-size:11px;color:#1C2B3A;font-weight:${esDebil ? "700" : "400"};">${d.icono} ${d.nombre}</span>
+              <div style="display:flex;align-items:center;gap:5px;">
+                ${esDebil ? `<span style="font-size:8px;color:#E74C3C;">▼</span>` : `<span style="font-size:8px;color:#3BAD8A;">✓</span>`}
+                <span style="font-size:10px;font-weight:700;color:${n.color};">${pct}%</span>
+              </div>
+            </div>
+            ${barra(pct, n.color, 5)}
+          </div>`;
+        }).join("")}
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          ${NV_CFG.map(n => `<span style="font-size:8px;color:${n.color};font-weight:600;">● ${n.label}</span>`).join("")}
+        </div>
+      </div>
+
+      <!-- Desafíos detectados -->
+      <div style="background:#F5F7FA;border-radius:8px;padding:11px 14px;">
+        <div style="font-size:8px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⚠ Principales desafíos detectados</div>
+        ${desafiosDetectados.length > 0 ? desafiosDetectados.map(r => `
+          <div style="display:flex;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #DDE6EF;align-items:flex-start;">
+            <div style="min-width:22px;height:22px;border-radius:50%;background:${r.acento};display:flex;align-items:center;justify-content:center;font-size:11px;margin-top:1px;">${r.icono}</div>
+            <div style="flex:1;">
+              <div style="font-size:9px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px;">${r.dim} · ${r.criterio}</div>
+              <div style="font-size:10px;color:#1C2B3A;line-height:1.4;">${r.texto}</div>
+            </div>
+          </div>`).join("") :
+          `<div style="font-size:11px;color:#5A7A9A;font-style:italic;padding:10px 0;">No se detectaron niveles críticos. La empresa muestra solidez en sus dimensiones evaluadas.</div>`}
+        ${infoGeneral.observaciones ? `
+          <div style="background:#FFFBF0;border-radius:6px;padding:8px 10px;border-left:2px solid #E8A020;margin-top:4px;">
+            <div style="font-size:8px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">🔒 Nota del consultor</div>
+            <div style="font-size:10px;color:#1C2B3A;line-height:1.4;">${infoGeneral.observaciones}</div>
+          </div>` : ""}
+      </div>
+    </div>`;
+
+  // 5. ÁREAS PRIORITARIAS + PREGUNTAS SUGERIDAS (columnas)
+  const htmlAreasPreguntas = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+
+      <!-- Áreas prioritarias -->
+      <div>
+        <div style="font-size:8px;font-weight:700;color:#E74C3C;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">🎯 Áreas prioritarias a trabajar</div>
+        ${top2Debiles.length > 0 ? top2Debiles.map(({ d, prom, n, pct, respuestas }) => {
+          const esCritica = prom < 2.5;
+          const preguntasDebiles = respuestas.filter(r => r.valor <= 3).slice(0, 2);
+          const accionesPorDim = {
+            "Estratégica y Comercial": ["Definir propuesta de valor en 1 página", "Crear metas de venta mensuales", "Identificar 2 nuevos clientes potenciales"],
+            "Operativa y Calidad":     ["Documentar el proceso principal en un instructivo", "Implementar checklist de entrega", "Medir cumplimiento de plazos semanalmente"],
+            "Financiera y Administrativa": ["Crear planilla de flujo de caja mensual", "Calcular costo unitario de su principal servicio", "Calcular margen bruto de los últimos 3 meses"],
+            "Personas y Cultura":      ["Hacer organigrama simple con responsabilidades", "Reunión semanal de 30 min con el equipo", "Revisar cumplimiento de contratos laborales"],
+            "Sostenibilidad":          ["Identificar 3 riesgos de seguridad y comunicarlos", "Implementar una medida de manejo de residuos", "Redactar política básica de sostenibilidad"],
+            "Digitalización":          ["Adoptar 1 herramienta digital para clientes o ventas", "Digitalizar registros de clientes y pedidos", "Evaluar software de gestión adecuado al negocio"],
+          };
+          const acciones = (accionesPorDim[d.nombre] || ["Trabajar esta dimensión con el mentor"]).slice(0,3);
+          return `
+            <div style="border-radius:8px;overflow:hidden;border:1.5px solid ${esCritica ? "#E74C3C" : d.acento};margin-bottom:8px;">
+              <div style="background:${d.acento};padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:7px;">
+                  <span style="font-size:14px;">${d.icono}</span>
+                  <div>
+                    <div style="font-size:11px;font-weight:700;color:#fff;">${d.nombre}</div>
+                    ${esCritica ? `<span style="font-size:8px;background:#E74C3C;color:#fff;padding:1px 5px;border-radius:3px;">⚠ Crítico</span>` : ""}
+                  </div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:20px;font-weight:800;color:#fff;">${pct}%</div>
+                  <div style="font-size:8px;color:rgba(255,255,255,0.75);">${n.label}</div>
+                </div>
+              </div>
+              <div style="padding:9px 12px;background:#FAFBFC;">
+                ${preguntasDebiles.length > 0 ? `
+                  <div style="margin-bottom:7px;">
+                    ${preguntasDebiles.map(r => `
+                      <div style="font-size:9px;color:#3A5A7A;line-height:1.4;margin-bottom:3px;padding-left:8px;border-left:2px solid ${r.color};">
+                        <strong style="color:#1C2B3A;">${r.criterio}:</strong> ${r.descripcion}
+                      </div>`).join("")}
+                  </div>` : ""}
+                <div style="font-size:8px;font-weight:700;color:${d.acento};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Acciones sugeridas</div>
+                ${acciones.map((a,i) => `
+                  <div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:3px;">
+                    <div style="min-width:14px;height:14px;border-radius:50%;background:${d.acento};color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;">${i+1}</div>
+                    <span style="font-size:9px;color:#1C2B3A;line-height:1.4;">${a}</span>
+                  </div>`).join("")}
+              </div>
+            </div>`;
+        }).join("") :
+        `<div style="background:#EAF7F2;border-radius:8px;padding:12px;font-size:11px;color:#3BAD8A;text-align:center;">✓ Sin áreas críticas detectadas</div>`}
+
+        <!-- Fortalezas compacto -->
+        ${areasFortaleza.length > 0 ? `
+          <div style="font-size:8px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;margin-top:2px;">✓ Fortalezas a destacar</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            ${areasFortaleza.slice(0,4).map(({ d, n, pct }) => `
+              <div style="background:#EAF7F2;border-radius:6px;padding:7px 9px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                  <span style="font-size:10px;font-weight:600;color:#1C2B3A;">${d.icono} ${d.nombre}</span>
+                  <span style="font-size:10px;font-weight:700;color:#3BAD8A;">${pct}%</span>
+                </div>
+                ${barra(pct, "#3BAD8A", 4)}
+              </div>`).join("")}
+          </div>` : ""}
+      </div>
+
+      <!-- Preguntas sugeridas -->
+      <div>
+        <div style="font-size:8px;font-weight:700;color:#2B7BBF;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">💬 Preguntas sugeridas para la conversación</div>
+        ${top2Debiles.length > 0 ? top2Debiles.map(({ d }) => {
+          const pregs = preguntasMentoria[d.nombre] || [];
+          return pregs.length ? `
+            <div style="margin-bottom:10px;">
+              <div style="font-size:9px;font-weight:700;color:${d.acento};margin-bottom:5px;">${d.icono} ${d.nombre}</div>
+              ${pregs.map(q => `
+                <div style="display:flex;gap:7px;align-items:flex-start;margin-bottom:5px;padding:6px 9px;background:#F5F7FA;border-radius:6px;">
+                  <span style="color:#2B7BBF;font-size:11px;margin-top:1px;">›</span>
+                  <span style="font-size:10px;color:#1C2B3A;line-height:1.5;">${q}</span>
+                </div>`).join("")}
+            </div>` : "";
+        }).join("") : `
+          <div style="margin-bottom:10px;">
+            <div style="font-size:9px;font-weight:700;color:#3BAD8A;margin-bottom:5px;">Para empresas con madurez consolidada</div>
+            ${["¿Cuál es el mayor obstáculo para seguir creciendo?",
+               "¿Qué capacidades necesita desarrollar su equipo en los próximos 12 meses?",
+               "¿Tiene identificadas oportunidades de nuevos mercados o clientes?"].map(q => `
+              <div style="display:flex;gap:7px;align-items:flex-start;margin-bottom:5px;padding:6px 9px;background:#F5F7FA;border-radius:6px;">
+                <span style="color:#3BAD8A;font-size:11px;margin-top:1px;">›</span>
+                <span style="font-size:10px;color:#1C2B3A;line-height:1.5;">${q}</span>
+              </div>`).join("")}
+          </div>`}
+
+        <!-- Síntesis narrativa -->
+        ${interp ? `
+          <div style="background:#EAF1FA;border-radius:6px;padding:9px 11px;border-left:3px solid #2B7BBF;margin-top:4px;">
+            <div style="font-size:8px;font-weight:700;color:#2B7BBF;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">📝 Síntesis diagnóstica</div>
+            <p style="font-size:9px;color:#1C2B3A;line-height:1.6;margin:0;">${interp.narrativa}</p>
+          </div>` : ""}
+      </div>
+    </div>`;
+
+  // 6. PIE DE PÁGINA
+  const htmlFooter = `
+    <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #DDE6EF;padding-top:7px;margin-top:4px;">
+      <span style="font-size:8px;color:#A0B0C0;">Documento confidencial · CIDERE Biobío · Programa ${programa?.nombre || ""}</span>
+      <span style="font-size:8px;color:#A0B0C0;">${fecha}</span>
+    </div>`;
 
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
     <title>Ficha Mentor – ${infoGeneral.empresa || "Sin nombre"}</title>
     <style>${PDF_BASE_CSS}</style>
   </head><body>
-
-  <!-- ══ ENCABEZADO ══ -->
-  <div style="background:#1A2E45;padding:16px 20px;border-radius:10px;margin-bottom:14px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:14px;">
-        ${logoCidere ? `<img src="${logoCidere}" style="height:40px;object-fit:contain;" alt="CIDERE"/>` : `<span style="font-size:16px;font-weight:800;color:#fff;">CIDERE Biobío</span>`}
-        ${logoPrograma ? `<div style="width:1px;height:40px;background:rgba(255,255,255,0.3)"></div><img src="${logoPrograma}" style="height:40px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:5px;padding:2px 8px;" alt="${programa?.nombre || ""}"/>` : ""}
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:9px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Documento para uso interno</div>
-        <div style="font-size:13px;font-weight:bold;color:#fff;">${fecha}</div>
-      </div>
-    </div>
-    <div style="font-size:10px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase;margin-bottom:3px;">${programa?.nombre || "Programa"} · Ficha de Mentoría</div>
-    <div style="font-size:20px;font-weight:bold;color:#fff;">Contexto Empresarial para el Mentor</div>
-  </div>
-
-  <!-- ══ DATOS EMPRESA ══ -->
-  <div style="display:grid;grid-template-columns:${infoGeneral.logoEmpresa ? "auto 1fr" : "1fr"};gap:16px;align-items:center;background:#F5F7FA;border-radius:10px;padding:14px 18px;margin-bottom:14px;">
-    ${infoGeneral.logoEmpresa ? `<img src="${infoGeneral.logoEmpresa}" style="height:52px;object-fit:contain;background:#fff;border-radius:8px;padding:4px 10px;border:1px solid #DDE6EF;" alt="${infoGeneral.empresa}"/>` : ""}
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
-      <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Empresa</div><div style="font-size:15px;font-weight:800;color:#1C2B3A;">${infoGeneral.empresa || "—"}</div></div>
-      <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Contacto</div><div style="font-size:12px;color:#1C2B3A;">${infoGeneral.respondente || "—"}</div><div style="font-size:11px;color:#5A7A9A;">${infoGeneral.cargo || ""}</div></div>
-      <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Facturación 2025</div><div style="font-size:14px;font-weight:700;color:#1C2B3A;">${infoGeneral.facturacionTotal ? `MM$ ${infoGeneral.facturacionTotal}` : "—"}</div>${infoGeneral.facturacionCMPC ? `<div style="font-size:11px;color:#5A7A9A;">Con ${programa?.nombre || "programa"}: MM$ ${infoGeneral.facturacionCMPC}</div>` : ""}</div>
-    </div>
-  </div>
-
-  <!-- ══ RESUMEN MADUREZ ══ -->
-  <div style="display:grid;grid-template-columns:160px 1fr;gap:14px;margin-bottom:14px;">
-    <!-- Puntaje global -->
-    <div style="background:#1A2E45;border-radius:10px;padding:16px;text-align:center;display:flex;flex-direction:column;justify-content:center;">
-      <div style="font-size:9px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Madurez general</div>
-      <div style="font-size:42px;font-weight:bold;color:${nivel ? nivel.color : "#fff"};line-height:1;">${pg !== null ? a5to100(pg) : "—"}%</div>
-      ${nivel ? `<div style="font-size:12px;font-weight:bold;color:${nivel.color};margin-top:4px;">${nivel.label}</div>` : ""}
-      <div style="margin-top:10px;height:5px;background:rgba(255,255,255,0.15);border-radius:3px;overflow:hidden;">
-        <div style="height:100%;width:${pg !== null ? a5to100(pg) : 0}%;background:${nivel ? nivel.color : "#fff"};border-radius:3px;"></div>
-      </div>
-    </div>
-    <!-- Resumen dimensiones -->
-    <div style="background:#F5F7FA;border-radius:10px;padding:14px 18px;">
-      <div style="font-size:9px;color:#5A7A9A;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Panorama por dimensión</div>
-      ${resumenDimensiones}
-    </div>
-  </div>
-
-  <!-- ══ NARRATIVA ══ -->
-  ${interp ? `
-  <div style="background:#EAF1FA;border-left:4px solid #2B7BBF;border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:14px;">
-    <div style="font-size:9px;color:#2B7BBF;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">📝 Síntesis diagnóstica</div>
-    <p style="font-size:12px;color:#1C2B3A;line-height:1.7;margin:0;">${interp.narrativa}</p>
-  </div>` : ""}
-
-  ${infoGeneral.observaciones ? `
-  <div style="background:#FFFBF0;border-left:4px solid #E8A020;border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:14px;">
-    <div style="font-size:9px;color:#A07820;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:5px;">🔒 Nota del consultor (uso interno)</div>
-    <p style="font-size:12px;color:#1C2B3A;line-height:1.6;margin:0;">${infoGeneral.observaciones}</p>
-  </div>` : ""}
-
-  <!-- ══ ALERTAS CRÍTICAS ══ -->
-  ${alertasCriticas}
-
-  <!-- ══ ÁREAS A TRABAJAR ══ -->
-  ${areasDebiles.length > 0 ? `
-  <div style="font-size:11px;font-weight:700;color:#E74C3C;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;margin-top:4px;display:flex;align-items:center;gap:8px;">
-    <span style="display:inline-block;width:24px;height:3px;background:#E74C3C;border-radius:2px;"></span>
-    Áreas prioritarias a trabajar en la mentoría
-    <span style="display:inline-block;flex:1;height:1px;background:#DDE6EF;"></span>
-  </div>
-  ${seccionesAreasDebiles}` : ""}
-
-  <!-- ══ FORTALEZAS ══ -->
-  ${seccionFortalezas}
-
-  <!-- PIE -->
-  <div style="text-align:center;font-size:8px;color:#A0B0C0;margin-top:14px;border-top:1px solid #DDE6EF;padding-top:10px;">
-    Documento confidencial · CIDERE Biobío · Programa ${programa?.nombre || ""} · ${fecha}
-  </div>
+    ${htmlHeader}
+    ${htmlEmpresaPuntaje}
+    ${htmlObjetivoFoco}
+    ${htmlRadarDesafios}
+    ${htmlAreasPreguntas}
+    ${htmlFooter}
   </body></html>`;
 }
 
