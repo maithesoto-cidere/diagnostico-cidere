@@ -1032,7 +1032,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
   const [focoEditado, setFocoEditado] = useState("");
   const [sintesisEditada, setSintesisEditada] = useState("");
   const [notaMentorEditada, setNotaMentorEditada] = useState("");
-  const fichaRef = React.useRef(null);
+  const fichaRef = useRef(null);
 
   const exportarFichaEditable = () => {
     if (!fichaRef.current) return;
