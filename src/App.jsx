@@ -1380,20 +1380,27 @@ function ComparativoView({ dims, infoGeneral, datosE, datosS, indE, indS, pgE, p
 
 /* ── Abre HTML como PDF compatible con Safari/Mac ── */
 function openPDF(htmlContent) {
-  const blob = new Blob([htmlContent], { type: "text/html; charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
-  const win  = window.open(url, "_blank");
-  if (!win) {
-    // Fallback: iframe oculto para triggear descarga
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
-  // Limpiar URL después de un tiempo razonable
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;width:0;height:0;border:none;left:-9999px;top:-9999px;";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  doc.write(htmlContent);
+  doc.close();
+  iframe.onload = () => {
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => { if(document.body.contains(iframe)) document.body.removeChild(iframe); }, 2000);
+    }, 800);
+  };
+  setTimeout(() => {
+    if (document.body.contains(iframe)) {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => { if(document.body.contains(iframe)) document.body.removeChild(iframe); }, 2000);
+    }
+  }, 2500);
 }
 
 function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetivoCustom, focoCustom, sintesisCustom, notaCustom) {
@@ -2152,7 +2159,6 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
 <div style="text-align:center;font-size:8px;color:#5A7A9A;margin-top:8px">Generado por CIDERE Biobío · Sistema de Diagnóstico · ${fecha}</div>
 </body></html>`;
                   openPDF(html);
-                  else alert("Permite ventanas emergentes para este sitio e intenta de nuevo.");
                 }} style={{ padding:"10px 18px",background:`${C.verde}12`,border:`1px solid ${C.verde}44`,borderRadius:8,color:C.verde,fontSize:13,fontWeight:700,cursor:"pointer" }}>⬇ Descargar Ficha</button>
               </div>
             </div>
