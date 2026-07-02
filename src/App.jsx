@@ -1036,12 +1036,14 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
 
   const exportarFichaEditable = () => {
     if (!fichaRef.current) return;
-    const css = `@page{size:A4 portrait;margin:12mm 14mm}
-html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;background:#fff}
-*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-[contenteditable]{outline:none!important;border:none!important}
-@media print{button,.no-print{display:none!important}}`;
-    const html = \`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Ficha</title><style>\${css}</style></head><body>\${fichaRef.current.innerHTML}</body></html>\`;
+    const css = [
+      "@page{size:A4 portrait;margin:12mm 14mm}",
+      "html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;background:#fff}",
+      "*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}",
+      "[contenteditable]{outline:none!important;border:none!important}",
+      "@media print{button,.no-print{display:none!important}}"
+    ].join(" ");
+    const html = "<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"UTF-8\"/><title>Ficha</title><style>" + css + "</style></head><body>" + fichaRef.current.innerHTML + "</body></html>";
     openPDF(html);
   };
 
