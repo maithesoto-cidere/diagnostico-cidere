@@ -1088,21 +1088,17 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               {esComparativa && <button onClick={()=>setTab("comparativo")} style={{ padding:"7px 14px", borderRadius:6, border:"none", cursor:"pointer", fontSize:12, fontWeight:700, background:tab==="comparativo"?"linear-gradient(135deg,#9B59B6,#8E44AD)":"transparent", color:tab==="comparativo"?"#fff":"rgba(255,255,255,0.6)" }}>📈 Comparativo</button>}
               {!tieneE && !tieneS && <span style={{color:"rgba(255,255,255,0.5)",fontSize:12,padding:"7px 14px"}}>Sin datos disponibles</span>}
             </div>
-          <button onClick={()=>{
+          <button onClick={async()=>{
             try {
-              const area = document.getElementById("ficha-print-area");
-              if (!area) return alert("No hay contenido para exportar.");
-              const estilos = Array.from(document.styleSheets).map(s => {
-                try { return Array.from(s.cssRules).map(r=>r.cssText).join("\n"); } catch(_){ return ""; }
-              }).join("\n");
-              const printCSS = `@page{size:A4 portrait;margin:12mm 14mm}
-body{font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:11px;background:#fff;margin:0;padding:10mm}
-*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
-@media print{.no-print{display:none!important}}`;
-              const html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'/><title>Ficha Diagnóstico</title>"
-                + "<style>" + estilos + printCSS + "</style></head><body>"
-                + "<div style='max-width:900px;margin:0 auto;padding:0'>" + area.innerHTML + "</div>"
-                + "<script>window.onload=function(){window.print();}<\/script></body></html>";
+              const urlToB64 = async(url) => {
+                if(!url || url.startsWith("data:")) return url;
+                try { const r=await fetch(url); const b=await r.blob(); return new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(b);}); } catch(_){ return url; }
+              };
+              const lp = await urlToB64(programa?.logoUrl);
+              const le = await urlToB64(infoGeneral?.logoEmpresa);
+              const html = tab==="comparativo"
+                ? buildComparativoHTML(dims,{...infoGeneral,logoEmpresa:le},datosE,datosS,indE,indS,{...(programa||{}),logoUrl:lp})
+                : buildFichaIndividualHTML(dims,{...infoGeneral,logoEmpresa:le},datosActivos,indsActivos,{...(programa||{}),logoUrl:lp},tab==="final");
               openPDF(html);
             } catch(err) { alert("Error al exportar: " + err.message); }
           }} style={{ padding:"9px 18px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>⬇ Exportar PDF</button>
@@ -1166,7 +1162,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:11px;backgr
 
       {/* Contenido scrollable */}
       <div style={{ flex:1, overflowY:"auto", background:C.fondo, padding:"28px 0" }}>
-        <div id="ficha-print-area" style={{ maxWidth:920, margin:"0 auto", padding:"0 24px" }}>
+        <div style={{ maxWidth:920, margin:"0 auto", padding:"0 24px" }}>
 
           {(tab==="inicial" || tab==="final") && (
             <>
@@ -2425,15 +2421,11 @@ export default function App() {
     try {
       const backup = { version:"1.0", fecha:new Date().toISOString(), proyectos };
       const json = JSON.stringify(backup, null, 2);
-      const blob = new Blob([json], { type:"application/json" });
-      const url = URL.createObjectURL(blob);
+      const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(json);
       const a = document.createElement("a");
-      a.href = url;
+      a.href = dataUri;
       a.download = "backup-cidere-" + new Date().toLocaleDateString("es-CL").replace(/\//g,"-") + ".json";
-      document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch(err) {
       alert("Error al exportar: " + err.message);
     }
