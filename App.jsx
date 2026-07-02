@@ -2152,7 +2152,6 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
 <div style="text-align:center;font-size:8px;color:#5A7A9A;margin-top:8px">Generado por CIDERE Biobío · Sistema de Diagnóstico · ${fecha}</div>
 </body></html>`;
                   openPDF(html);
-                  else alert("Permite ventanas emergentes para este sitio e intenta de nuevo.");
                 }} style={{ padding:"10px 18px",background:`${C.verde}12`,border:`1px solid ${C.verde}44`,borderRadius:8,color:C.verde,fontSize:13,fontWeight:700,cursor:"pointer" }}>⬇ Descargar Ficha</button>
               </div>
             </div>
