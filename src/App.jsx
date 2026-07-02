@@ -842,7 +842,10 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                               <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dInicial.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
                               {/* Barras rápidas */}
                               {dims.map(dim=>{ const v=pdim(dim,dInicial.datosEntrada||{}); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:pColor}}/></div></div>; })}
-                              <button onClick={()=>onAbrirDiag(dInicial)} style={{ marginTop:10, padding:"7px 16px", background:`${C.azul}12`, border:`1px solid ${C.azul}33`, borderRadius:7, color:C.azul, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
+                              <div style={{ display:"flex", gap:6, marginTop:10 }}>
+                                <button onClick={()=>onAbrirDiag(dInicial)} style={{ flex:1, padding:"7px 10px", background:`${C.azul}12`, border:`1px solid ${C.azul}33`, borderRadius:7, color:C.azul, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
+                                <button title="Eliminar diagnóstico inicial" onClick={()=>{ if(window.confirm("¿Eliminar el diagnóstico inicial? No se puede deshacer.")) onEliminarDiag(dInicial.id); }} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>🗑</button>
+                              </div>
                             </div>
                           ) : (
                             <div>
@@ -859,7 +862,10 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                               <div style={{ fontSize:12, color:nvF?.color, fontWeight:700, marginBottom:6 }}>{nvF?.label}</div>
                               <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dFinal.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
                               {dims.map(dim=>{ const v=pdim(dim, Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{})); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:C.verde}}/></div></div>; })}
-                              <button onClick={()=>onAbrirDiag(dFinal)} style={{ marginTop:10, padding:"7px 16px", background:`${C.verde}12`, border:`1px solid ${C.verde}33`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
+                              <div style={{ display:"flex", gap:6, marginTop:10 }}>
+                                <button onClick={()=>onAbrirDiag(dFinal)} style={{ flex:1, padding:"7px 10px", background:`${C.verde}12`, border:`1px solid ${C.verde}33`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
+                                <button title="Eliminar diagnóstico final" onClick={()=>{ if(window.confirm("¿Eliminar el diagnóstico final? No se puede deshacer.")) onEliminarDiag(dFinal.id); }} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>🗑</button>
+                              </div>
                             </div>
                           ) : dInicial ? (
                             <div>
@@ -1023,6 +1029,9 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
   const [tab, setTab] = useState(defaultTab);
   const [showMentorModal, setShowMentorModal] = useState(false);
   const [objetivoEditado, setObjetivoEditado] = useState("");
+  const [focoEditado, setFocoEditado] = useState("");
+  const [sintesisEditada, setSintesisEditada] = useState("");
+  const [notaMentorEditada, setNotaMentorEditada] = useState("");
 
   const pgE = pglobal(dims, datosE||{});
   const pgS = tieneS ? pglobal(dims, Object.keys(datosS||{}).length>0 ? datosS : datosE) : null;
@@ -1084,30 +1093,36 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               : buildFichaIndividualHTML(dims, infoConLogo, datosActivos, indsActivos, programaConLogo, tab==="final");
             const instruccion = `<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📄 Selecciona <strong>"Guardar como PDF"</strong> y orientación <strong>Vertical</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
-            const w = window.open("","_blank");
-            if(w){ w.document.write(htmlFinal); w.document.close(); w.focus(); setTimeout(()=>w.print(),900); }
-            else alert("Permite ventanas emergentes para descargar el PDF.");
+            openPDF(htmlFinal);
           }} style={{ padding:"9px 18px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>⬇ Exportar PDF</button>
           {showMentorModal && (
             <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.75)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShowMentorModal(false)}>
               <div style={{background:"#fff",borderRadius:14,padding:26,width:"100%",maxWidth:480,boxShadow:"0 24px 72px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
                 <div style={{fontSize:11,color:"#637D92",textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>Ficha Mentor</div>
-                <h2 style={{fontSize:17,fontWeight:800,color:"#1C2B3A",margin:"0 0 14px 0"}}>Personaliza el objetivo</h2>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:"#637D92",textTransform:"uppercase",letterSpacing:1,marginBottom:5}}>Objetivo de la mentoría</label>
-                <textarea value={objetivoEditado} onChange={e=>setObjetivoEditado(e.target.value)} rows={4}
-                  style={{width:"100%",padding:"10px 13px",background:"#EEF2F7",border:`1.5px solid ${C.azul}`,borderRadius:8,color:"#1C2B3A",fontSize:13,outline:"none",resize:"vertical",fontFamily:"inherit",boxSizing:"border-box",lineHeight:1.6}}/>
-                <p style={{fontSize:11,color:"#A8BECF",margin:"5px 0 18px 0"}}>Déjalo como está para usar el objetivo automático según el diagnóstico.</p>
-                <div style={{display:"flex",gap:9}}>
+                <h2 style={{fontSize:17,fontWeight:800,color:"#1C2B3A",margin:"0 0 12px 0"}}>Personalizar ficha</h2>
+                <div style={{maxHeight:"60vh",overflowY:"auto",paddingRight:4}}>
+                  {[
+                    {label:"Objetivo de la mentoría", val:objetivoEditado, set:setObjetivoEditado, rows:3},
+                    {label:"Foco recomendado para el mentor", val:focoEditado, set:setFocoEditado, rows:3},
+                    {label:"Síntesis diagnóstica", val:sintesisEditada, set:setSintesisEditada, rows:3},
+                    {label:"Nota interna (uso confidencial)", val:notaMentorEditada, set:setNotaMentorEditada, rows:2},
+                  ].map(({label,val,set,rows})=>(
+                    <div key={label} style={{marginBottom:12}}>
+                      <label style={{display:"block",fontSize:11,fontWeight:700,color:"#637D92",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>{label}</label>
+                      <textarea value={val} onChange={e=>set(e.target.value)} rows={rows}
+                        style={{width:"100%",padding:"9px 12px",background:"#EEF2F7",border:`1.5px solid ${C.azul}`,borderRadius:7,color:"#1C2B3A",fontSize:12,outline:"none",resize:"vertical",fontFamily:"inherit",boxSizing:"border-box",lineHeight:1.55}}/>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:9,marginTop:4}}>
                   <button onClick={()=>setShowMentorModal(false)} style={{flex:1,padding:"10px",border:`1px solid ${C.borde}`,borderRadius:8,background:"transparent",color:"#637D92",cursor:"pointer",fontSize:13}}>Cancelar</button>
                   <button onClick={async()=>{
                     setShowMentorModal(false);
                     const urlToB64=async(url)=>{if(!url||url.startsWith("data:"))return url;try{const r=await fetch(url);const b=await r.blob();return new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(b);});}catch(e){return url;}};
                     const lp=await urlToB64(programa?.logoUrl); const le=await urlToB64(infoGeneral?.logoEmpresa);
-                    const html=buildFichaMentorHTML(dims,{...infoGeneral,logoEmpresa:le},{...datosE},indE,{...(programa||{}),logoUrl:lp},objetivoEditado.trim()||null);
+                    const html=buildFichaMentorHTML(dims,{...infoGeneral,logoEmpresa:le},{...datosE},indE,{...(programa||{}),logoUrl:lp},objetivoEditado.trim()||null,focoEditado.trim()||null,sintesisEditada.trim()||null,notaMentorEditada.trim()||null);
                     const ins=`<div style="position:fixed;top:0;left:0;right:0;background:#1A2E45;color:#fff;padding:10px 20px;font-family:Arial,sans-serif;font-size:13px;display:flex;justify-content:space-between;align-items:center;z-index:9999" class="no-print"><span>📋 Ficha Mentor — <strong>Guardar como PDF</strong></span><button onclick="window.print()" style="background:#3BAD8A;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:bold">🖨 Guardar PDF</button></div><style>@media print{.no-print{display:none!important}}</style>`;
-                    const w=window.open("","_blank");
-                    if(w){w.document.write(html.replace("<body>","<body>"+ins));w.document.close();w.focus();setTimeout(()=>w.print(),900);}
-                    else alert("Permite ventanas emergentes para descargar el PDF.");
+                    openPDF(html.replace("<body>","<body>"+ins));
                   }} style={{flex:2,padding:"10px",background:"linear-gradient(135deg,#9B59B6,#8E44AD)",border:"none",borderRadius:8,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>📋 Generar Ficha Mentor</button>
                 </div>
               </div>
@@ -1120,6 +1135,15 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               ? `Apoyar a ${infoGeneral.empresa||"la empresa"} en fortalecer sus capacidades en ${top2.map(x=>x.d.nombre).join(" y ")}, identificando acciones concretas que puedan implementarse durante el Programa ${programa?.nombre||""}.`
               : `Acompañar a ${infoGeneral.empresa||"la empresa"} en la consolidación de sus capacidades y en la definición de un plan de crecimiento sostenible dentro del Programa ${programa?.nombre||""}.`;
             setObjetivoEditado(autoObj);
+            // Pre-llenar foco recomendado
+            const autoFoco = top2.length > 0
+              ? `Priorizar la sesión en ${top2.map(x=>x.d.nombre).join(" y ")}. ${top2[0].prom < 2.5 ? "Se detectan brechas críticas que pueden comprometer la continuidad operacional." : "Existen oportunidades concretas de mejora con impacto directo en los resultados."} Se recomienda comenzar con preguntas abiertas para explorar la perspectiva del empresario antes de proponer acciones.`
+              : "La empresa muestra un nivel de madurez general adecuado. El foco puede orientarse a consolidar las dimensiones más desarrolladas y planificar el crecimiento.";
+            setFocoEditado(autoFoco);
+            // Pre-llenar síntesis
+            const interp2 = generarInterpretacion(dims, datosE||{});
+            setSintesisEditada(interp2?.narrativa || "");
+            setNotaMentorEditada(infoGeneral.observaciones || "");
             setShowMentorModal(true);
           }} style={{ padding:"9px 18px", background:"linear-gradient(135deg,#9B59B6,#8E44AD)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>📋 Ficha Mentor</button>
           <button onClick={onCerrar} style={{ padding:"9px 14px", background:"rgba(255,255,255,0.1)", border:"none", borderRadius:8, color:"#fff", fontSize:13, cursor:"pointer" }}>✕ Cerrar</button>
@@ -1353,7 +1377,26 @@ function ComparativoView({ dims, infoGeneral, datosE, datosS, indE, indS, pgE, p
 
 
 /* ── Ficha para Mentores ── */
-function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetivoCustom) {
+
+/* ── Abre HTML como PDF compatible con Safari/Mac ── */
+function openPDF(htmlContent) {
+  const blob = new Blob([htmlContent], { type: "text/html; charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, "_blank");
+  if (!win) {
+    // Fallback: iframe oculto para triggear descarga
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  // Limpiar URL después de un tiempo razonable
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetivoCustom, focoCustom, sintesisCustom, notaCustom) {
   const logoCidere   = CIDERE_LOGO_B64;
   const logoPrograma = programa?.logoUrl || "";
   const pColor       = programa?.color || "#2B7BBF";
@@ -1393,16 +1436,6 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
             .map(r => ({ dim: d.nombre, icono: d.icono, acento: d.acento, texto: r.descripcion, criterio: r.criterio }))
         );
 
-  /* Preguntas de conversación */
-  const preguntasMentoria = {
-    "Estratégica y Comercial": ["¿Cómo describiría en una frase lo que hace diferente a su empresa de la competencia?","¿Cuántos clientes activos tiene hoy y cuál representa el mayor riesgo si se va?","¿Tiene definidas metas de venta para este año? ¿Cómo las sigue?"],
-    "Operativa y Calidad":     ["¿Cómo asegura que el trabajo quede igual de bien cuando usted no está presente?","¿Cuántas veces al mes no cumple un plazo con un cliente? ¿Qué ocurre en esos casos?","¿Tiene algún proceso documentado? ¿Por qué sí o por qué no?"],
-    "Financiera y Administrativa": ["¿Sabe cuánto le cuesta producir cada servicio o producto que vende?","¿Cómo sabe si terminó el mes con ganancia o pérdida?","¿Cuántos meses de gastos podría cubrir si dejara de vender hoy?"],
-    "Personas y Cultura":      ["Si usted se ausentara 2 semanas, ¿qué pasaría con la operación?","¿Su equipo sabe exactamente qué se espera de cada uno? ¿Cómo lo comunica?","¿Cuándo fue la última vez que alguien del equipo recibió alguna capacitación?"],
-    "Sostenibilidad":          ["¿Qué haría si mañana ocurre un accidente en su empresa? ¿Tiene un protocolo?","¿Sus clientes grandes ya le han pedido certificaciones o prácticas ambientales?","¿Qué impacto tiene su operación en el barrio o comunidad donde trabaja?"],
-    "Digitalización":          ["¿Qué pasaría si perdiera el teléfono hoy? ¿Dónde están sus datos de clientes?","¿Qué tarea repetitiva consume más tiempo en su empresa y podría automatizarse?","¿Ha probado alguna herramienta digital en el último año? ¿Qué resultó y qué no?"],
-  };
-
   const accionesPorDim = {
     "Estratégica y Comercial":     ["Definir propuesta de valor en 1 página","Crear metas de venta mensuales","Identificar 2 nuevos clientes potenciales"],
     "Operativa y Calidad":         ["Documentar el proceso principal en un instructivo","Implementar checklist de entrega","Medir cumplimiento de plazos semanalmente"],
@@ -1420,9 +1453,9 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   );
 
   /* Foco recomendado */
-  const focoRecomendado = top2Debiles.length > 0
+  const focoRecomendado = focoCustom || (top2Debiles.length > 0
     ? `Priorizar la sesión en <strong>${top2Debiles[0].d.nombre}</strong>${top2Debiles[1] ? ` y <strong>${top2Debiles[1].d.nombre}</strong>` : ""}. ${top2Debiles[0].prom < 2.5 ? "Se detectan brechas críticas que pueden comprometer la continuidad operacional." : "Existen oportunidades concretas de mejora con impacto directo en los resultados."} Se recomienda comenzar con preguntas abiertas para explorar la perspectiva del empresario antes de proponer acciones.`
-    : `La empresa muestra un nivel de madurez general adecuado. El foco puede orientarse a consolidar las dimensiones más desarrolladas y planificar el crecimiento.`;
+    : `La empresa muestra un nivel de madurez general adecuado. El foco puede orientarse a consolidar las dimensiones más desarrolladas y planificar el crecimiento.`);
 
   /* Helper: barra visual */
   const barra = (pct, color, h=5) =>
@@ -1537,10 +1570,10 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
             <div style="font-size:10px;color:#1C2B3A;line-height:1.4;">${r.texto}</div>
           </div>
         </div>`).join("")}
-      ${infoGeneral.observaciones ? `
+      ${(notaCustom || infoGeneral.observaciones) ? `
         <div style="background:#FFFBF0;border-radius:6px;padding:7px 9px;border-left:2px solid #E8A020;margin-top:4px;">
           <div style="font-size:8px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">🔒 Nota del consultor</div>
-          <div style="font-size:10px;color:#1C2B3A;line-height:1.4;">${infoGeneral.observaciones}</div>
+          <div style="font-size:10px;color:#1C2B3A;line-height:1.4;">${notaCustom || infoGeneral.observaciones}</div>
         </div>` : ""}
     </div>
   </div>
@@ -1596,36 +1629,12 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
         </div>` : ""}
     </div>
 
-    <!-- Preguntas sugeridas -->
+    <!-- Síntesis diagnóstica -->
     <div>
-      <div style="font-size:8px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">💬 Preguntas sugeridas para la conversación</div>
-      ${top2Debiles.length > 0 ? top2Debiles.map(({ d }) => {
-        const pregs = preguntasMentoria[d.nombre] || [];
-        return pregs.length ? `
-          <div style="margin-bottom:9px;">
-            <div style="font-size:9px;font-weight:700;color:${d.acento};margin-bottom:4px;">${d.icono} ${d.nombre}</div>
-            ${pregs.map(q => `
-              <div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px;padding:5px 8px;background:#F5F7FA;border-radius:5px;">
-                <span style="color:${pColor};font-size:11px;margin-top:1px;flex-shrink:0;">›</span>
-                <span style="font-size:10px;color:#1C2B3A;line-height:1.5;">${q}</span>
-              </div>`).join("")}
-          </div>` : "";
-      }).join("") : `
-        <div style="margin-bottom:9px;">
-          <div style="font-size:9px;font-weight:700;color:#3BAD8A;margin-bottom:4px;">Para empresas con madurez consolidada</div>
-          ${["¿Cuál es el mayor obstáculo para seguir creciendo?",
-             "¿Qué capacidades necesita desarrollar su equipo en los próximos 12 meses?",
-             "¿Tiene identificadas oportunidades de nuevos mercados o clientes?"].map(q => `
-            <div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px;padding:5px 8px;background:#F5F7FA;border-radius:5px;">
-              <span style="color:#3BAD8A;font-size:11px;margin-top:1px;flex-shrink:0;">›</span>
-              <span style="font-size:10px;color:#1C2B3A;line-height:1.5;">${q}</span>
-            </div>`).join("")}
-        </div>`}
-
       ${interp ? `
-        <div style="background:${pColorLight};border-radius:6px;padding:8px 10px;border-left:3px solid ${pColor};margin-top:3px;">
-          <div style="font-size:8px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">📝 Síntesis diagnóstica</div>
-          <p style="font-size:9px;color:#1C2B3A;line-height:1.6;">${interp.narrativa}</p>
+        <div style="background:${pColorLight};border-radius:7px;padding:10px 13px;border-left:3px solid ${pColor};">
+          <div style="font-size:8px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">📝 Síntesis diagnóstica</div>
+          <p style="font-size:10px;color:#1C2B3A;line-height:1.65;">${sintesisCustom || interp.narrativa}</p>
         </div>` : ""}
     </div>
   </div>
@@ -2142,8 +2151,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
 </table>
 <div style="text-align:center;font-size:8px;color:#5A7A9A;margin-top:8px">Generado por CIDERE Biobío · Sistema de Diagnóstico · ${fecha}</div>
 </body></html>`;
-                  const w=window.open("","_blank");
-                  if(w){w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),600);}
+                  openPDF(html);
                   else alert("Permite ventanas emergentes para este sitio e intenta de nuevo.");
                 }} style={{ padding:"10px 18px",background:`${C.verde}12`,border:`1px solid ${C.verde}44`,borderRadius:8,color:C.verde,fontSize:13,fontWeight:700,cursor:"pointer" }}>⬇ Descargar Ficha</button>
               </div>
