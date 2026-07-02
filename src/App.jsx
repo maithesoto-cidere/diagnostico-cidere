@@ -1032,6 +1032,18 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
   const [focoEditado, setFocoEditado] = useState("");
   const [sintesisEditada, setSintesisEditada] = useState("");
   const [notaMentorEditada, setNotaMentorEditada] = useState("");
+  const fichaRef = React.useRef(null);
+
+  const exportarFichaEditable = () => {
+    if (!fichaRef.current) return;
+    const css = `@page{size:A4 portrait;margin:12mm 14mm}
+html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;background:#fff}
+*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+[contenteditable]{outline:none!important;border:none!important}
+@media print{button,.no-print{display:none!important}}`;
+    const html = \`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Ficha</title><style>\${css}</style></head><body>\${fichaRef.current.innerHTML}</body></html>\`;
+    openPDF(html);
+  };
 
   const pgE = pglobal(dims, datosE||{});
   const pgS = tieneS ? pglobal(dims, Object.keys(datosS||{}).length>0 ? datosS : datosE) : null;
@@ -1095,6 +1107,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
             openPDF(htmlFinal);
           }} style={{ padding:"9px 18px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>⬇ Exportar PDF</button>
+          <button onClick={exportarFichaEditable} style={{ padding:"9px 18px", background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>✏️ Editar y exportar</button>
           {showMentorModal && (
             <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.75)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShowMentorModal(false)}>
               <div style={{background:"#fff",borderRadius:14,padding:26,width:"100%",maxWidth:480,boxShadow:"0 24px 72px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
@@ -1151,7 +1164,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
 
       {/* Contenido scrollable */}
       <div style={{ flex:1, overflowY:"auto", background:C.fondo, padding:"28px 0" }}>
-        <div style={{ maxWidth:920, margin:"0 auto", padding:"0 24px" }}>
+        <div ref={fichaRef} style={{ maxWidth:920, margin:"0 auto", padding:"0 24px" }}>
 
           {(tab==="inicial" || tab==="final") && (
             <>
@@ -1169,7 +1182,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
                   ].map(([l,v])=>(
                     <div key={l}>
                       <div style={{ fontSize:10, color:C.grisCl, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:3 }}>{l}</div>
-                      <div style={{ fontSize:14, color:C.oscuro, fontWeight:600 }}>{v}</div>
+                      <div contentEditable suppressContentEditableWarning style={{ fontSize:14, color:C.oscuro, fontWeight:600, outline:"none", borderBottom:"1px dashed transparent", cursor:"text" }} onFocus={e=>e.target.style.borderBottomColor="#2B7BBF"} onBlur={e=>e.target.style.borderBottomColor="transparent"}>{v}</div>
                     </div>
                   ))}
                 </div>
@@ -1660,70 +1673,144 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   const logoCidere = CIDERE_LOGO_B64;
   const logoEmpresaPrograma = programa?.logoUrl||"";
   const pColor = programa?.color || "#2B7BBF";
-  const pColorLight = pColor + "22";
   const pg = pglobal(dims, datos||{});
   const nivel = pg!==null ? getNivel(pg) : null;
   const interp = generarInterpretacion(dims, datos||{});
   const fecha = new Date().toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric"});
-  const filas = dims.map(d=>{
-    const p = pdim(d,datos||{}); const n = p!==null?getNivel(p):null; const pct = p!==null?a5to100(p):0;
-    return `<tr><td style="padding:6px 10px;border-bottom:1px solid #DDE6EF;font-size:11px">${d.icono} ${d.nombre}</td><td style="padding:6px 10px;border-bottom:1px solid #DDE6EF;text-align:center"><span style="font-weight:bold;color:${n?n.color:"#999"}">${pct}%</span></td><td style="padding:6px 10px;border-bottom:1px solid #DDE6EF;text-align:center">${n?`<span style="background:${n.color}22;color:${n.color};font-weight:bold;padding:3px 10px;border-radius:4px;font-size:12px">${n.label}</span>`:"—"}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-size:12px;color:#5A7A9A">${inds?.[d.id]||"—"}</td></tr>`;
-  }).join("");
-  const barras = dims.map(d=>{
-    const p = pdim(d,datos||{}); const pct = p!==null?a5to100(p):0; const n = p!==null?getNivel(p):NV_CFG[0];
-    return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:rgba(255,255,255,0.9)">${d.nombre}</span><span style="font-size:11px;font-weight:bold;color:#ffffff">${pct}%</span></div><div style="height:5px;background:rgba(255,255,255,0.2);border-radius:3px"><div style="height:100%;width:${pct}%;background:rgba(255,255,255,0.9);border-radius:3px"></div></div></div>`;
-  }).join("");
-  const fortalezasHTML = interp ? interp.fortalezas.map(f=>`<li>${f.d.icono} ${f.d.nombre} (${a5to100(f.prom)}%)</li>`).join("") : "";
-  const brechasHTML = interp ? interp.brechas.map(f=>`<li>${f.d.icono} ${f.d.nombre} (${a5to100(f.prom)}%)</li>`).join("") : "";
-  const prioridadesHTML = interp ? interp.prioritarias.map(f=>`<li>${f.d.icono} ${f.d.nombre}</li>`).join("") : "";
 
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Ficha – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4 portrait;margin:12mm 14mm}
-html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
-h1,h2{margin:0}
-ul{margin:4px 0;padding-left:16px}
-li{font-size:11px;margin-bottom:2px}
-table{width:100%;border-collapse:collapse}
-.page-break{page-break-before:always;break-before:always}
-@media screen{body{max-width:210mm;padding:10mm;box-shadow:0 0 20px rgba(0,0,0,0.15)}}
-@media print{
-  html,body{width:auto;max-width:none;padding:0;box-shadow:none}
-  button,.no-print{display:none!important}
-  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-}</style></head><body>
-<div style="background:linear-gradient(135deg,#1A2E45,${pColor});color:#fff;padding:14px 20px;border-radius:6px;margin-bottom:10px;">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-    <div style="display:flex;align-items:center;gap:12px">
-      ${logoCidere?`<img src="${logoCidere}" style="height:36px;object-fit:contain" alt="CIDERE"/>`:`<span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:1px">CIDERE Biobío</span>`}
-      ${logoEmpresaPrograma?`<div style="width:1px;height:36px;background:rgba(255,255,255,0.3)"></div><img src="${logoEmpresaPrograma}" style="height:36px;object-fit:contain;background:rgba(255,255,255,0.9);border-radius:4px;padding:2px 6px" alt="${programa?.nombre||''}"/>`:""}
+  const CSS = `
+    @page{size:A4 portrait;margin:14mm 16mm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
+    html,body{width:210mm;margin:0 auto;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}
+    h1,h2,h3,p{margin:0}
+    table{width:100%;border-collapse:collapse}
+    @media screen{body{max-width:210mm;padding:10mm;box-shadow:0 0 30px rgba(0,0,0,0.12)}}
+    @media print{button,.no-print{display:none!important}body{padding:0;box-shadow:none}}
+  `;
+
+  // ── Sección: dimensiones detalladas ──
+  const dimCards = dims.map(d => {
+    const p = pdim(d, datos||{}); const n = p!==null?getNivel(p):null; const pct = p!==null?a5to100(p):0;
+    const resp = d.preguntas.map(q => {
+      const val = (datos||{})[q.id]; if(!val) return "";
+      const nq = NV_CFG[val-1]; const pq = Math.round((val/5)*100);
+      return `<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start;padding:6px 0;border-bottom:1px solid #F0F4F8;">
+        <div>
+          <div style="font-size:9.5px;font-weight:600;color:#1C2B3A;margin-bottom:2px;">${q.criterio}</div>
+          <div style="font-size:9px;color:#5A7A9A;line-height:1.4;">${q.niveles[val-1]||""}</div>
+        </div>
+        <span style="font-size:9px;font-weight:700;color:${nq.color};background:${nq.color}15;padding:2px 8px;border-radius:4px;white-space:nowrap;">${nq.label}</span>
+      </div>`;
+    }).join("");
+    return `
+    <div style="margin-bottom:14px;border:1px solid #E8EFF5;border-radius:10px;overflow:hidden;border-left:4px solid ${d.acento};">
+      <div style="padding:10px 14px;background:#F8FAFC;display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:16px;">${d.icono}</span>
+          <div>
+            <div style="font-size:11.5px;font-weight:700;color:#1C2B3A;">${d.nombre}</div>
+            ${inds?.[d.id] ? `<div style="font-size:9px;color:#5A7A9A;margin-top:1px;">${d.indicadorObjetivo.label}: <strong>${inds[d.id]}</strong></div>` : ""}
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:20px;font-weight:800;color:${n?n.color:'#999'};">${pct}%</div>
+          ${n?`<div style="font-size:9px;font-weight:700;color:${n.color};">${n.label}</div>`:""}
+        </div>
+      </div>
+      <div style="height:4px;background:#EEF3F8;"><div style="height:100%;width:${pct}%;background:${d.acento};"></div></div>
+      ${resp ? `<div style="padding:8px 14px;">${resp}</div>` : ""}
+    </div>`;
+  }).join("");
+
+  const fortalezasItems = interp ? interp.fortalezas.map(f=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><span style="color:#3BAD8A;font-weight:700;">✓</span><span style="font-size:10px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre} <span style="color:#3BAD8A;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`).join("") : "";
+  const brechasItems = interp ? interp.brechas.map(f=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><span style="color:#E67E22;font-weight:700;">▲</span><span style="font-size:10px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre} <span style="color:#E67E22;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`).join("") : "";
+  const dimBarras = dims.map(d => {
+    const p = pdim(d,datos||{}); const pct=p!==null?a5to100(p):0; const n=p!==null?getNivel(p):null;
+    return `<div style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+        <span style="font-size:10px;color:rgba(255,255,255,0.9);">${d.icono} ${d.nombre}</span>
+        <span style="font-size:10px;font-weight:700;color:#fff;">${pct}%</span>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,0.15);border-radius:3px;">
+        <div style="height:100%;width:${pct}%;background:${n?n.color:'rgba(255,255,255,0.7)'};border-radius:3px;"></div>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+  <title>${infoGeneral.empresa||"Ficha"} · Diagnóstico CIDERE</title>
+  <style>${CSS}</style>
+  </head><body>
+
+  <!-- ══ ENCABEZADO ══ -->
+  <div style="background:#1A2E45;color:#fff;border-radius:10px;padding:16px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      ${logoCidere?`<img src="${logoCidere}" style="height:38px;object-fit:contain;" alt="CIDERE"/>`:`<span style="font-size:15px;font-weight:800;">CIDERE Biobío</span>`}
+      ${logoEmpresaPrograma?`<div style="width:1px;height:38px;background:rgba(255,255,255,0.25);"></div><img src="${logoEmpresaPrograma}" style="height:38px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:5px;padding:2px 8px;" alt="${programa?.nombre||''}"/>`:""}
+      <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:14px;">
+        <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:3px;">${programa?.nombre||"Programa"} · Diagnóstico de Capacidades</div>
+        <div style="font-size:16px;font-weight:800;">${esSalida?"📊 Informe Final":"📋 Informe Inicial"}</div>
+      </div>
     </div>
-    <div style="text-align:right"><div style="font-size:10px;color:#90C8F0">Fecha</div><div style="font-size:13px;font-weight:bold">${fecha}</div></div>
+    <div style="text-align:right;">
+      <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;">Fecha</div>
+      <div style="font-size:13px;font-weight:700;color:#fff;">${fecha}</div>
+    </div>
   </div>
-  <div style="font-size:10px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase;margin-bottom:3px">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div>
-  <div style="font-size:16px;font-weight:bold">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</div>
-</div>
-<div style="background:#F5F7FA;border-radius:6px;padding:10px;margin-bottom:10px;display:flex;align-items:center;gap:16px">
-  ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:44px;object-fit:contain;background:#fff;border-radius:6px;padding:3px 8px;border:1px solid #DDE6EF" alt="${infoGeneral.empresa}"/>`:""}
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;flex:1">
-    <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Empresa</div><strong style="font-size:13px">${infoGeneral.empresa||"—"}</strong></div>
-    <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Representante</div><span style="font-size:13px">${infoGeneral.respondente||"—"}</span></div>
-    <div><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Cargo</div><span style="font-size:13px">${infoGeneral.cargo||"—"}</span></div>
+
+  <!-- ══ EMPRESA ══ -->
+  <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:13px 16px;margin-bottom:14px;display:flex;align-items:center;gap:14px;">
+    ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:44px;object-fit:contain;border-radius:7px;padding:2px 7px;border:1px solid #DDE6EF;" alt="${infoGeneral.empresa}"/>`:""}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;flex:1;">
+      ${[["Empresa",infoGeneral.empresa||"—"],["Representante",infoGeneral.respondente||"—"],["Cargo",infoGeneral.cargo||"—"],["Rubro",infoGeneral.rubro||"—"]].map(([l,v])=>`
+        <div>
+          <div style="font-size:8px;color:#8A9BB0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">${l}</div>
+          <div style="font-size:11px;font-weight:700;color:#1C2B3A;">${v}</div>
+        </div>`).join("")}
+    </div>
   </div>
-</div>
-<div style="background:linear-gradient(135deg,#1A2E45,${pColor});border-radius:6px;padding:12px 16px;margin-bottom:10px;display:flex;align-items:center;gap:16px">
-  <div style="text-align:center;min-width:100px"><div style="font-size:9px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase">Puntaje General</div><div style="font-size:26px;font-weight:bold;color:${nivel?nivel.color:"#fff"}">${pg!==null?a5to100(pg):"—"}%</div>${nivel?`<div style="font-size:11px;color:${nivel.color};font-weight:bold">${nivel.label}</div>`:""}</div>
-  <div style="flex:1;border-left:1px solid rgba(255,255,255,0.2);padding-left:20px">${barras}</div>
-</div>
-<table style="width:100%;border-collapse:collapse;background:#F8FAFC;border-radius:6px;overflow:hidden;margin-bottom:10px">
-<thead><tr style="background:#EEF3F8"><th style="padding:9px 14px;text-align:left;font-size:10px;color:#5A7A9A;text-transform:uppercase">Dimensión</th><th style="padding:9px 14px;text-align:center;font-size:10px;color:#5A7A9A;text-transform:uppercase">Puntaje</th><th style="padding:9px 14px;text-align:center;font-size:10px;color:#5A7A9A;text-transform:uppercase">Nivel</th><th style="padding:9px 14px;text-align:center;font-size:10px;color:#5A7A9A;text-transform:uppercase">Indicador</th></tr></thead>
-<tbody>${filas}</tbody></table>
-${interp?`<div style="background:#F5F7FA;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:11px;line-height:1.5;color:#1C2B3A">${interp.narrativa}</div>`:""}
-${interp?`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-  <div style="background:#EAF7F2;border-radius:6px;padding:8px"><div style="font-size:10px;font-weight:bold;color:#3BAD8A;margin-bottom:4px">✓ Fortalezas</div><ul>${fortalezasHTML}</ul></div>
-  <div style="background:#FFF3E8;border-radius:6px;padding:8px"><div style="font-size:10px;font-weight:bold;color:#D17A1F;margin-bottom:4px">⚠ Brechas</div><ul>${brechasHTML}</ul></div>
-  <div style="background:${pColorLight};border-radius:6px;padding:8px"><div style="font-size:10px;font-weight:bold;color:${pColor};margin-bottom:4px">🎯 Prioridades</div><ul>${prioridadesHTML}</ul></div>
-</div>`:""}
-<div style="text-align:center;font-size:9px;color:#5A7A9A">Generado por CIDERE Biobío · Sistema de Diagnóstico de Capacidades · ${fecha}</div>
-</body></html>`;
+
+  <!-- ══ RESUMEN EJECUTIVO ══ -->
+  <div style="background:#1A2E45;border-radius:10px;padding:16px 20px;margin-bottom:14px;display:grid;grid-template-columns:130px 1fr;gap:20px;align-items:start;">
+    <div style="text-align:center;border-right:1px solid rgba(255,255,255,0.15);padding-right:20px;">
+      <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Madurez general</div>
+      <div style="font-size:44px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
+      ${nivel?`<div style="font-size:11px;font-weight:700;color:${nivel.color};margin-top:4px;">${nivel.label}</div>`:""}
+      <div style="margin-top:8px;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
+        <div style="height:100%;width:${pg!==null?a5to100(pg):0}%;background:${nivel?nivel.color:"#fff"};border-radius:2px;"></div>
+      </div>
+    </div>
+    <div>${dimBarras}</div>
+  </div>
+
+  <!-- ══ SÍNTESIS + FORTALEZAS + BRECHAS ══ -->
+  ${interp?`
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:11px 13px;">
+      <div style="font-size:8px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">📝 Síntesis</div>
+      <p style="font-size:10px;color:#1C2B3A;line-height:1.6;">${interp.narrativa}</p>
+    </div>
+    <div style="background:#EAF7F2;border:1px solid #C5EAD8;border-radius:8px;padding:11px 13px;">
+      <div style="font-size:8px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">✓ Fortalezas</div>
+      ${fortalezasItems}
+    </div>
+    <div style="background:#FFF4EC;border:1px solid #F5D5B0;border-radius:8px;padding:11px 13px;">
+      <div style="font-size:8px;font-weight:700;color:#D17A1F;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">⚠ Áreas a reforzar</div>
+      ${brechasItems}
+    </div>
+  </div>`:""}
+
+  <!-- ══ DETALLE POR DIMENSIÓN ══ -->
+  <div style="font-size:8px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;border-top:2px solid #E4EBF2;padding-top:12px;">Detalle por dimensión</div>
+  ${dimCards}
+
+  <!-- ══ PIE ══ -->
+  <div style="border-top:1px solid #E4EBF2;padding-top:8px;margin-top:4px;display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:8px;color:#A0B0C0;">Documento generado por CIDERE Biobío · Sistema de Diagnóstico de Capacidades</span>
+    <span style="font-size:8px;color:#A0B0C0;">${fecha}</span>
+  </div>
+
+  </body></html>`;
 }
 
 function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) {
@@ -2270,6 +2357,8 @@ export default function App() {
   const [proyectoActivo, setProyectoActivo] = useState(null);
   const [diagActivo, setDiagActivo] = useState(null); // {diag, esNuevo}
   const [dims, setDims] = useState(DIMS_BASE);
+  const [showBackup, setShowBackup] = useState(false);
+  const [importError, setImportError] = useState("");
 
   useEffect(()=>{
     (async()=>{
@@ -2332,6 +2421,41 @@ export default function App() {
     setDiagActivo({diag:recFinal,esNuevo:false});
   };
 
+  const exportarBackup = () => {
+    const backup = {
+      version: "1.0",
+      fecha: new Date().toISOString(),
+      proyectos,
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backup-cidere-${new Date().toLocaleDateString("es-CL").replace(/\//g,"-")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importarBackup = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.proyectos || !Array.isArray(data.proyectos)) throw new Error("Formato inválido");
+        await saveProyectos(data.proyectos);
+        setShowBackup(false);
+        setImportError("");
+        alert(`✓ Backup restaurado correctamente. ${data.proyectos.length} programa(s) importado(s).`);
+      } catch(err) {
+        setImportError("Archivo inválido. Asegúrate de importar un backup exportado desde esta aplicación.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
   if(!logueado) return <PantallaLogin onOk={()=>setLogueado(true)}/>;
   if(cargando) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.fondo,color:C.gris}}>Cargando…</div>;
 
@@ -2361,9 +2485,31 @@ export default function App() {
           )}
         </div>
         <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-          {diagActivo&&<span style={{ fontSize:12,color:"rgba(255,255,255,0.4)" }}>Programa Proveedores Locales</span>}
+          <button onClick={()=>{setShowBackup(true);setImportError("");}} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>💾 Backup</button>
           <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff" }}>C</div>
         </div>
+        {showBackup && (
+          <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShowBackup(false)}>
+            <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:420,boxShadow:"0 24px 72px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:11,color:"#637D92",textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>Gestión de datos</div>
+              <h2 style={{fontSize:18,fontWeight:800,color:"#1C2B3A",margin:"0 0 6px 0"}}>Backup</h2>
+              <p style={{fontSize:13,color:"#637D92",margin:"0 0 20px 0"}}>Exporta toda la información como respaldo, o importa un backup previo para restaurar tus datos.</p>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <button onClick={exportarBackup} style={{padding:"12px 16px",background:"linear-gradient(135deg,#2B7BBF,#1A5A9A)",border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",textAlign:"left"}}>
+                  ⬇ Exportar backup
+                  <div style={{fontSize:11,fontWeight:400,opacity:0.8,marginTop:2}}>Descarga un archivo .json con todos tus programas y diagnósticos</div>
+                </button>
+                <label style={{padding:"12px 16px",background:"#F5F7FA",border:"2px dashed #DDE6EF",borderRadius:10,color:"#1C2B3A",fontSize:14,fontWeight:700,cursor:"pointer",display:"block"}}>
+                  ⬆ Importar backup
+                  <div style={{fontSize:11,fontWeight:400,color:"#637D92",marginTop:2}}>Selecciona un archivo .json exportado anteriormente</div>
+                  <input type="file" accept=".json" style={{display:"none"}} onChange={importarBackup}/>
+                </label>
+                {importError && <div style={{padding:"10px 14px",background:"#FFF0F0",border:"1px solid #fcc",borderRadius:8,color:"#E74C3C",fontSize:12}}>{importError}</div>}
+              </div>
+              <button onClick={()=>setShowBackup(false)} style={{marginTop:16,width:"100%",padding:"10px",border:"1px solid #DDE6EF",borderRadius:8,background:"transparent",color:"#637D92",cursor:"pointer",fontSize:13}}>Cerrar</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* BODY */}
