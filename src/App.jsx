@@ -479,6 +479,8 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
 function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver }) {
   const [filtro, setFiltro] = useState("");
   const [vistaTab, setVistaTab] = useState("dashboard");
+  const [filtroEmpresa, setFiltroEmpresa] = useState("todas");
+  const [tooltip, setTooltip] = useState(null); // {x,y,text}
   const pColor = programa.color || C.azul;
   const diags = (programa.diagnosticos||[]).filter(d=>!filtro||(d.infoGeneral?.empresa||"").toLowerCase().includes(filtro.toLowerCase()));
   return (
@@ -518,11 +520,14 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
         {/* ── DASHBOARD ── */}
         {vistaTab==="dashboard" && (() => {
-          const ds = programa.diagnosticos||[];
+          const ds = (filtroEmpresa==="todas"
+            ? programa.diagnosticos||[]
+            : (programa.diagnosticos||[]).filter(d=>d.infoGeneral?.empresa===filtroEmpresa));
+          const dsAll = programa.diagnosticos||[];
+          const todasEmpresas = [...new Set(dsAll.map(d=>d.infoGeneral?.empresa||"").filter(Boolean))];
           const empresas = [...new Set(ds.map(d=>d.infoGeneral?.empresa||"").filter(Boolean))];
           const provsConAmbos = empresas.filter(e=>ds.some(d=>d.infoGeneral?.empresa===e&&d.tipo==="entrada")&&ds.some(d=>d.infoGeneral?.empresa===e&&d.tipo==="salida"));
 
-          // Promedio global de entradas
           const entradasConPG = ds.filter(d=>d.tipo==="entrada").map(d=>({
             empresa: d.infoGeneral?.empresa||"Sin nombre",
             consultor: d.infoGeneral?.consultor||"—",
@@ -535,7 +540,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
           const pgPromedio = entradasConPG.length ? entradasConPG.reduce((a,x)=>a+x.pg,0)/entradasConPG.length : null;
           const nivelPromedio = pgPromedio!==null?getNivel(pgPromedio):null;
 
-          // Promedio por dimensión
           const dimPromedios = dims.map(dim=>{
             const vals = ds.filter(d=>d.tipo==="entrada").map(d=>pdim(dim,d.datosEntrada||{})).filter(v=>v!==null);
             return { dim, prom: vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null };
@@ -543,8 +547,183 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
           const mejorDim = [...dimPromedios].filter(x=>x.prom!==null).sort((a,b)=>b.prom-a.prom)[0];
           const peorDim  = [...dimPromedios].filter(x=>x.prom!==null).sort((a,b)=>a.prom-b.prom)[0];
 
+          // Función exportar dashboard
+          const exportarDashboard = () => {
+            const pDark = "#1A2E45";
+            const fecha = new Date().toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric"});
+            const logoB64 = CIDERE_LOGO_B64;
+
+            const kpiCards = [
+              {l:"Proveedores evaluados", v:entradasConPG.length, c:pColor},
+              {l:"Puntaje promedio", v:pgPromedio!==null?`${a5to100(pgPromedio)}%`:"—", c:pgPromedio!==null?getNivel(pgPromedio).color:"#999"},
+              {l:"Nivel promedio", v:nivelPromedio?.label||"—", c:nivelPromedio?.color||"#999"},
+              {l:"Con diagnóstico final", v:provsConAmbos.length, c:"#9B59B6"},
+              {l:"Mejor dimensión", v:mejorDim?mejorDim.dim.nombre:"—", c:"#3BAD8A"},
+              {l:"Dimensión a reforzar", v:peorDim?peorDim.dim.nombre:"—", c:"#E74C3C"},
+            ].map(s=>`<div style="background:#fff;border:1px solid ${s.c}33;border-radius:10px;padding:14px 12px;text-align:center;flex:1;">
+              <div style="font-size:8px;color:#8A9BB0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">${s.l}</div>
+              <div style="font-size:20px;font-weight:800;color:${s.c};line-height:1.2;">${s.v}</div>
+            </div>`).join("");
+
+            const barrasEmpresas = entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+              const nv=getNivel(p.pg); const pct=a5to100(p.pg);
+              const pgF=p.pgS; const pctF=pgF!==null?a5to100(pgF):null;
+              return `<div style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                  <span style="font-size:10px;font-weight:600;color:#1C2B3A;">${i+1}. ${p.empresa}</span>
+                  <div style="display:flex;gap:8px;">
+                    <span style="font-size:10px;font-weight:700;color:${nv.color};">${pct}%</span>
+                    ${pctF!==null?`<span style="font-size:10px;font-weight:700;color:#3BAD8A;">→ ${pctF}%</span>`:""}
+                  </div>
+                </div>
+                <div style="position:relative;height:12px;background:#F0F4F8;border-radius:6px;overflow:hidden;">
+                  <div style="position:absolute;left:0;top:0;width:${pct}%;height:100%;background:${pColor}88;border-radius:6px;"></div>
+                  ${pctF!==null?`<div style="position:absolute;left:0;top:0;width:${pctF}%;height:100%;background:#3BAD8A;border-radius:6px;opacity:0.75;"></div>`:""}
+                </div>
+              </div>`;
+            }).join("");
+
+            const dimBarrasExport = dimPromedios.map(({dim,prom})=>{
+              const n=prom!==null?getNivel(prom):null; const pct=prom!==null?a5to100(prom):0;
+              return `<div style="margin-bottom:9px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                  <span style="font-size:10px;color:rgba(255,255,255,0.9);">${dim.icono} ${dim.nombre}</span>
+                  <span style="font-size:10px;font-weight:700;color:${n?n.color:"#fff"};">${pct}%</span>
+                </div>
+                <div style="height:7px;background:rgba(255,255,255,0.15);border-radius:4px;">
+                  <div style="height:100%;width:${pct}%;background:${n?n.color:"rgba(255,255,255,0.7)"};border-radius:4px;"></div>
+                </div>
+              </div>`;
+            }).join("");
+
+            const tablaComparativa = entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+              const nv=getNivel(p.pg);
+              const pgF=p.pgS; const delta=pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
+              return `<tr style="border-bottom:1px solid #EEF3F8;">
+                <td style="padding:8px 12px;font-size:10.5px;font-weight:600;color:#1C2B3A;">${i+1}. ${p.empresa}</td>
+                <td style="padding:8px 10px;text-align:center;font-size:11px;font-weight:800;color:${nv.color};">${a5to100(p.pg)}%</td>
+                <td style="padding:8px 10px;text-align:center;font-size:11px;font-weight:800;color:${pgF!==null?getNivel(pgF).color:"#ccc"};">${pgF!==null?`${a5to100(pgF)}%`:"—"}</td>
+                <td style="padding:8px 10px;text-align:center;font-size:11px;font-weight:700;color:${delta!==null?(delta>=0?"#16A085":"#E74C3C"):"#ccc"};">${delta!==null?`${delta>=0?"+":""}${delta} pts`:"—"}</td>
+                <td style="padding:8px 10px;text-align:center;"><span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;background:${p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0"};color:${p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"};">${p.estado||"Pendiente"}</span></td>
+              </tr>`;
+            }).join("");
+
+            const distribucionNiveles = (() => {
+              const conteo = {}; NV_CFG.forEach(n=>conteo[n.label]=0);
+              entradasConPG.forEach(p=>{const nv=getNivel(p.pg);conteo[nv.label]=(conteo[nv.label]||0)+1;});
+              const total=entradasConPG.length||1;
+              return NV_CFG.filter(nv=>conteo[nv.label]>0).map(nv=>{
+                const cnt=conteo[nv.label]; const pct=Math.round((cnt/total)*100);
+                return `<div style="margin-bottom:9px;">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                    <span style="font-size:10px;font-weight:600;color:#1C2B3A;">${nv.label}</span>
+                    <span style="font-size:10px;font-weight:700;color:${nv.color};">${cnt} empresa${cnt!==1?"s":""} · ${pct}%</span>
+                  </div>
+                  <div style="height:10px;background:#F0F4F8;border-radius:5px;overflow:hidden;">
+                    <div style="width:${pct}%;height:100%;background:${nv.color};border-radius:5px;"></div>
+                  </div>
+                </div>`;
+              }).join("");
+            })();
+
+            const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+            <title>Dashboard – ${programa.nombre}</title>
+            <style>
+              @page{size:A4 landscape;margin:10mm 12mm}
+              *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
+              html,body{font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff;margin:0;padding:0}
+              h1,h2,p{margin:0}
+              table{width:100%;border-collapse:collapse}
+              .page-break{page-break-before:always;break-before:always}
+              @media print{button,.no-print{display:none!important}}
+              @media screen{body{padding:10mm;max-width:297mm;margin:0 auto;box-shadow:0 0 30px rgba(0,0,0,0.1)}}
+            </style>
+            </head><body>
+
+            <!-- PÁGINA 1: PORTADA + KPIs + RADAR + COMPARATIVO -->
+
+            <!-- Encabezado -->
+            <div style="background:${pDark};color:#fff;border-radius:10px;padding:16px 22px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+              <div style="display:flex;align-items:center;gap:14px;">
+                ${logoB64?`<img src="${logoB64}" style="height:40px;object-fit:contain;" alt="CIDERE"/>`:"<span style='font-size:16px;font-weight:800;'>CIDERE Biobío</span>"}
+                <div style="border-left:1px solid rgba(255,255,255,0.2);padding-left:14px;">
+                  <div style="font-size:9px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:3px;">Informe de Resultados</div>
+                  <div style="font-size:20px;font-weight:800;">${programa.nombre}</div>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:9px;color:#90C8F0;">Generado el ${fecha}</div>
+                <div style="font-size:11px;font-weight:600;margin-top:2px;">${entradasConPG.length} proveedores evaluados</div>
+              </div>
+            </div>
+
+            <!-- KPIs -->
+            <div style="display:flex;gap:10px;margin-bottom:14px;">${kpiCards}</div>
+
+            <!-- Fila principal: Barras dimensiones + Ranking + Tabla -->
+            <div style="display:grid;grid-template-columns:220px 1fr 1fr;gap:12px;margin-bottom:14px;">
+
+              <!-- Barras por dimensión -->
+              <div style="background:${pDark};border-radius:10px;padding:14px 16px;">
+                <div style="font-size:9px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Promedio por dimensión</div>
+                ${dimBarrasExport}
+              </div>
+
+              <!-- Ranking -->
+              <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;padding:14px 16px;">
+                <div style="font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Ranking de proveedores ${provsConAmbos.length>0?"· Base → Final":""}</div>
+                ${barrasEmpresas}
+                ${provsConAmbos.length>0?`<div style="font-size:8.5px;color:#8A9BB0;margin-top:6px;">Barra izquierda = diagnóstico inicial · Barra verde = diagnóstico final</div>`:""}
+              </div>
+
+              <!-- Tabla comparativa -->
+              <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;">
+                <div style="padding:10px 14px;background:#F5F8FB;font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;">Comparativo proveedores</div>
+                <table>
+                  <thead><tr style="background:#EEF3F8;">
+                    <th style="padding:8px 12px;text-align:left;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;">Empresa</th>
+                    <th style="padding:8px 8px;text-align:center;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;">Base</th>
+                    <th style="padding:8px 8px;text-align:center;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;">Final</th>
+                    <th style="padding:8px 8px;text-align:center;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;">Variación</th>
+                    <th style="padding:8px 8px;text-align:center;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;">Estado</th>
+                  </tr></thead>
+                  <tbody>${tablaComparativa}</tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Distribución de niveles + pie -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+              <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;padding:14px 16px;">
+                <div style="font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Distribución de niveles</div>
+                ${distribucionNiveles}
+              </div>
+              <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 16px;grid-column:span 2;">
+                <div style="font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Escala de madurez</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                  ${NV_CFG.map(n=>`<div style="display:flex;align-items:center;gap:5px;"><div style="width:12px;height:12px;border-radius:3px;background:${n.color};"></div><span style="font-size:10px;color:#1C2B3A;font-weight:600;">${n.label}</span><span style="font-size:9.5px;color:#8A9BB0;">${n.rango||""}</span></div>`).join("")}
+                </div>
+              </div>
+            </div>
+
+            <div style="text-align:center;font-size:8px;color:#A0B0C0;margin-top:10px;border-top:1px solid #E4EBF2;padding-top:6px;">
+              CIDERE Biobío · ${programa.nombre} · Informe generado el ${fecha} · Confidencial
+            </div>
+
+            </body></html>`;
+
+            openPDF(html);
+          };
+
           return (
             <div>
+              {/* Tooltip global */}
+              {tooltip && (
+                <div style={{position:"fixed",left:tooltip.x+12,top:tooltip.y-8,background:"rgba(26,46,69,0.95)",color:"#fff",padding:"6px 10px",borderRadius:7,fontSize:11,fontWeight:600,zIndex:999,pointerEvents:"none",boxShadow:"0 4px 12px rgba(0,0,0,0.3)",maxWidth:200,lineHeight:1.4}}>
+                  {tooltip.text}
+                </div>
+              )}
+
               {entradasConPG.length===0 ? (
                 <div style={{ background:C.blanco, border:`2px dashed ${C.borde}`, borderRadius:14, padding:48, textAlign:"center" }}>
                   <div style={{ fontSize:36, marginBottom:8 }}>📊</div>
@@ -552,17 +731,39 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                 </div>
               ) : (
                 <>
+                  {/* Controles: filtro + exportar */}
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,gap:12}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:12,color:C.gris,fontWeight:600}}>Filtrar:</span>
+                      <select value={filtroEmpresa} onChange={e=>setFiltroEmpresa(e.target.value)}
+                        style={{padding:"7px 12px",border:`1px solid ${C.borde}`,borderRadius:8,background:C.blanco,color:C.oscuro,fontSize:12,cursor:"pointer",outline:"none"}}>
+                        <option value="todas">Todas las empresas ({todasEmpresas.length})</option>
+                        {todasEmpresas.map(e=><option key={e} value={e}>{e}</option>)}
+                      </select>
+                      {filtroEmpresa!=="todas" && <button onClick={()=>setFiltroEmpresa("todas")} style={{padding:"6px 10px",border:"none",borderRadius:6,background:`${C.azul}15`,color:C.azul,fontSize:12,cursor:"pointer",fontWeight:600}}>✕ Quitar filtro</button>}
+                    </div>
+                    <button onClick={exportarDashboard}
+                      style={{padding:"9px 18px",background:`linear-gradient(135deg,${pColor},${C.headerBg})`,border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7}}>
+                      📄 Exportar Dashboard PDF
+                    </button>
+                  </div>
+
                   {/* KPIs fila superior */}
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:10, marginBottom:20 }}>
                     {[
-                      {l:"Proveedores", v:entradasConPG.length, c:pColor},
-                      {l:"Puntaje promedio", v:pgPromedio!==null?`${a5to100(pgPromedio)}%`:"—", c:pgPromedio!==null?getNivel(pgPromedio).color:C.gris},
-                      {l:"Nivel promedio", v:nivelPromedio?.label||"—", c:nivelPromedio?.color||C.gris},
-                      {l:"Con comparativo", v:provsConAmbos.length, c:"#9B59B6"},
-                      {l:"Mejor dimensión", v:mejorDim?mejorDim.dim.nombre:"—", c:C.verde, small:true},
-                      {l:"A reforzar", v:peorDim?peorDim.dim.nombre:"—", c:"#E74C3C", small:true},
+                      {l:"Proveedores", v:entradasConPG.length, c:pColor, tip:"Total de proveedores con diagnóstico inicial"},
+                      {l:"Puntaje promedio", v:pgPromedio!==null?`${a5to100(pgPromedio)}%`:"—", c:pgPromedio!==null?getNivel(pgPromedio).color:C.gris, tip:"Promedio general de madurez"},
+                      {l:"Nivel promedio", v:nivelPromedio?.label||"—", c:nivelPromedio?.color||C.gris, tip:"Nivel de madurez promedio del programa"},
+                      {l:"Con comparativo", v:provsConAmbos.length, c:"#9B59B6", tip:"Empresas con diagnóstico inicial y final"},
+                      {l:"Mejor dimensión", v:mejorDim?mejorDim.dim.nombre:"—", c:C.verde, small:true, tip:mejorDim?`Puntaje promedio: ${a5to100(mejorDim.prom)}%`:""},
+                      {l:"A reforzar", v:peorDim?peorDim.dim.nombre:"—", c:"#E74C3C", small:true, tip:peorDim?`Puntaje promedio: ${a5to100(peorDim.prom)}%`:""},
                     ].map(s=>(
-                      <div key={s.l} style={{ background:C.blanco, border:`1px solid ${s.c}33`, borderRadius:10, padding:"12px 10px", textAlign:"center" }}>
+                      <div key={s.l}
+                        onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:s.tip})}
+                        onMouseLeave={()=>setTooltip(null)}
+                        style={{ background:C.blanco, border:`1px solid ${s.c}33`, borderRadius:10, padding:"12px 10px", textAlign:"center", cursor:"default", transition:"transform 0.15s,box-shadow 0.15s" }}
+                        onMouseOver={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 4px 16px ${s.c}22`;}}
+                        onMouseOut={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";setTooltip(null);}}>
                         <div style={{ fontSize:9, color:C.gris, textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>{s.l}</div>
                         <div style={{ fontSize:s.small?12:22, fontWeight:800, color:s.c, lineHeight:1.2 }}>{s.v}</div>
                       </div>
@@ -572,9 +773,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   {/* Fila principal: gráficos izquierda + tabla derecha */}
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
 
-                    {/* Izquierda: Radar promedio + barras por dimensión */}
+                    {/* Izquierda */}
                     <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                      {/* Radar promedio de todos los proveedores */}
+                      {/* Radar promedio */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Radar Promedio del Programa</div>
                         <div style={{ fontSize:11, color:C.grisCl, marginBottom:12 }}>Promedio de todos los proveedores evaluados</div>
@@ -583,10 +784,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                             const obj = {};
                             dims.forEach(d => {
                               const vals = ds.filter(x=>x.tipo==="entrada").map(x=>pdim(d,x.datosEntrada||{})).filter(v=>v!==null);
-                              if(vals.length) {
-                                // Crear datos fake por pregunta para el radar
-                                d.preguntas.forEach(p => { obj[p.id] = vals.reduce((a,b)=>a+b,0)/vals.length; });
-                              }
+                              if(vals.length) { d.preguntas.forEach(p => { obj[p.id] = vals.reduce((a,b)=>a+b,0)/vals.length; }); }
                             });
                             return obj;
                           })(),
@@ -594,28 +792,27 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         }]} size={220}/>
                       </div>
 
-                      {/* Gráfico barras horizontales: puntaje por empresa */}
+                      {/* Puntaje por empresa */}
                       {entradasConPG.length > 1 && (
                         <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
                           <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Puntaje por Empresa</div>
-                          <div style={{ fontSize:11, color:C.grisCl, marginBottom:12 }}>Barras ordenadas de mayor a menor</div>
+                          <div style={{ fontSize:11, color:C.grisCl, marginBottom:12 }}>Ordenado de mayor a menor</div>
                           <div style={{ position:"relative" }}>
-                            {/* Líneas de referencia */}
                             {[25,50,75,100].map(ref=>(
                               <div key={ref} style={{ position:"absolute", left:`${ref}%`, top:0, bottom:0, borderLeft:`1px dashed ${C.borde}`, zIndex:0 }}/>
                             ))}
                             {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
                               const nv=getNivel(p.pg); const pct=a5to100(p.pg);
-                              const dF=ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
-                              const pgF=dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
-                              const pctF=pgF!==null?a5to100(pgF):null;
+                              const pgF=p.pgS; const pctF=pgF!==null?a5to100(pgF):null;
                               return (
-                                <div key={i} style={{ marginBottom:10, position:"relative", zIndex:1 }}>
+                                <div key={i} style={{ marginBottom:10, position:"relative", zIndex:1 }}
+                                  onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${p.empresa}\nBase: ${pct}%${pctF!==null?" · Final: "+pctF+"%":""}${pctF!==null?" · Avance: +"+(pctF-pct)+"pts":""}`})}
+                                  onMouseLeave={()=>setTooltip(null)}>
                                   <div style={{ fontSize:11, color:C.oscuro, marginBottom:3, fontWeight:600 }}>{p.empresa}</div>
                                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                                     <div style={{ flex:1, position:"relative", height:18, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
-                                      <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}70`, borderRadius:4 }}/>
-                                      {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:4, opacity:0.8 }}/>}
+                                      <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}70`, borderRadius:4, transition:"width 0.4s" }}/>
+                                      {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:4, opacity:0.8, transition:"width 0.4s" }}/>}
                                     </div>
                                     <span style={{ fontSize:11, fontWeight:700, color:nv.color, minWidth:36 }}>{pct}%</span>
                                     {pctF!==null&&<span style={{ fontSize:11, fontWeight:700, color:C.verde, minWidth:36 }}>→{pctF}%</span>}
@@ -630,19 +827,21 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         </div>
                       )}
 
-                      {/* Barras por dimensión */}
+                      {/* Promedio por dimensión */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Promedio por Dimensión</div>
                         {dimPromedios.map(({dim,prom})=>{
                           const n=prom!==null?getNivel(prom):null; const pct=prom!==null?a5to100(prom):0;
                           return (
-                            <div key={dim.id} style={{ marginBottom:10 }}>
+                            <div key={dim.id} style={{ marginBottom:10 }}
+                              onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${dim.nombre}: ${pct}% · ${n?.label||"Sin datos"}`})}
+                              onMouseLeave={()=>setTooltip(null)}>
                               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
                                 <span style={{ fontSize:12, color:C.oscuro }}>{dim.icono} {dim.nombre}</span>
                                 <span style={{ fontSize:11, fontWeight:700, color:n?.color||C.gris }}>{prom!==null?`${pct}%`:"—"} {n?`· ${n.label}`:""}</span>
                               </div>
                               <div style={{ height:8, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
-                                <div style={{ width:`${pct}%`, height:"100%", background:n?.color||pColor, borderRadius:4 }}/>
+                                <div style={{ width:`${pct}%`, height:"100%", background:n?.color||pColor, borderRadius:4, transition:"width 0.4s" }}/>
                               </div>
                             </div>
                           );
@@ -650,7 +849,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       </div>
                     </div>
 
-                    {/* Derecha: tabla comparativa + ranking */}
+                    {/* Derecha */}
                     <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
                       {/* Tabla comparativa */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden" }}>
@@ -669,11 +868,11 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                             <tbody>
                               {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
                                 const nv=getNivel(p.pg);
-                                const dF = ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
-                                const pgF = dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
-                                const delta = pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
+                                const pgF=p.pgS; const delta=pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
                                 return (
-                                  <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}>
+                                  <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}
+                                    onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${p.empresa} · Consultor: ${p.consultor}`})}
+                                    onMouseLeave={()=>setTooltip(null)}>
                                     <td style={{ padding:"8px 12px", fontSize:12, color:C.oscuro, fontWeight:600 }}>{p.empresa}</td>
                                     <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:nv.color }}>{a5to100(p.pg)}%</td>
                                     <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:pgF!==null?getNivel(pgF).color:C.grisCl }}>{pgF!==null?`${a5to100(pgF)}%`:"—"}</td>
@@ -692,19 +891,20 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         </div>
                       </div>
 
-                      {/* Gráfico: Distribución de niveles de madurez */}
+                      {/* Distribución de niveles */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Distribución de Niveles</div>
                         {(() => {
-                          const conteo = {};
-                          NV_CFG.forEach(n => conteo[n.label] = 0);
+                          const conteo = {}; NV_CFG.forEach(n => conteo[n.label] = 0);
                           entradasConPG.forEach(p => { const nv=getNivel(p.pg); conteo[nv.label]=(conteo[nv.label]||0)+1; });
                           const total = entradasConPG.length || 1;
                           return NV_CFG.map((nv,i) => {
                             const cnt = conteo[nv.label]||0;
                             const pct = Math.round((cnt/total)*100);
                             return cnt > 0 ? (
-                              <div key={i} style={{ marginBottom:10 }}>
+                              <div key={i} style={{ marginBottom:10 }}
+                                onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${nv.label}: ${cnt} empresa${cnt!==1?"s":""} (${pct}%)`})}
+                                onMouseLeave={()=>setTooltip(null)}>
                                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
                                   <span style={{ fontSize:12, color:C.oscuro, fontWeight:600 }}>{nv.label}</span>
                                   <span style={{ fontSize:12, fontWeight:700, color:nv.color }}>{cnt} empresa{cnt!==1?"s":""} · {pct}%</span>
@@ -718,16 +918,16 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         })()}
                       </div>
 
-                      {/* Evolución / ranking visual */}
+                      {/* Ranking */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Ranking de Proveedores</div>
                         {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
                           const nv=getNivel(p.pg); const pct=a5to100(p.pg);
-                          const dF=ds.find(d=>d.tipo==="salida"&&d.infoGeneral?.empresa===p.empresa);
-                          const pgF=dF?pglobal(dims,dF.datosSalida||dF.datosEntrada||{}):null;
-                          const pctF=pgF!==null?a5to100(pgF):null;
+                          const pgF=p.pgS; const pctF=pgF!==null?a5to100(pgF):null;
                           return (
-                            <div key={i} style={{ marginBottom:12 }}>
+                            <div key={i} style={{ marginBottom:12 }}
+                              onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${p.empresa}\n${pct}%${pctF!==null?" → "+pctF+"% (+"+(pctF-pct)+" pts)":""}`})}
+                              onMouseLeave={()=>setTooltip(null)}>
                               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, alignItems:"center" }}>
                                 <span style={{ fontSize:12, color:C.oscuro, fontWeight:600 }}>{i+1}. {p.empresa}</span>
                                 <div style={{ display:"flex", gap:6, alignItems:"center" }}>
@@ -736,20 +936,20 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                                 </div>
                               </div>
                               <div style={{ position:"relative", height:10, background:C.fondo, borderRadius:5, overflow:"hidden" }}>
-                                <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}88`, borderRadius:5 }}/>
-                                {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:5, opacity:0.7 }}/>}
+                                <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}88`, borderRadius:5, transition:"width 0.4s" }}/>
+                                {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:5, opacity:0.7, transition:"width 0.4s" }}/>}
                               </div>
                             </div>
                           );
                         })}
-                        {provsConAmbos.length>0&&<div style={{ fontSize:11, color:C.grisCl, marginTop:8 }}>Barra oscura = base · barra verde = final</div>}
+                        {provsConAmbos.length>0&&<div style={{ fontSize:11, color:C.grisCl, marginTop:8 }}>Barra izquierda = base · barra verde = final</div>}
                       </div>
 
-                      {/* Contadores consultor/empresa */}
+                      {/* Contadores */}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                         <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:16 }}>
                           <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Por Consultor</div>
-                          {(()=>{ const m={}; ds.forEach(d=>{const c=d.infoGeneral?.consultor||"Sin asignar";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
+                          {(()=>{ const m={}; (programa.diagnosticos||[]).forEach(d=>{const c=d.infoGeneral?.consultor||"Sin asignar";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
                             <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.borde}`, fontSize:12 }}>
                               <span style={{ color:C.oscuro }}>👤 {k}</span>
                               <span style={{ fontWeight:800, color:pColor }}>{v}</span>
@@ -758,7 +958,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         </div>
                         <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:16 }}>
                           <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Por Modalidad</div>
-                          {(()=>{ const m={}; ds.forEach(d=>{const c=d.infoGeneral?.modalidad||"Sin definir";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
+                          {(()=>{ const m={}; (programa.diagnosticos||[]).forEach(d=>{const c=d.infoGeneral?.modalidad||"Sin definir";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
                             <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.borde}`, fontSize:12 }}>
                               <span style={{ color:C.oscuro }}>{k}</span>
                               <span style={{ fontWeight:800, color:C.verde }}>{v}</span>
@@ -1675,24 +1875,24 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   const fecha = new Date().toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric"});
 
   const CSS = `
-    @page{size:A4 portrait;margin:12mm 14mm}
+    @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
-    html,body{width:210mm;margin:0 auto;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10px;background:#fff}
+    html,body{width:186mm;margin:0 auto;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff;height:100%}
     h1,h2,h3,p{margin:0}
     table{width:100%;border-collapse:collapse}
-    @media screen{body{max-width:210mm;padding:8mm;box-shadow:0 0 30px rgba(0,0,0,0.12)}}
+    @media screen{body{width:210mm;max-width:210mm;padding:10mm;box-shadow:0 0 30px rgba(0,0,0,0.12)}}
     @media print{button,.no-print{display:none!important}body{padding:0;box-shadow:none}}
   `;
 
   const dimBarras = dims.map(d => {
     const p = pdim(d,datos||{}); const pct=p!==null?a5to100(p):0; const n=p!==null?getNivel(p):null;
-    return `<div style="margin-bottom:7px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-        <span style="font-size:9.5px;color:rgba(255,255,255,0.9);">${d.icono} ${d.nombre}</span>
-        <span style="font-size:9.5px;font-weight:700;color:#fff;">${pct}%</span>
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+        <span style="font-size:10.5px;color:rgba(255,255,255,0.9);">${d.icono} ${d.nombre}</span>
+        <span style="font-size:10.5px;font-weight:700;color:#fff;">${pct}%</span>
       </div>
-      <div style="height:5px;background:rgba(255,255,255,0.15);border-radius:3px;">
-        <div style="height:100%;width:${pct}%;background:${n?n.color:"rgba(255,255,255,0.7)"};border-radius:3px;"></div>
+      <div style="height:7px;background:rgba(255,255,255,0.15);border-radius:4px;">
+        <div style="height:100%;width:${pct}%;background:${n?n.color:"rgba(255,255,255,0.7)"};border-radius:4px;"></div>
       </div>
     </div>`;
   }).join("");
@@ -1701,21 +1901,21 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
     const p = pdim(d,datos||{}); const n=p!==null?getNivel(p):null; const pct=p!==null?a5to100(p):0;
     const ind = inds?.[d.id];
     return `<tr>
-      <td style="padding:7px 10px;border-bottom:1px solid #EEF3F8;font-size:10px;font-weight:600;">${d.icono} ${d.nombre}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:10px;font-weight:700;color:${n?n.color:"#999"};">${pct}%</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #EEF3F8;text-align:center;">${n?`<span style="background:${n.color}18;color:${n.color};font-weight:700;padding:2px 9px;border-radius:4px;font-size:9.5px;">${n.label}</span>`:"—"}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:9.5px;color:#5A7A9A;">${ind||"—"}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;font-size:11px;font-weight:600;">${d.icono} ${d.nombre}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:11px;font-weight:700;color:${n?n.color:"#999"};">${pct}%</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;">${n?`<span style="background:${n.color}18;color:${n.color};font-weight:700;padding:3px 11px;border-radius:4px;font-size:10.5px;">${n.label}</span>`:"—"}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:10.5px;color:#5A7A9A;">${ind||"—"}</td>
     </tr>`;
   }).join("");
 
   const fortalezasHTML = interp ? interp.fortalezas.map(f=>
-    `<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;"><span style="color:#3BAD8A;font-weight:700;font-size:11px;">✓</span><span style="font-size:9.5px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre} <span style="color:#3BAD8A;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
+    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:#3BAD8A;font-weight:700;font-size:12px;">✓</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre} <span style="color:#3BAD8A;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
   ).join("") : "";
   const brechasHTML = interp ? interp.brechas.map(f=>
-    `<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;"><span style="color:#E67E22;font-weight:700;font-size:11px;">▲</span><span style="font-size:9.5px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre} <span style="color:#E67E22;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
+    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:#E67E22;font-weight:700;font-size:12px;">▲</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre} <span style="color:#E67E22;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
   ).join("") : "";
   const prioridadesHTML = interp ? interp.prioritarias.map(f=>
-    `<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;"><span style="color:${pColor};font-weight:700;font-size:11px;">›</span><span style="font-size:9.5px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre}</span></div>`
+    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:${pColor};font-weight:700;font-size:12px;">›</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre}</span></div>`
   ).join("") : "";
 
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
@@ -1724,87 +1924,84 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   </head><body>
 
   <!-- ENCABEZADO -->
-  <div style="background:#1A2E45;color:#fff;border-radius:8px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
-    <div style="display:flex;align-items:center;gap:12px;">
-      ${logoCidere?`<img src="${logoCidere}" style="height:34px;object-fit:contain;" alt="CIDERE"/>`:`<span style="font-size:14px;font-weight:800;">CIDERE Biobío</span>`}
-      ${logoEmpresaPrograma?`<div style="width:1px;height:34px;background:rgba(255,255,255,0.25);"></div><img src="${logoEmpresaPrograma}" style="height:34px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:4px;padding:2px 7px;" alt="${programa?.nombre||''}"/>`:""}
-      <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:12px;">
-        <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:2px;">${programa?.nombre||"Programa"} · Diagnóstico de Capacidades</div>
-        <div style="font-size:15px;font-weight:800;">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</div>
+  <div style="background:#1A2E45;color:#fff;border-radius:10px;padding:14px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      ${logoCidere?`<img src="${logoCidere}" style="height:38px;object-fit:contain;" alt="CIDERE"/>`:`<span style="font-size:15px;font-weight:800;">CIDERE Biobío</span>`}
+      ${logoEmpresaPrograma?`<div style="width:1px;height:38px;background:rgba(255,255,255,0.25);"></div><img src="${logoEmpresaPrograma}" style="height:38px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:5px;padding:2px 8px;" alt="${programa?.nombre||''}"/>`:""}
+      <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:14px;">
+        <div style="font-size:8.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:3px;">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div>
+        <div style="font-size:17px;font-weight:800;">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</div>
       </div>
     </div>
     <div style="text-align:right;">
-      <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;">Fecha</div>
-      <div style="font-size:12px;font-weight:700;">${fecha}</div>
+      <div style="font-size:8.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;">Fecha</div>
+      <div style="font-size:13px;font-weight:700;">${fecha}</div>
     </div>
   </div>
 
-  <!-- EMPRESA + PUNTAJE -->
-  <div style="display:grid;grid-template-columns:1fr 200px;gap:10px;margin-bottom:10px;">
-    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:11px 14px;">
-      ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:36px;object-fit:contain;border-radius:5px;padding:2px 6px;border:1px solid #DDE6EF;margin-bottom:8px;" alt="${infoGeneral.empresa}"/><br/>`:""}
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
-        ${[["Empresa",infoGeneral.empresa||"—"],["Representante",infoGeneral.respondente||"—"],["Cargo",infoGeneral.cargo||"—"],["Rubro",infoGeneral.rubro||"—"]].map(([l,v])=>`
-          <div>
-            <div style="font-size:7.5px;color:#8A9BB0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">${l}</div>
-            <div style="font-size:10.5px;font-weight:700;color:#1C2B3A;">${v}</div>
-          </div>`).join("")}
-      </div>
-    </div>
-    <div style="background:#1A2E45;border-radius:8px;padding:11px 14px;text-align:center;">
-      <div style="font-size:7.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Madurez general</div>
-      <div style="font-size:38px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
-      ${nivel?`<div style="font-size:11px;font-weight:700;color:${nivel.color};margin-top:3px;">${nivel.label}</div>`:""}
-      <div style="margin-top:7px;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
-        <div style="height:100%;width:${pg!==null?a5to100(pg):0}%;background:${nivel?nivel.color:"#fff"};border-radius:2px;"></div>
-      </div>
+  <!-- EMPRESA -->
+  <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;">
+    ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:44px;object-fit:contain;border-radius:6px;padding:2px 7px;border:1px solid #DDE6EF;" alt="${infoGeneral.empresa}"/>`:""}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex:1;">
+      ${[["Empresa",infoGeneral.empresa||"—"],["Representante",infoGeneral.respondente||"—"],["Cargo",infoGeneral.cargo||"—"],["Rubro",infoGeneral.rubro||"—"]].map(([l,v])=>`
+        <div>
+          <div style="font-size:8.5px;color:#8A9BB0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">${l}</div>
+          <div style="font-size:12px;font-weight:700;color:#1C2B3A;">${v}</div>
+        </div>`).join("")}
     </div>
   </div>
 
-  <!-- BARRAS + TABLA -->
-  <div style="display:grid;grid-template-columns:200px 1fr;gap:10px;margin-bottom:10px;">
-    <div style="background:#1A2E45;border-radius:8px;padding:11px 14px;">
-      <div style="font-size:7.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Por dimensión</div>
-      ${dimBarras}
+  <!-- PUNTAJE + BARRAS -->
+  <div style="background:#1A2E45;border-radius:10px;padding:16px 20px;margin-bottom:12px;display:grid;grid-template-columns:150px 1fr;gap:22px;align-items:center;">
+    <div style="text-align:center;border-right:1px solid rgba(255,255,255,0.15);padding-right:22px;">
+      <div style="font-size:8.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Puntaje General</div>
+      <div style="font-size:48px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
+      ${nivel?`<div style="font-size:13px;font-weight:700;color:${nivel.color};margin-top:5px;">${nivel.label}</div>`:""}
+      <div style="margin-top:10px;height:5px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:${pg!==null?a5to100(pg):0}%;background:${nivel?nivel.color:"#fff"};border-radius:3px;"></div>
+      </div>
     </div>
-    <div style="background:#fff;border:1px solid #E4EBF2;border-radius:8px;overflow:hidden;">
-      <table>
-        <thead><tr style="background:#EEF3F8;">
-          <th style="padding:7px 10px;text-align:left;font-size:8px;color:#8A9BB0;text-transform:uppercase;font-weight:700;">Dimensión</th>
-          <th style="padding:7px 10px;text-align:center;font-size:8px;color:#8A9BB0;text-transform:uppercase;font-weight:700;">Puntaje</th>
-          <th style="padding:7px 10px;text-align:center;font-size:8px;color:#8A9BB0;text-transform:uppercase;font-weight:700;">Nivel</th>
-          <th style="padding:7px 10px;text-align:center;font-size:8px;color:#8A9BB0;text-transform:uppercase;font-weight:700;">Indicador</th>
-        </tr></thead>
-        <tbody>${tablaFilas}</tbody>
-      </table>
-    </div>
+    <div>${dimBarras}</div>
+  </div>
+
+  <!-- TABLA DIMENSIONES -->
+  <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;margin-bottom:12px;">
+    <table>
+      <thead><tr style="background:#EEF3F8;">
+        <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
+        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Puntaje</th>
+        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Nivel</th>
+        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Indicador</th>
+      </tr></thead>
+      <tbody>${tablaFilas}</tbody>
+    </table>
   </div>
 
   <!-- SÍNTESIS + FORTALEZAS + BRECHAS + PRIORIDADES -->
   ${interp?`
-  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
-    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:10px 12px;">
-      <div style="font-size:7.5px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">📝 Síntesis</div>
-      <p style="font-size:9.5px;color:#1C2B3A;line-height:1.6;">${interp.narrativa}</p>
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 16px;">
+      <div style="font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Síntesis diagnóstica</div>
+      <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${interp.narrativa}</p>
     </div>
-    <div style="background:#EAF7F2;border:1px solid #C5EAD8;border-radius:8px;padding:10px 12px;">
-      <div style="font-size:7.5px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">✓ Fortalezas</div>
+    <div style="background:#EAF7F2;border:1px solid #C5EAD8;border-radius:10px;padding:14px 16px;">
+      <div style="font-size:9px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✓ Fortalezas</div>
       ${fortalezasHTML}
     </div>
-    <div style="background:#FFF4EC;border:1px solid #F5D5B0;border-radius:8px;padding:10px 12px;">
-      <div style="font-size:7.5px;font-weight:700;color:#D17A1F;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">⚠ Brechas</div>
+    <div style="background:#FFF4EC;border:1px solid #F5D5B0;border-radius:10px;padding:14px 16px;">
+      <div style="font-size:9px;font-weight:700;color:#D17A1F;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⚠ Brechas</div>
       ${brechasHTML}
     </div>
-    <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:8px;padding:10px 12px;">
-      <div style="font-size:7.5px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">🎯 Prioridades</div>
+    <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;">
+      <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎯 Prioridades</div>
       ${prioridadesHTML}
     </div>
   </div>`:""}
 
   <!-- PIE -->
-  <div style="border-top:1px solid #E4EBF2;padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
-    <span style="font-size:7.5px;color:#A0B0C0;">Generado por CIDERE Biobío · Sistema de Diagnóstico de Capacidades</span>
-    <span style="font-size:7.5px;color:#A0B0C0;">${fecha}</span>
+  <div style="border-top:1px solid #E4EBF2;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:8.5px;color:#A0B0C0;">Generado por CIDERE Biobío · Sistema de Diagnóstico de Capacidades</span>
+    <span style="font-size:8.5px;color:#A0B0C0;">${fecha}</span>
   </div>
 
   </body></html>`;
