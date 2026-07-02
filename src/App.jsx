@@ -1141,8 +1141,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               : "La empresa muestra un nivel de madurez general adecuado. El foco puede orientarse a consolidar las dimensiones más desarrolladas y planificar el crecimiento.";
             setFocoEditado(autoFoco);
             // Pre-llenar síntesis
-            const interp2 = generarInterpretacion(dims, datosE||{});
-            setSintesisEditada(interp2?.narrativa || "");
+            setSintesisEditada(generarInterpretacion(dims, datosE||{})?.narrativa || "");
             setNotaMentorEditada(infoGeneral.observaciones || "");
             setShowMentorModal(true);
           }} style={{ padding:"9px 18px", background:"linear-gradient(135deg,#9B59B6,#8E44AD)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>📋 Ficha Mentor</button>
