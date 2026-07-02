@@ -548,339 +548,364 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
           const peorDim  = [...dimPromedios].filter(x=>x.prom!==null).sort((a,b)=>a.prom-b.prom)[0];
 
           // Función exportar dashboard
-          const exportarDashboard = () => {
+          const exportarDashboard = async () => {
             const fecha = new Date().toLocaleDateString("es-CL", { day:"2-digit", month:"long", year:"numeric" });
             const logoB64 = CIDERE_LOGO_B64;
 
-            // ── Helpers de color ──────────────────────────────────────────────
-            const hex2rgb = (h) => {
-              const r = parseInt(h.slice(1,3),16), g = parseInt(h.slice(3,5),16), b = parseInt(h.slice(5,7),16);
-              return `${r},${g},${b}`;
+            // Convertir logo del programa a base64
+            const urlToB64 = async (url) => {
+              if (!url || url.startsWith("data:")) return url;
+              try {
+                const r = await fetch(url);
+                const b = await r.blob();
+                return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); });
+              } catch(e) { return url; }
+            };
+            const logoPrograma = await urlToB64(programa.logoUrl);
+
+            // ── Datos calculados ──────────────────────────────────────────────
+            const totalProv = entradasConPG.length;
+            const pgProm = pgPromedio !== null ? a5to100(pgPromedio) : null;
+            const nivProm = nivelPromedio;
+            const conFinal = provsConAmbos.length;
+            const mejorD = mejorDim;
+            const peorD = peorDim;
+
+            // Distribución de niveles
+            const conteoNiv = {};
+            NV_CFG.forEach(n => conteoNiv[n.label] = { count:0, color:n.color });
+            entradasConPG.forEach(p => { const nv=getNivel(p.pg); conteoNiv[nv.label].count++; });
+
+            // Promedio por dim para tabla
+            const sorted = [...entradasConPG].sort((a,b) => b.pg - a.pg);
+
+            // ── CSS ───────────────────────────────────────────────────────────
+            const CSS = `
+              @page { size: A4 landscape; margin: 0; }
+              * { box-sizing:border-box; -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; color-adjust:exact!important; margin:0; padding:0; }
+              html,body { font-family:'Segoe UI',Arial,sans-serif; color:#1C2B3A; font-size:11px; background:#F0F4F8; }
+              .page { width:297mm; min-height:210mm; background:#F0F4F8; padding:7mm 8mm; page-break-after:always; break-after:page; display:flex; flex-direction:column; }
+              .page:last-child { page-break-after:avoid; break-after:avoid; }
+              .card { background:#fff; border-radius:10px; padding:14px 16px; }
+              .label { font-size:8px; font-weight:700; color:#8A9BB0; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+              .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+              .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+              @media screen { body { padding:8mm; } .page { box-shadow:0 4px 32px rgba(0,0,0,0.15); margin-bottom:10mm; } }
+              @media print { html,body { background:#F0F4F8; } }
+            `;
+
+            // ── SVG: Gauge circular ───────────────────────────────────────────
+            const makeGauge = (value, color, size=160) => {
+              const cx=size/2, cy=size/2, r=size*0.38, sw=size*0.08;
+              const pct = value !== null ? value/100 : 0;
+              const startAngle = -210, endAngle = 30, range = 240;
+              const toRad = d => d * Math.PI / 180;
+              const px = (angle) => cx + r * Math.cos(toRad(angle));
+              const py = (angle) => cy + r * Math.sin(toRad(angle));
+              const fillAngle = startAngle + pct * range;
+              const large = pct * range > 180 ? 1 : 0;
+              return `<svg width="${size}" height="${size*0.7}" viewBox="0 0 ${size} ${size*0.8}" xmlns="http://www.w3.org/2000/svg">
+                <path d="M ${px(startAngle)} ${py(startAngle)} A ${r} ${r} 0 1 1 ${px(endAngle)} ${py(endAngle)}"
+                  fill="none" stroke="#EEF3F8" stroke-width="${sw}" stroke-linecap="round"/>
+                ${value !== null ? `<path d="M ${px(startAngle)} ${py(startAngle)} A ${r} ${r} 0 ${large} 1 ${px(fillAngle)} ${py(fillAngle)}"
+                  fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round"/>` : ""}
+                <text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="${size*0.18}" font-weight="800" font-family="Segoe UI,Arial" fill="${color}">${value !== null ? value+"%" : "—"}</text>
+              </svg>`;
             };
 
-            // ── KPIs ─────────────────────────────────────────────────────────
-            const totalProveedores = entradasConPG.length;
-            const pgProm = pgPromedio !== null ? a5to100(pgPromedio) : null;
-            const pgPromLabel = nivelPromedio?.label || "—";
-            const pgPromColor = nivelPromedio?.color || "#999";
-            const conFinal = provsConAmbos.length;
-            const sinFinal = totalProveedores - conFinal;
-            const mejorDimNombre = mejorDim?.dim?.nombre || "—";
-            const mejorDimPct = mejorDim ? a5to100(mejorDim.prom) : null;
-            const peorDimNombre = peorDim?.dim?.nombre || "—";
-            const peorDimPct = peorDim ? a5to100(peorDim.prom) : null;
-
-            // ── Distribución de niveles ────────────────────────────────────────
-            const conteoNiveles = {};
-            NV_CFG.forEach(n => conteoNiveles[n.label] = { count: 0, color: n.color });
-            entradasConPG.forEach(p => {
-              const nv = getNivel(p.pg);
-              conteoNiveles[nv.label].count++;
-            });
-            const totalN = totalProveedores || 1;
-
-            // ── SVG: Gauge (puntaje promedio) ────────────────────────────────
-            const gaugeAngle = pgProm !== null ? (pgProm / 100) * 180 : 0;
-            const gaugeR = 70, gaugeCx = 90, gaugeCy = 80;
-            const gaugeRad = (deg) => (deg - 180) * Math.PI / 180;
-            const gaugeX = (deg) => gaugeCx + gaugeR * Math.cos(gaugeRad(deg));
-            const gaugeY = (deg) => gaugeCy + gaugeR * Math.sin(gaugeRad(deg));
-            const svgGauge = `
-              <svg width="180" height="100" viewBox="0 0 180 100" xmlns="http://www.w3.org/2000/svg">
-                <!-- Track -->
-                <path d="M ${gaugeX(0)} ${gaugeY(0)} A ${gaugeR} ${gaugeR} 0 0 1 ${gaugeX(180)} ${gaugeY(180)}" fill="none" stroke="#E8EFF5" stroke-width="14" stroke-linecap="round"/>
-                <!-- Fill -->
-                ${pgProm !== null ? `<path d="M ${gaugeX(0)} ${gaugeY(0)} A ${gaugeR} ${gaugeR} 0 ${gaugeAngle > 90 ? 1 : 0} 1 ${gaugeX(gaugeAngle)} ${gaugeY(gaugeAngle)}" fill="none" stroke="${pgPromColor}" stroke-width="14" stroke-linecap="round"/>` : ""}
-                <!-- Needle -->
-                <line x1="${gaugeCx}" y1="${gaugeCy}" x2="${gaugeX(gaugeAngle)}" y2="${gaugeY(gaugeAngle)}" stroke="#1A2E45" stroke-width="2" stroke-linecap="round"/>
-                <circle cx="${gaugeCx}" cy="${gaugeCy}" r="4" fill="#1A2E45"/>
-                <!-- Value -->
-                <text x="${gaugeCx}" y="${gaugeCy + 20}" text-anchor="middle" font-size="20" font-weight="800" font-family="Segoe UI, Arial" fill="${pgPromColor}">${pgProm !== null ? pgProm + "%" : "—"}</text>
-                <text x="${gaugeCx}" y="${gaugeCy + 34}" text-anchor="middle" font-size="9" font-family="Segoe UI, Arial" fill="#8A9BB0">${pgPromLabel}</text>
+            // ── SVG: Donut chart ──────────────────────────────────────────────
+            const makeDonut = () => {
+              const cx=70, cy=70, r=50, ir=34;
+              const items = NV_CFG.filter(n => conteoNiv[n.label].count > 0)
+                .map(n => ({ ...n, count:conteoNiv[n.label].count }));
+              const total = totalProv || 1;
+              let angle = -90;
+              const slices = items.map(it => {
+                const pct = it.count / total;
+                const a1 = angle, a2 = angle + pct * 360;
+                angle = a2;
+                const toR = d => d * Math.PI / 180;
+                const x1=cx+r*Math.cos(toR(a1)), y1=cy+r*Math.sin(toR(a1));
+                const x2=cx+r*Math.cos(toR(a2)), y2=cy+r*Math.sin(toR(a2));
+                const lf = pct > 0.5 ? 1 : 0;
+                return `<path d="M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${lf} 1 ${x2} ${y2} Z" fill="${it.color}" opacity="0.9"/>`;
+              });
+              return `<svg width="140" height="140" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg">
+                ${slices.join("")}
+                <circle cx="${cx}" cy="${cy}" r="${ir}" fill="#fff"/>
+                <text x="${cx}" y="${cy-5}" text-anchor="middle" font-size="18" font-weight="800" font-family="Segoe UI,Arial" fill="#1C2B3A">${totalProv}</text>
+                <text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="8.5" font-family="Segoe UI,Arial" fill="#8A9BB0">proveedores</text>
               </svg>`;
+            };
 
-            // ── SVG: Donut niveles ────────────────────────────────────────────
-            const donutR = 50, donutCx = 70, donutCy = 70, donutW = 16;
-            let donutAngle = -90;
-            const donutSlices = NV_CFG.filter(n => conteoNiveles[n.label]?.count > 0).map(n => {
-              const pct = conteoNiveles[n.label].count / totalN;
-              const startA = donutAngle;
-              donutAngle += pct * 360;
-              const endA = donutAngle;
-              const lx1 = donutCx + donutR * Math.cos(startA * Math.PI / 180);
-              const ly1 = donutCy + donutR * Math.sin(startA * Math.PI / 180);
-              const lx2 = donutCx + donutR * Math.cos(endA * Math.PI / 180);
-              const ly2 = donutCy + donutR * Math.sin(endA * Math.PI / 180);
-              const large = pct > 0.5 ? 1 : 0;
-              return { color: n.color, label: n.label, count: conteoNiveles[n.label].count,
-                path: `M ${lx1} ${ly1} A ${donutR} ${donutR} 0 ${large} 1 ${lx2} ${ly2} L ${donutCx} ${donutCy} Z` };
-            });
-            const svgDonut = `
-              <svg width="140" height="140" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg">
-                ${donutSlices.map(s => `<path d="${s.path}" fill="${s.color}" opacity="0.9"/>`).join("")}
-                <circle cx="${donutCx}" cy="${donutCy}" r="${donutR - donutW}" fill="#fff"/>
-                <text x="${donutCx}" y="${donutCy - 4}" text-anchor="middle" font-size="18" font-weight="800" font-family="Segoe UI, Arial" fill="#1C2B3A">${totalProveedores}</text>
-                <text x="${donutCx}" y="${donutCy + 12}" text-anchor="middle" font-size="8" font-family="Segoe UI, Arial" fill="#8A9BB0">proveedores</text>
-              </svg>`;
-
-            // ── SVG: Barras por dimensión ─────────────────────────────────────
-            const barW = 320, barH = 14, barGap = 24, barPadL = 110;
-            const svgDims = `
-              <svg width="440" height="${dims.length * (barH + barGap) + 10}" xmlns="http://www.w3.org/2000/svg">
-                ${dimPromedios.map(({ dim, prom }, i) => {
-                  const pct = prom !== null ? a5to100(prom) : 0;
-                  const n = prom !== null ? getNivel(prom) : null;
-                  const y = i * (barH + barGap) + 5;
-                  return `
-                    <text x="${barPadL - 6}" y="${y + barH / 2 + 4}" text-anchor="end" font-size="10" font-family="Segoe UI, Arial" fill="#1C2B3A" font-weight="600">${dim.icono} ${dim.nombre}</text>
-                    <rect x="${barPadL}" y="${y}" width="${barW}" height="${barH}" rx="4" fill="#EEF3F8"/>
-                    <rect x="${barPadL}" y="${y}" width="${Math.round(pct / 100 * barW)}" height="${barH}" rx="4" fill="${n?.color || pColor}"/>
-                    <text x="${barPadL + Math.round(pct / 100 * barW) + 6}" y="${y + barH / 2 + 4}" font-size="10" font-weight="700" font-family="Segoe UI, Arial" fill="${n?.color || "#999"}">${pct}%</text>`;
-                }).join("")}
-              </svg>`;
+            // ── SVG: Barra horizontal (dimensiones) ───────────────────────────
+            const makeDimBars = () => {
+              const W=260, H=14, GAP=22, PL=108;
+              const rows = dimPromedios.map(({dim,prom},i) => {
+                const pct = prom !== null ? a5to100(prom) : 0;
+                const n = prom !== null ? getNivel(prom) : null;
+                const y = i*(H+GAP)+4;
+                const label = dim.nombre.length > 14 ? dim.nombre.slice(0,13)+"…" : dim.nombre;
+                return `<text x="${PL-6}" y="${y+H/2+4}" text-anchor="end" font-size="9.5" font-weight="600" font-family="Segoe UI,Arial" fill="#1C2B3A">${dim.icono} ${label}</text>
+                  <rect x="${PL}" y="${y}" width="${W}" height="${H}" rx="4" fill="#EEF3F8"/>
+                  <rect x="${PL}" y="${y}" width="${Math.round(pct/100*W)}" height="${H}" rx="4" fill="${n?.color||pColor}"/>
+                  <text x="${PL+Math.round(pct/100*W)+6}" y="${y+H/2+4}" font-size="9.5" font-weight="700" font-family="Segoe UI,Arial" fill="${n?.color||'#999'}">${pct}%</text>`;
+              }).join("");
+              return `<svg width="${PL+W+60}" height="${dimPromedios.length*(H+GAP)+8}" xmlns="http://www.w3.org/2000/svg">${rows}</svg>`;
+            };
 
             // ── SVG: Barras empresas ──────────────────────────────────────────
-            const sorted = [...entradasConPG].sort((a, b) => b.pg - a.pg);
-            const empBarW = 280, empBarH = 14, empBarGap = 22, empPadL = 120;
-            const svgEmpresas = `
-              <svg width="430" height="${sorted.length * (empBarH + empBarGap) + 10}" xmlns="http://www.w3.org/2000/svg">
-                ${sorted.map((p, i) => {
-                  const pct = a5to100(p.pg);
-                  const nv = getNivel(p.pg);
-                  const pctF = p.pgS !== null ? a5to100(p.pgS) : null;
-                  const y = i * (empBarH + empBarGap) + 5;
-                  const label = p.empresa.length > 14 ? p.empresa.slice(0, 12) + "…" : p.empresa;
-                  return `
-                    <text x="6" y="${y + empBarH / 2 + 4}" font-size="10" font-family="Segoe UI, Arial" fill="#1C2B3A" font-weight="600">${i+1}.</text>
-                    <text x="${empPadL - 6}" y="${y + empBarH / 2 + 4}" text-anchor="end" font-size="10" font-family="Segoe UI, Arial" fill="#1C2B3A">${label}</text>
-                    <rect x="${empPadL}" y="${y}" width="${empBarW}" height="${empBarH}" rx="4" fill="#EEF3F8"/>
-                    <rect x="${empPadL}" y="${y}" width="${Math.round(pct / 100 * empBarW)}" height="${empBarH}" rx="4" fill="${pColor}88"/>
-                    ${pctF !== null ? `<rect x="${empPadL}" y="${y}" width="${Math.round(pctF / 100 * empBarW)}" height="${empBarH}" rx="4" fill="#3BAD8A" opacity="0.75"/>` : ""}
-                    <text x="${empPadL + Math.round(Math.max(pct, pctF||0) / 100 * empBarW) + 6}" y="${y + empBarH / 2 + 4}" font-size="10" font-weight="700" font-family="Segoe UI, Arial" fill="${nv.color}">${pct}%${pctF !== null ? ` → ${pctF}%` : ""}</text>`;
-                }).join("")}
-              </svg>`;
+            const makeEmpBars = () => {
+              const W=240, H=14, GAP=20, PL=110;
+              const rows = sorted.map((p,i) => {
+                const pct=a5to100(p.pg), nv=getNivel(p.pg);
+                const pctF=p.pgS!==null?a5to100(p.pgS):null;
+                const y=i*(H+GAP)+4;
+                const label = p.empresa.length>14 ? p.empresa.slice(0,13)+"…" : p.empresa;
+                return `<text x="14" y="${y+H/2+4}" font-size="9.5" font-weight="700" font-family="Segoe UI,Arial" fill="#8A9BB0">${i+1}.</text>
+                  <text x="${PL-6}" y="${y+H/2+4}" text-anchor="end" font-size="9.5" font-family="Segoe UI,Arial" fill="#1C2B3A">${label}</text>
+                  <rect x="${PL}" y="${y}" width="${W}" height="${H}" rx="4" fill="#EEF3F8"/>
+                  <rect x="${PL}" y="${y}" width="${Math.round(pct/100*W)}" height="${H}" rx="4" fill="${pColor}99"/>
+                  ${pctF!==null?`<rect x="${PL}" y="${y}" width="${Math.round(pctF/100*W)}" height="${H}" rx="4" fill="#3BAD8A" opacity="0.8"/>`:""}
+                  <text x="${PL+Math.round(Math.max(pct,pctF||0)/100*W)+6}" y="${y+H/2+4}" font-size="9.5" font-weight="700" font-family="Segoe UI,Arial" fill="${nv.color}">${pct}%${pctF!==null?` → ${pctF}%`:""}</text>`;
+              }).join("");
+              return `<svg width="${PL+W+80}" height="${sorted.length*(H+GAP)+8}" xmlns="http://www.w3.org/2000/svg">${rows}</svg>`;
+            };
 
-            // ── Tabla comparativa ──────────────────────────────────────────────
-            const tablaComp = sorted.map((p, i) => {
-              const nv = getNivel(p.pg);
-              const pgF = p.pgS; const delta = pgF !== null ? a5to100(pgF) - a5to100(p.pg) : null;
-              return `<tr style="border-bottom:1px solid #EEF3F8;${i % 2 === 0 ? "background:#FAFBFD;" : ""}">
-                <td style="padding:9px 12px;font-size:11px;font-weight:600;color:#1C2B3A;">${i+1}. ${p.empresa}</td>
-                <td style="padding:9px 10px;text-align:center;font-size:12px;font-weight:800;color:${nv.color};">${a5to100(p.pg)}%</td>
-                <td style="padding:9px 10px;text-align:center;font-size:12px;font-weight:800;color:${pgF !== null ? getNivel(pgF).color : "#ccc"};">${pgF !== null ? `${a5to100(pgF)}%` : "—"}</td>
-                <td style="padding:9px 10px;text-align:center;font-size:11px;font-weight:700;color:${delta !== null ? (delta >= 0 ? "#16A085" : "#E74C3C") : "#ccc"};">${delta !== null ? `${delta >= 0 ? "+" : ""}${delta} pts` : "—"}</td>
-                <td style="padding:9px 10px;text-align:center;"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:${p.estado === "Validado" ? "#EAF7F2" : p.estado === "Descartado" ? "#FFF0F0" : "#FFFBF0"};color:${p.estado === "Validado" ? "#16A085" : p.estado === "Descartado" ? "#E74C3C" : "#A07820"};">${p.estado || "Pendiente"}</span></td>
+            // ── Tabla comparativa ─────────────────────────────────────────────
+            const tablaRows = sorted.map((p,i) => {
+              const nv=getNivel(p.pg), pgF=p.pgS;
+              const delta=pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
+              return `<tr style="border-bottom:1px solid #F0F4F8;${i%2===0?"":"background:#FAFBFD"}">
+                <td style="padding:8px 12px;font-size:10px;font-weight:600;">${i+1}. ${p.empresa}</td>
+                <td style="padding:8px 10px;text-align:center;font-size:11px;font-weight:800;color:${nv.color};">${a5to100(p.pg)}%</td>
+                <td style="padding:8px 10px;text-align:center;font-size:11px;font-weight:800;color:${pgF!==null?getNivel(pgF).color:"#ccc"};">${pgF!==null?a5to100(pgF)+"%":"—"}</td>
+                <td style="padding:8px 10px;text-align:center;font-size:10px;font-weight:700;color:${delta!==null?(delta>=0?"#16A085":"#E74C3C"):"#ccc"};">${delta!==null?(delta>=0?"+":"")+delta+" pts":"—"}</td>
+                <td style="padding:8px 10px;text-align:center;"><span style="font-size:8.5px;font-weight:700;padding:2px 8px;border-radius:4px;background:${p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0"};color:${p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"};">${p.estado||"Pendiente"}</span></td>
               </tr>`;
             }).join("");
 
-            // ── Distribución de niveles HTML ───────────────────────────────────
-            const distribucionHTML = NV_CFG.map(nv => {
-              const cnt = conteoNiveles[nv.label]?.count || 0;
-              if (!cnt) return "";
-              const pct = Math.round((cnt / totalN) * 100);
-              return `<div style="margin-bottom:10px;">
+            // ── Distribución niveles HTML ─────────────────────────────────────
+            const distribHTML = NV_CFG.map(nv => {
+              const cnt=conteoNiv[nv.label]?.count||0; if(!cnt) return "";
+              const pct=Math.round((cnt/totalProv)*100);
+              return `<div style="margin-bottom:9px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-                  <span style="font-size:11px;font-weight:600;color:#1C2B3A;">${nv.label}</span>
-                  <span style="font-size:11px;font-weight:700;color:${nv.color};">${cnt} empresa${cnt !== 1 ? "s" : ""} · ${pct}%</span>
+                  <span style="font-size:10px;font-weight:600;">${nv.label}</span>
+                  <span style="font-size:10px;font-weight:700;color:${nv.color};">${cnt} · ${pct}%</span>
                 </div>
-                <div style="height:10px;background:#EEF3F8;border-radius:5px;overflow:hidden;">
-                  <div style="width:${pct}%;height:100%;background:${nv.color};border-radius:5px;"></div>
+                <div style="height:8px;background:#EEF3F8;border-radius:4px;overflow:hidden;">
+                  <div style="width:${pct}%;height:100%;background:${nv.color};border-radius:4px;"></div>
                 </div>
               </div>`;
             }).join("");
 
-            const CSS = `
-              @page { size: A4 landscape; margin: 0; }
-              * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; margin: 0; padding: 0; }
-              html, body { font-family: 'Segoe UI', Arial, sans-serif; color: #1C2B3A; font-size: 11px; background: #F0F4F8; }
-              .page { width: 297mm; min-height: 210mm; background: #F0F4F8; padding: 8mm; page-break-after: always; break-after: page; }
-              .page:last-child { page-break-after: avoid; break-after: avoid; }
-              .card { background: #fff; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-              .section-label { font-size: 8px; font-weight: 700; color: #8A9BB0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-              .kpi-value { font-size: 28px; font-weight: 800; line-height: 1; margin-top: 4px; }
-              @media print { html,body { background: #F0F4F8; } .page { padding: 8mm; } }
-            `;
-
-            const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
-              <title>Dashboard – ${programa.nombre}</title>
-              <style>${CSS}</style>
-            </head><body>
-
-            <!-- ════════════ PÁGINA 1: PORTADA ════════════ -->
-            <div class="page" style="background: linear-gradient(135deg, #0F1E2E 0%, #1A2E45 50%, ${pColor} 100%); display:flex; flex-direction:column; justify-content:space-between; align-items:flex-start;">
-              <div>
-                ${logoB64 ? `<img src="${logoB64}" style="height:48px;object-fit:contain;margin-bottom:32px;" alt="CIDERE"/>` : `<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:32px;">CIDERE Biobío</div>`}
-                <div style="font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Informe Ejecutivo de Resultados</div>
-                <div style="font-size:42px;font-weight:800;color:#fff;line-height:1.1;margin-bottom:10px;">${programa.nombre}</div>
-                <div style="font-size:16px;color:rgba(255,255,255,0.65);margin-bottom:40px;">Diagnóstico de Capacidades Empresariales</div>
-                <div style="display:flex;gap:32px;">
-                  <div><div style="font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Proveedores evaluados</div><div style="font-size:32px;font-weight:800;color:#fff;">${totalProveedores}</div></div>
-                  <div><div style="font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Puntaje promedio</div><div style="font-size:32px;font-weight:800;color:${pgPromColor};">${pgProm !== null ? pgProm + "%" : "—"}</div></div>
-                  <div><div style="font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Nivel promedio</div><div style="font-size:32px;font-weight:800;color:${pgPromColor};">${pgPromLabel}</div></div>
-                  <div><div style="font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Con diagnóstico final</div><div style="font-size:32px;font-weight:800;color:#3BAD8A;">${conFinal}</div></div>
-                </div>
-              </div>
-              <div style="width:100%;display:flex;justify-content:space-between;align-items:flex-end;">
-                <div style="font-size:10px;color:rgba(255,255,255,0.35);">CIDERE Biobío · Confidencial</div>
-                <div style="font-size:10px;color:rgba(255,255,255,0.35);">Generado el ${fecha}</div>
-              </div>
-            </div>
-
-            <!-- ════════════ PÁGINA 2: RESUMEN EJECUTIVO ════════════ -->
-            <div class="page">
-              <!-- Header -->
-              <div style="background:#1A2E45;border-radius:10px;padding:12px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+            // ── Header reutilizable ───────────────────────────────────────────
+            const pageHeader = (titulo) => `
+              <div style="background:#1A2E45;border-radius:10px;padding:10px 18px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
                 <div style="display:flex;align-items:center;gap:12px;">
-                  ${logoB64 ? `<img src="${logoB64}" style="height:30px;object-fit:contain;" alt="CIDERE"/>` : ""}
-                  <div style="border-left:1px solid rgba(255,255,255,0.2);padding-left:12px;">
-                    <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:2px;">Resumen Ejecutivo</div>
-                    <div style="font-size:14px;font-weight:800;color:#fff;">${programa.nombre}</div>
+                  <img src="${logoB64}" style="height:28px;object-fit:contain;" alt="CIDERE"/>
+                  ${logoPrograma ? `<div style="width:1px;height:28px;background:rgba(255,255,255,0.2)"></div><img src="${logoPrograma}" style="height:28px;object-fit:contain;background:rgba(255,255,255,0.9);border-radius:4px;padding:2px 7px;" alt="${programa.nombre}"/>` : ""}
+                  <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:12px;">
+                    <div style="font-size:13px;font-weight:800;color:#fff;">${titulo}</div>
+                    <div style="font-size:8px;color:#90C8F0;margin-top:1px;">${programa.nombre}</div>
                   </div>
                 </div>
                 <div style="font-size:9px;color:#90C8F0;">${fecha}</div>
+              </div>`;
+
+            // ══════════════════════════════════════════════════════════════════
+            // HTML COMPLETO
+            // ══════════════════════════════════════════════════════════════════
+            const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+              <title>Dashboard Ejecutivo – ${programa.nombre}</title>
+              <style>${CSS}</style>
+            </head><body>
+
+            <!-- ══════════ PÁGINA 1: PORTADA ══════════ -->
+            <div class="page" style="background:linear-gradient(145deg,#0D1B2A 0%,#1A2E45 55%,${pColor} 100%);padding:0;position:relative;overflow:hidden;justify-content:center;align-items:center;">
+
+              <!-- Círculos decorativos -->
+              <div style="position:absolute;width:400px;height:400px;border-radius:50%;border:1px solid rgba(255,255,255,0.05);top:-100px;right:-100px;"></div>
+              <div style="position:absolute;width:250px;height:250px;border-radius:50%;border:1px solid rgba(255,255,255,0.08);top:-20px;right:-20px;"></div>
+              <div style="position:absolute;width:600px;height:600px;border-radius:50%;border:1px solid rgba(255,255,255,0.03);bottom:-250px;left:-200px;"></div>
+
+              <!-- Contenido centrado -->
+              <div style="text-align:center;z-index:1;padding:30mm 20mm;">
+                <!-- Logos -->
+                <div style="display:flex;justify-content:center;align-items:center;gap:20px;margin-bottom:32px;">
+                  <img src="${logoB64}" style="height:50px;object-fit:contain;" alt="CIDERE"/>
+                  ${logoPrograma ? `
+                    <div style="width:1px;height:50px;background:rgba(255,255,255,0.2);"></div>
+                    <img src="${logoPrograma}" style="height:50px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:8px;padding:4px 12px;" alt="${programa.nombre}"/>
+                  ` : ""}
+                </div>
+
+                <!-- Línea decorativa -->
+                <div style="width:60px;height:3px;background:${pColor};border-radius:2px;margin:0 auto 28px auto;"></div>
+
+                <!-- Títulos -->
+                <div style="font-size:10px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:4px;margin-bottom:12px;">Informe Ejecutivo de Resultados</div>
+                <div style="font-size:40px;font-weight:800;color:#fff;line-height:1.1;margin-bottom:12px;">${programa.nombre}</div>
+                <div style="font-size:16px;color:rgba(255,255,255,0.55);margin-bottom:40px;">Diagnóstico de Capacidades Empresariales</div>
+
+                <!-- KPIs en portada -->
+                <div style="display:inline-flex;gap:0;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);">
+                  ${[
+                    { l:"Proveedores", v:totalProv, c:"#fff" },
+                    { l:"Puntaje promedio", v:pgProm!==null?pgProm+"%":"—", c:nivProm?.color||"#fff" },
+                    { l:"Nivel promedio", v:nivProm?.label||"—", c:nivProm?.color||"#fff" },
+                    { l:"Con diagnóstico final", v:conFinal, c:"#3BAD8A" },
+                  ].map((k,i) => `
+                    <div style="padding:16px 24px;${i>0?"border-left:1px solid rgba(255,255,255,0.1);":""}text-align:center;">
+                      <div style="font-size:8px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">${k.l}</div>
+                      <div style="font-size:26px;font-weight:800;color:${k.c};line-height:1;">${k.v}</div>
+                    </div>`).join("")}
+                </div>
               </div>
 
-              <!-- KPI row -->
-              <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px;">
+              <!-- Pie de portada -->
+              <div style="position:absolute;bottom:0;left:0;right:0;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,0.08);">
+                <span style="font-size:9px;color:rgba(255,255,255,0.3);">CIDERE Biobío · Confidencial</span>
+                <span style="font-size:9px;color:rgba(255,255,255,0.3);">${fecha}</span>
+              </div>
+            </div>
+
+            <!-- ══════════ PÁGINA 2: RESUMEN EJECUTIVO ══════════ -->
+            <div class="page">
+              ${pageHeader("Resumen Ejecutivo")}
+
+              <!-- KPIs -->
+              <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:10px;flex-shrink:0;">
                 ${[
-                  { l: "Proveedores", v: totalProveedores, c: pColor, sub: "evaluados" },
-                  { l: "Puntaje promedio", v: pgProm !== null ? pgProm + "%" : "—", c: pgPromColor, sub: pgPromLabel },
-                  { l: "Con diagnóstico final", v: conFinal, c: "#3BAD8A", sub: `${sinFinal} pendientes` },
-                  { l: "Dimensiones evaluadas", v: dims.length, c: "#9B59B6", sub: "por empresa" },
-                  { l: "Mejor dimensión", v: mejorDimNombre, c: "#3BAD8A", sub: mejorDimPct !== null ? mejorDimPct + "% prom." : "" },
-                  { l: "A reforzar", v: peorDimNombre, c: "#E74C3C", sub: peorDimPct !== null ? peorDimPct + "% prom." : "" },
-                ].map(s => `
-                  <div class="card" style="border-top:3px solid ${s.c};">
-                    <div class="section-label">${s.l}</div>
-                    <div class="kpi-value" style="font-size:${s.v.toString().length > 6 ? "14px" : "22px"};color:${s.c};">${s.v}</div>
-                    ${s.sub ? `<div style="font-size:9px;color:#8A9BB0;margin-top:4px;">${s.sub}</div>` : ""}
+                  { l:"Proveedores evaluados", v:totalProv, c:pColor, sub:"diagnóstico base" },
+                  { l:"Puntaje promedio", v:pgProm!==null?pgProm+"%":"—", c:nivProm?.color||"#999", sub:nivProm?.label||"" },
+                  { l:"Con diagnóstico final", v:conFinal, c:"#3BAD8A", sub:`${totalProv-conFinal} pendientes` },
+                  { l:"Dimensiones evaluadas", v:dims.length, c:"#9B59B6", sub:"áreas de capacidad" },
+                  { l:"Mejor dimensión", v:mejorD?mejorD.dim.nombre:"—", c:"#3BAD8A", sub:mejorD?a5to100(mejorD.prom)+"%":""  },
+                  { l:"A reforzar", v:peorD?peorD.dim.nombre:"—", c:"#E74C3C", sub:peorD?a5to100(peorD.prom)+"%":"" },
+                ].map(k => `
+                  <div class="card" style="border-top:3px solid ${k.c};text-align:center;padding:12px 10px;">
+                    <div class="label">${k.l}</div>
+                    <div style="font-size:${k.v.toString().length>7?"13px":"20px"};font-weight:800;color:${k.c};line-height:1.15;word-break:break-word;">${k.v}</div>
+                    ${k.sub?`<div style="font-size:8.5px;color:#8A9BB0;margin-top:3px;">${k.sub}</div>`:""}
                   </div>`).join("")}
               </div>
 
               <!-- Main grid -->
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+              <div style="display:grid;grid-template-columns:180px 1fr 1fr;gap:10px;flex:1;">
 
-                <!-- Gauge puntaje -->
-                <div class="card">
-                  <div class="section-label">Madurez general del programa</div>
-                  <div style="display:flex;align-items:center;gap:14px;">
-                    ${svgGauge}
-                    <div>
-                      ${NV_CFG.map(n => `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
-                        <div style="width:10px;height:10px;border-radius:3px;background:${n.color};flex-shrink:0;"></div>
-                        <span style="font-size:9.5px;color:#1C2B3A;font-weight:600;">${n.label}</span>
-                        <span style="font-size:9px;color:#8A9BB0;">${conteoNiveles[n.label]?.count || 0} prov.</span>
-                      </div>`).join("")}
-                    </div>
+                <!-- Gauge -->
+                <div class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                  <div class="label" style="text-align:center;">Madurez general</div>
+                  ${makeGauge(pgProm, nivProm?.color||"#999", 160)}
+                  <div style="font-size:13px;font-weight:800;color:${nivProm?.color||"#999"};margin-top:-8px;">${nivProm?.label||"—"}</div>
+                  <div style="margin-top:12px;width:100%;">
+                    ${NV_CFG.map(n => `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
+                      <div style="width:9px;height:9px;border-radius:2px;background:${n.color};flex-shrink:0;"></div>
+                      <span style="font-size:9px;color:#1C2B3A;font-weight:600;">${n.label}</span>
+                      <span style="font-size:8.5px;color:#8A9BB0;margin-left:auto;">${conteoNiv[n.label]?.count||0}</span>
+                    </div>`).join("")}
                   </div>
                 </div>
 
-                <!-- Donut distribución -->
+                <!-- Donut + distribución -->
                 <div class="card">
-                  <div class="section-label">Distribución por nivel de madurez</div>
-                  <div style="display:flex;align-items:center;gap:12px;">
-                    ${svgDonut}
+                  <div class="label">Distribución por nivel de madurez</div>
+                  <div style="display:flex;align-items:center;gap:14px;">
+                    ${makeDonut()}
                     <div style="flex:1;">
-                      ${NV_CFG.filter(n => conteoNiveles[n.label]?.count > 0).map(n => {
-                        const cnt = conteoNiveles[n.label].count;
-                        const pct = Math.round((cnt / totalN) * 100);
-                        return `<div style="margin-bottom:7px;">
-                          <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
-                            <span style="font-size:10px;color:#1C2B3A;font-weight:600;">${n.label}</span>
-                            <span style="font-size:10px;font-weight:700;color:${n.color};">${cnt} · ${pct}%</span>
-                          </div>
-                          <div style="height:6px;background:#EEF3F8;border-radius:3px;overflow:hidden;">
-                            <div style="width:${pct}%;height:100%;background:${n.color};border-radius:3px;"></div>
-                          </div>
-                        </div>`;
-                      }).join("")}
+                      ${distribHTML}
                     </div>
                   </div>
                 </div>
 
                 <!-- Fortalezas y brechas -->
                 <div class="card">
-                  <div class="section-label">Fortalezas y brechas del programa</div>
-                  <div style="margin-bottom:12px;">
-                    <div style="font-size:9px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">✓ Dimensiones más desarrolladas</div>
-                    ${[...dimPromedios].filter(x => x.prom !== null).sort((a,b) => b.prom - a.prom).slice(0,3).map(({dim, prom}) =>
-                      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #F0F4F8;">
+                  <div style="margin-bottom:14px;">
+                    <div class="label" style="color:#3BAD8A;">✓ Fortalezas del programa</div>
+                    ${[...dimPromedios].filter(x=>x.prom!==null).sort((a,b)=>b.prom-a.prom).slice(0,3).map(({dim,prom}) =>
+                      `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #F5F8FB;">
                         <span style="font-size:10px;color:#1C2B3A;">${dim.icono} ${dim.nombre}</span>
-                        <span style="font-size:10px;font-weight:700;color:#3BAD8A;">${a5to100(prom)}%</span>
+                        <span style="font-size:11px;font-weight:700;color:#3BAD8A;">${a5to100(prom)}%</span>
                       </div>`).join("")}
                   </div>
                   <div>
-                    <div style="font-size:9px;font-weight:700;color:#E74C3C;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">▲ Dimensiones a reforzar</div>
-                    ${[...dimPromedios].filter(x => x.prom !== null).sort((a,b) => a.prom - b.prom).slice(0,3).map(({dim, prom}) =>
-                      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #F0F4F8;">
+                    <div class="label" style="color:#E74C3C;">▲ Áreas a reforzar</div>
+                    ${[...dimPromedios].filter(x=>x.prom!==null).sort((a,b)=>a.prom-b.prom).slice(0,3).map(({dim,prom}) =>
+                      `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #F5F8FB;">
                         <span style="font-size:10px;color:#1C2B3A;">${dim.icono} ${dim.nombre}</span>
-                        <span style="font-size:10px;font-weight:700;color:#E74C3C;">${a5to100(prom)}%</span>
+                        <span style="font-size:11px;font-weight:700;color:#E74C3C;">${a5to100(prom)}%</span>
                       </div>`).join("")}
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- ════════════ PÁGINA 3: ANÁLISIS DETALLADO ════════════ -->
+            <!-- ══════════ PÁGINA 3: ANÁLISIS POR DIMENSIÓN Y PROVEEDOR ══════════ -->
             <div class="page">
-              <div style="background:#1A2E45;border-radius:10px;padding:10px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-size:13px;font-weight:800;color:#fff;">Análisis por Dimensión y Proveedor</div>
-                <div style="font-size:9px;color:#90C8F0;">${programa.nombre} · ${fecha}</div>
-              </div>
+              ${pageHeader("Análisis por Dimensión y Proveedor")}
 
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:1;">
 
                 <!-- Barras por dimensión -->
-                <div class="card">
-                  <div class="section-label">Promedio por dimensión</div>
-                  ${svgDims}
+                <div class="card" style="display:flex;flex-direction:column;">
+                  <div class="label">Promedio por dimensión · Todos los proveedores</div>
+                  <div style="flex:1;display:flex;align-items:center;">
+                    ${makeDimBars()}
+                  </div>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px solid #F0F4F8;">
+                    ${NV_CFG.map(n=>`<div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:2px;background:${n.color};"></div><span style="font-size:8.5px;color:#8A9BB0;">${n.label}</span></div>`).join("")}
+                  </div>
                 </div>
 
                 <!-- Ranking empresas -->
-                <div class="card">
-                  <div class="section-label">Puntaje por proveedor ${conFinal > 0 ? "· Base vs Final" : ""}</div>
-                  ${svgEmpresas}
-                  ${conFinal > 0 ? `<div style="font-size:8px;color:#8A9BB0;margin-top:6px;">Barra translúcida = base · Barra verde = diagnóstico final</div>` : ""}
+                <div class="card" style="display:flex;flex-direction:column;">
+                  <div class="label">Ranking de proveedores ${conFinal>0?"· Base → Final":""}</div>
+                  <div style="flex:1;display:flex;align-items:center;">
+                    ${makeEmpBars()}
+                  </div>
+                  ${conFinal>0?`<div style="font-size:8.5px;color:#8A9BB0;margin-top:8px;padding-top:8px;border-top:1px solid #F0F4F8;">Barra azul = diagnóstico base &nbsp;·&nbsp; Barra verde = diagnóstico final</div>`:""}
                 </div>
               </div>
             </div>
 
-            <!-- ════════════ PÁGINA 4: TABLA COMPARATIVA ════════════ -->
+            <!-- ══════════ PÁGINA 4: TABLA COMPARATIVA ══════════ -->
             <div class="page">
-              <div style="background:#1A2E45;border-radius:10px;padding:10px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-size:13px;font-weight:800;color:#fff;">Tabla Comparativa de Proveedores</div>
-                <div style="font-size:9px;color:#90C8F0;">${programa.nombre} · ${fecha}</div>
-              </div>
+              ${pageHeader("Tabla Comparativa de Proveedores")}
 
-              <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;">
+              <div style="display:grid;grid-template-columns:1fr 240px;gap:10px;flex:1;">
+
                 <!-- Tabla -->
                 <div class="card" style="padding:0;overflow:hidden;">
                   <table style="width:100%;border-collapse:collapse;">
-                    <thead><tr style="background:#EEF3F8;">
-                      <th style="padding:10px 12px;text-align:left;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Proveedor</th>
-                      <th style="padding:10px 10px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Base</th>
-                      <th style="padding:10px 10px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Final</th>
-                      <th style="padding:10px 10px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Variación</th>
-                      <th style="padding:10px 10px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Estado</th>
-                    </tr></thead>
-                    <tbody>${tablaComp}</tbody>
+                    <thead>
+                      <tr style="background:#F5F8FB;">
+                        <th style="padding:10px 12px;text-align:left;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Proveedor</th>
+                        <th style="padding:10px 10px;text-align:center;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Base</th>
+                        <th style="padding:10px 10px;text-align:center;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Final</th>
+                        <th style="padding:10px 10px;text-align:center;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Variación</th>
+                        <th style="padding:10px 10px;text-align:center;font-size:8.5px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>${tablaRows}</tbody>
                   </table>
                 </div>
 
-                <!-- Distribución + escala -->
+                <!-- Lateral: distribución + escala -->
                 <div style="display:flex;flex-direction:column;gap:10px;">
                   <div class="card">
-                    <div class="section-label">Distribución de niveles</div>
-                    ${distribucionHTML}
+                    <div class="label">Distribución de niveles</div>
+                    ${distribHTML}
                   </div>
                   <div class="card">
-                    <div class="section-label">Escala de madurez</div>
-                    ${NV_CFG.map(n => `
-                      <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px;">
-                        <div style="width:12px;height:12px;border-radius:3px;background:${n.color};flex-shrink:0;"></div>
+                    <div class="label">Escala de madurez</div>
+                    ${NV_CFG.map(n=>`
+                      <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
+                        <div style="width:11px;height:11px;border-radius:3px;background:${n.color};flex-shrink:0;"></div>
                         <div>
                           <div style="font-size:10px;font-weight:700;color:#1C2B3A;">${n.label}</div>
-                          <div style="font-size:8.5px;color:#8A9BB0;">${n.rango || ""}</div>
+                          <div style="font-size:8px;color:#8A9BB0;">${n.rango||""}</div>
                         </div>
                       </div>`).join("")}
                   </div>
@@ -888,11 +913,11 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               </div>
             </div>
 
-            <div style="display:none;" class="page"><!-- spacer --></div>
             </body></html>`;
 
             openPDF(html);
           };
+
 
           return (
             <div>
