@@ -1109,7 +1109,6 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
             const htmlFinal = html.replace('<body>', '<body>' + instruccion);
             openPDF(htmlFinal);
           }} style={{ padding:"9px 18px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>⬇ Exportar PDF</button>
-          <button onClick={exportarFichaEditable} style={{ padding:"9px 18px", background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>✏️ Editar y exportar</button>
           {showMentorModal && (
             <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.75)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShowMentorModal(false)}>
               <div style={{background:"#fff",borderRadius:14,padding:26,width:"100%",maxWidth:480,boxShadow:"0 24px 72px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
@@ -1166,7 +1165,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
 
       {/* Contenido scrollable */}
       <div style={{ flex:1, overflowY:"auto", background:C.fondo, padding:"28px 0" }}>
-        <div ref={fichaRef} style={{ maxWidth:920, margin:"0 auto", padding:"0 24px" }}>
+        <div style={{ maxWidth:920, margin:"0 auto", padding:"0 24px" }}>
 
           {(tab==="inicial" || tab==="final") && (
             <>
@@ -1184,7 +1183,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
                   ].map(([l,v])=>(
                     <div key={l}>
                       <div style={{ fontSize:10, color:C.grisCl, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5, marginBottom:3 }}>{l}</div>
-                      <div contentEditable suppressContentEditableWarning style={{ fontSize:14, color:C.oscuro, fontWeight:600, outline:"none", borderBottom:"1px dashed transparent", cursor:"text" }} onFocus={e=>e.target.style.borderBottomColor="#2B7BBF"} onBlur={e=>e.target.style.borderBottomColor="transparent"}>{v}</div>
+                      <div style={{ fontSize:14, color:C.oscuro, fontWeight:600 }}>{v}</div>
                     </div>
                   ))}
                 </div>
