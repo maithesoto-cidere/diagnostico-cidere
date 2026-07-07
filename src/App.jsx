@@ -755,73 +755,87 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             </div>`;
 
             // ══════════════════════════════════════════════════════════════════
-            // PÁGINA 2: RESUMEN EJECUTIVO + ANÁLISIS POR DIMENSIÓN
+            // PÁGINA 2: RESUMEN EJECUTIVO
             // ══════════════════════════════════════════════════════════════════
             const pag2 = `
             <div class="pg">
               ${hdr("Resumen Ejecutivo")}
 
-              <!-- KPIs: 6 tarjetas compactas -->
-              <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:7px;flex-shrink:0;">
+              <!-- KPIs: 6 tarjetas grandes y legibles -->
+              <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;flex-shrink:0;">
                 ${[
                   {l:"Proveedores",         v:totalProv,                              c:pColor,              sub:"evaluados"},
                   {l:"Puntaje promedio",    v:pgProm!==null?pgProm+"%":"—",           c:nivProm?.color||"#999", sub:nivProm?.label||""},
-                  {l:"Con resultado final", v:conFinal,                               c:"#3BAD8A",           sub:`${totalProv-conFinal} pendientes`},
+                  {l:"Con resultado final", v:conFinal,                               c:"#3BAD8A",           sub:totalProv-conFinal+" pendientes"},
                   {l:"Dimensiones",         v:dims.length,                            c:"#9B59B6",           sub:"áreas evaluadas"},
                   {l:"Mejor dimensión",     v:mejorDim?mejorDim.dim.nombre:"—",       c:"#3BAD8A",           sub:mejorDim?a5to100(mejorDim.prom)+"%":""},
                   {l:"A reforzar",          v:peorDim?peorDim.dim.nombre:"—",         c:"#E74C3C",           sub:peorDim?a5to100(peorDim.prom)+"%":""},
                 ].map(k=>`
-                  <div class="card" style="border-top:3px solid ${k.c};padding:10px 11px;text-align:center;">
-                    <div class="lbl" style="margin-bottom:5px;">${k.l}</div>
-                    <div style="font-size:${k.v.toString().length>6?"12px":"19px"};font-weight:800;color:${k.c};line-height:1.2;word-break:break-word;">${k.v}</div>
-                    ${k.sub?`<div style="font-size:8px;color:#8A9BB0;margin-top:3px;">${k.sub}</div>`:""}
+                  <div class="card" style="border-top:4px solid ${k.c};padding:14px 12px;text-align:center;">
+                    <div style="font-size:10px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px;">${k.l}</div>
+                    <div style="font-size:${k.v.toString().length>7?"15px":k.v.toString().length>4?"22px":"30px"};font-weight:800;color:${k.c};line-height:1.15;word-break:break-word;">${k.v}</div>
+                    ${k.sub?`<div style="font-size:10px;color:#8A9BB0;margin-top:5px;">${k.sub}</div>`:""}
                   </div>`).join("")}
               </div>
 
               <!-- Fila principal: 3 columnas -->
-              <div style="display:grid;grid-template-columns:160px 1fr 1fr;gap:8px;flex:1;min-height:0;">
+              <div style="display:grid;grid-template-columns:200px 1fr 1fr;gap:9px;flex:1;min-height:0;">
 
                 <!-- Gauge + escala -->
-                <div class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:12px 10px;">
-                  <div class="lbl" style="text-align:center;">Madurez general</div>
+                <div class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:14px 12px;">
+                  <div style="font-size:10px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:.8px;text-align:center;margin-bottom:6px;">Madurez general</div>
                   <div>
                     ${gauge(pgProm, nivProm?.color||"#999")}
-                    <div style="text-align:center;font-size:12px;font-weight:800;color:${nivProm?.color||"#999"};margin-top:-4px;">${nivProm?.label||"—"}</div>
+                    <div style="text-align:center;font-size:15px;font-weight:800;color:${nivProm?.color||"#999"};margin-top:-2px;">${nivProm?.label||"—"}</div>
                   </div>
-                  <div style="width:100%;margin-top:10px;">
-                    ${NV_CFG.map(n=>`<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
-                      <div style="width:8px;height:8px;border-radius:2px;background:${n.color};flex-shrink:0;"></div>
-                      <span style="font-size:8.5px;color:#2A3A4A;font-weight:600;">${n.label}</span>
-                      <span style="font-size:8px;color:#8A9BB0;margin-left:auto;">${conteoNiv[n.label]?.count||0}</span>
+                  <div style="width:100%;margin-top:12px;">
+                    ${NV_CFG.map(n=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                      <div style="width:10px;height:10px;border-radius:3px;background:${n.color};flex-shrink:0;"></div>
+                      <span style="font-size:10.5px;color:#2A3A4A;font-weight:600;">${n.label}</span>
+                      <span style="font-size:10px;color:#8A9BB0;margin-left:auto;font-weight:700;">${conteoNiv[n.label]?.count||0}</span>
                     </div>`).join("")}
                   </div>
                 </div>
 
                 <!-- Donut + distribución -->
                 <div class="card" style="display:flex;flex-direction:column;">
-                  <div class="lbl">Distribución por nivel de madurez</div>
-                  <div style="display:flex;align-items:center;gap:14px;flex:1;">
+                  <div style="font-size:10px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Distribución por nivel de madurez</div>
+                  <div style="display:flex;align-items:center;gap:16px;flex:1;">
                     ${donut()}
-                    <div style="flex:1;">${distribHTML}</div>
+                    <div style="flex:1;">
+                      ${NV_CFG.filter(n=>conteoNiv[n.label]?.count>0).map(n=>{
+                        const cnt=conteoNiv[n.label].count;
+                        const pct=Math.round((cnt/(totalProv||1))*100);
+                        return `<div style="margin-bottom:10px;">
+                          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                            <span style="font-size:11px;font-weight:600;">${n.label}</span>
+                            <span style="font-size:11px;font-weight:700;color:${n.color};">${cnt} · ${pct}%</span>
+                          </div>
+                          <div style="height:8px;background:#EEF3F8;border-radius:4px;overflow:hidden;">
+                            <div style="width:${pct}%;height:100%;background:${n.color};border-radius:4px;"></div>
+                          </div>
+                        </div>`;
+                      }).join("")}
+                    </div>
                   </div>
                 </div>
 
                 <!-- Fortalezas y brechas -->
-                <div class="card" style="display:flex;flex-direction:column;gap:12px;">
+                <div class="card" style="display:flex;flex-direction:column;gap:14px;">
                   <div>
-                    <div class="lbl" style="color:#3BAD8A;">✓ Dimensiones más fuertes</div>
+                    <div style="font-size:10px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">✓ Dimensiones más fuertes</div>
                     ${[...dimPromedios].filter(x=>x.prom!==null).sort((a,b)=>b.prom-a.prom).slice(0,3).map(({dim,prom})=>
-                      `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #F5F8FC;">
-                        <span style="font-size:10px;">${dim.icono} ${dim.nombre}</span>
-                        <span style="font-size:10.5px;font-weight:700;color:#3BAD8A;">${a5to100(prom)}%</span>
+                      `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F5F8FC;">
+                        <span style="font-size:11.5px;">${dim.icono} ${dim.nombre}</span>
+                        <span style="font-size:13px;font-weight:800;color:#3BAD8A;">${a5to100(prom)}%</span>
                       </div>`).join("")}
                   </div>
                   <div>
-                    <div class="lbl" style="color:#E74C3C;">▲ Dimensiones a reforzar</div>
+                    <div style="font-size:10px;font-weight:700;color:#E74C3C;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">▲ Dimensiones a reforzar</div>
                     ${[...dimPromedios].filter(x=>x.prom!==null).sort((a,b)=>a.prom-b.prom).slice(0,3).map(({dim,prom})=>
-                      `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #F5F8FC;">
-                        <span style="font-size:10px;">${dim.icono} ${dim.nombre}</span>
-                        <span style="font-size:10.5px;font-weight:700;color:#E74C3C;">${a5to100(prom)}%</span>
+                      `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F5F8FC;">
+                        <span style="font-size:11.5px;">${dim.icono} ${dim.nombre}</span>
+                        <span style="font-size:13px;font-weight:800;color:#E74C3C;">${a5to100(prom)}%</span>
                       </div>`).join("")}
                   </div>
                 </div>
@@ -2733,6 +2747,10 @@ export default function App() {
   const [dims, setDims] = useState(DIMS_BASE);
   const [showBackup, setShowBackup] = useState(false);
   const [importError, setImportError] = useState("");
+  const [showPapelera, setShowPapelera] = useState(false);
+  const [papelera, setPapelera] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("papelera-v1") || "[]"); } catch(e) { return []; }
+  });
 
   useEffect(()=>{
     (async()=>{
@@ -2769,10 +2787,23 @@ export default function App() {
     try { await sbSet("proyectos-v1", lista); } catch(_){}
   };
 
+  const guardarEnPapelera = (item) => {
+    const entrada = { ...item, _eliminadoEn: new Date().toISOString() };
+    const nueva = [entrada, ...papelera].slice(0, 100); // máximo 100 ítems
+    setPapelera(nueva);
+    try { localStorage.setItem("papelera-v1", JSON.stringify(nueva)); } catch(e) {}
+  };
+
   const crearPrograma = (p) => saveProyectos([...proyectos,{...p,diagnosticos:[]}]);
   const editarPrograma = (p) => saveProyectos(proyectos.map(x=>x.id===p.id?{...x,...p,diagnosticos:x.diagnosticos}:x));
-  const eliminarPrograma = (id) => saveProyectos(proyectos.filter(p=>p.id!==id));
+  const eliminarPrograma = (id) => {
+    const prog = proyectos.find(p=>p.id===id);
+    if (prog) guardarEnPapelera({ tipo:"programa", programa: prog });
+    saveProyectos(proyectos.filter(p=>p.id!==id));
+  };
   const eliminarDiag = (diagId) => {
+    const diag = (proyectoActivo?.diagnosticos||[]).find(d=>d.id===diagId);
+    if (diag) guardarEnPapelera({ tipo:"diagnostico", diagnostico: diag, programaId: proyectoActivo.id, programaNombre: proyectoActivo.nombre });
     const updated = proyectos.map(p=>p.id===proyectoActivo.id?{...p,diagnosticos:(p.diagnosticos||[]).filter(d=>d.id!==diagId)}:p);
     saveProyectos(updated);
     setProyectoActivo(updated.find(p=>p.id===proyectoActivo.id));
@@ -2835,6 +2866,34 @@ export default function App() {
     e.target.value = "";
   };
 
+  const restaurarDePapelera = (idx) => {
+    const item = papelera[idx];
+    if (!item) return;
+    if (item.tipo === "programa") {
+      const yaExiste = proyectos.some(p=>p.id===item.programa.id);
+      if (yaExiste) { alert("Ya existe un programa con ese ID. Renombra el actual antes de restaurar."); return; }
+      saveProyectos([...proyectos, item.programa]);
+    } else if (item.tipo === "diagnostico") {
+      const prog = proyectos.find(p=>p.id===item.programaId);
+      if (!prog) { alert(`El programa "${item.programaNombre}" ya no existe. Restáuralo primero.`); return; }
+      const updated = proyectos.map(p=>p.id===item.programaId
+        ? {...p, diagnosticos:[...(p.diagnosticos||[]).filter(d=>d.id!==item.diagnostico.id), item.diagnostico]}
+        : p);
+      saveProyectos(updated);
+      if (proyectoActivo?.id===item.programaId) setProyectoActivo(updated.find(p=>p.id===item.programaId));
+    }
+    const nueva = papelera.filter((_,i)=>i!==idx);
+    setPapelera(nueva);
+    try { localStorage.setItem("papelera-v1", JSON.stringify(nueva)); } catch(e) {}
+    alert("✓ Restaurado correctamente.");
+  };
+
+  const vaciarPapelera = () => {
+    if (!window.confirm("¿Vaciar la papelera permanentemente? Esta acción no se puede deshacer.")) return;
+    setPapelera([]);
+    try { localStorage.removeItem("papelera-v1"); } catch(e) {}
+  };
+
   if(!logueado) return <PantallaLogin onOk={()=>setLogueado(true)}/>;
   if(cargando) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.fondo,color:C.gris}}>Cargando…</div>;
 
@@ -2864,9 +2923,59 @@ export default function App() {
           )}
         </div>
         <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+          <button onClick={()=>setShowPapelera(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
+            🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
+          </button>
           <button onClick={()=>{setShowBackup(true);setImportError("");}} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>💾 Backup</button>
           <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff" }}>C</div>
         </div>
+        {showPapelera && (
+          <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShowPapelera(false)}>
+            <div style={{background:"#fff",borderRadius:16,padding:0,width:"100%",maxWidth:620,maxHeight:"80vh",boxShadow:"0 24px 72px rgba(0,0,0,0.3)",display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+              {/* Header */}
+              <div style={{padding:"18px 24px",borderBottom:"1px solid #EEF3F8",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+                <div>
+                  <h2 style={{fontSize:18,fontWeight:800,color:"#1C2B3A",margin:0}}>🗑 Papelera</h2>
+                  <p style={{fontSize:12,color:"#637D92",margin:"3px 0 0 0"}}>Aquí puedes recuperar diagnósticos o programas eliminados recientemente.</p>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  {papelera.length>0 && <button onClick={vaciarPapelera} style={{padding:"7px 12px",border:"1px solid #fcc",borderRadius:8,background:"#fff5f5",color:"#E74C3C",fontSize:12,cursor:"pointer",fontWeight:600}}>Vaciar papelera</button>}
+                  <button onClick={()=>setShowPapelera(false)} style={{padding:"7px 12px",border:"1px solid #DDE6EF",borderRadius:8,background:"transparent",color:"#637D92",fontSize:12,cursor:"pointer"}}>Cerrar</button>
+                </div>
+              </div>
+              {/* Lista */}
+              <div style={{overflowY:"auto",flex:1,padding:"12px 16px"}}>
+                {papelera.length===0 ? (
+                  <div style={{textAlign:"center",padding:"40px 20px",color:"#A0B0C0"}}>
+                    <div style={{fontSize:40,marginBottom:10}}>🗑</div>
+                    <div style={{fontSize:14,fontWeight:600}}>La papelera está vacía</div>
+                    <div style={{fontSize:12,marginTop:4}}>Los diagnósticos y programas eliminados aparecerán aquí</div>
+                  </div>
+                ) : papelera.map((item,idx) => {
+                  const esDiag = item.tipo==="diagnostico";
+                  const nombre = esDiag ? (item.diagnostico?.infoGeneral?.empresa||"Sin nombre") : (item.programa?.nombre||"Sin nombre");
+                  const subtitulo = esDiag ? `Diagnóstico ${item.diagnostico?.tipo==="salida"?"final":"inicial"} · ${item.programaNombre}` : `Programa · ${(item.programa?.diagnosticos||[]).length} diagnóstico(s)`;
+                  const fecha = new Date(item._eliminadoEn).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+                  return (
+                    <div key={idx} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"#FAFBFC",borderRadius:10,marginBottom:8,border:"1px solid #EEF3F8"}}>
+                      <div style={{width:40,height:40,borderRadius:10,background:esDiag?"#EAF1FA":"#F0EAF7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                        {esDiag?"📋":"📁"}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#1C2B3A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nombre}</div>
+                        <div style={{fontSize:11,color:"#637D92",marginTop:2}}>{subtitulo}</div>
+                        <div style={{fontSize:10,color:"#A0B0C0",marginTop:2}}>Eliminado el {fecha}</div>
+                      </div>
+                      <button onClick={()=>restaurarDePapelera(idx)} style={{padding:"8px 14px",background:"linear-gradient(135deg,#3BAD8A,#2A9070)",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                        ↩ Restaurar
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
         {showBackup && (
           <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShowBackup(false)}>
             <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:420,boxShadow:"0 24px 72px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
