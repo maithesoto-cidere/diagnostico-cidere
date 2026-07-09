@@ -2348,16 +2348,15 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
 
   // tieneInicial = el diagActual ya tiene un diagnóstico inicial guardado Y no es uno nuevo de salida
   const tieneInicial = esSalidaNueva || (diagActual?.tipo === "salida") || 
-    !!(diagActual?.datosEntrada && Object.keys(diagActual.datosEntrada).length > 0 && diagActual?.tipo === "entrada" && diagActual?.fechaInicial);
+    !!(diagActual?.datosEntrada && Object.keys(diagActual.datosEntrada).length > 0 && diagActual?.tipo === "entrada" && diagActual?.fechaInicial && !diagActual?._borrador);
   const guardar = (tipo) => {
     const baseId = (diagActual?.id||Date.now().toString()).replace("_final_new","").replace("_final","");
-    // El formulario siempre escribe en datosE/datosS según modo
-    // Si modo="salida", las respuestas están en datosS; si modo="entrada", en datosE
     const respuestasActuales = modo==="salida" ? datosS : datosE;
     const indicadoresActuales = modo==="salida" ? indS : indE;
     const rec = {
       id: tipo==="salida" ? baseId+"_final" : baseId,
       tipo,
+      _borrador: false, // ← quitar flag borrador al guardar definitivamente
       infoGeneral:{...infoGeneral},
       datosEntrada: tipo==="entrada" ? {...respuestasActuales} : (diagActual?.datosEntrada||{}),
       datosSalida:  tipo==="salida"  ? {...respuestasActuales} : {},
