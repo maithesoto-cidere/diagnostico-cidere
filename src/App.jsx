@@ -2321,6 +2321,25 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
       }
     }
     setValidErr([]);
+    // Auto-guardar como borrador al llegar a resultados
+    if (destino === 7) {
+      const baseId = (diagActual?.id||"borrador_"+Date.now()).replace("_final_new","").replace("_final","");
+      const autoRec = {
+        id: modo==="salida" ? baseId+"_final" : baseId,
+        tipo: modo==="salida" ? "salida" : "entrada",
+        _borrador: true,
+        infoGeneral:{...infoGeneral},
+        datosEntrada: modo==="entrada" ? {...datos} : (diagActual?.datosEntrada||{}),
+        datosSalida:  modo==="salida"  ? {...datos} : {},
+        indicadoresEntrada: modo==="entrada" ? {...inds} : (diagActual?.indicadoresEntrada||{}),
+        indicadoresSalida:  modo==="salida"  ? {...inds} : {},
+        evidencias:{...evids},
+        fechaInicial: diagActual?.fechaInicial||new Date().toISOString(),
+        fechaFinal: null,
+        fechaGuardado: new Date().toISOString()
+      };
+      onGuardar(autoRec);
+    }
     setPagina(destino);
     setTimeout(()=>{ if(scrollRef.current) scrollRef.current.scrollTop=0; },10);
   };
@@ -2584,7 +2603,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
             <div style={{ display:"flex",justifyContent:"space-between" }}>
               <button onClick={()=>navTo(pagina-1)} style={{ padding:"11px 22px",background:"transparent",border:`1px solid ${C.borde}`,borderRadius:8,color:C.gris,fontSize:13,cursor:"pointer" }}>← Anterior</button>
               <button onClick={()=>navTo(pagina===dims.length?7:pagina+1, true)} style={{ padding:"11px 26px",background:pagina===dims.length?`linear-gradient(135deg,${C.verde},#16A085)`:`linear-gradient(135deg,${C.verde},${C.azul})`,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer" }}>
-                {pagina===dims.length?"Ver Resultados →":"Siguiente →"}
+                {pagina===dims.length?"Ver Resultados y Guardar →":"Siguiente →"}
               </button>
             </div>
           </div>
@@ -2598,9 +2617,22 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
                 <p style={{ fontSize:11,color:C.gris,textTransform:"uppercase",letterSpacing:1,margin:"0 0 4px 0" }}>Resultados</p>
                 <h2 style={{ fontSize:22,fontWeight:800,color:C.oscuro,margin:0 }}>{modo==="comparacion"?"Comparación Entrada vs. Salida":"Resumen del Diagnóstico"}</h2>
               </div>
-              <div style={{ display:"flex",gap:8 }}>
-                <button onClick={()=>setShowModal(true)} style={{ padding:"10px 18px",background:`linear-gradient(135deg,${C.verde},${C.azul})`,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer" }}>💾 Guardar</button>
-                <button onClick={()=>setShowFicha(true)} style={{ padding:"10px 18px",background:`linear-gradient(135deg,${C.headerBg},${C.azul})`,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer" }}>📄 Finalizar Diagnóstico</button>
+              <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+                {/* Aviso visual de estado de guardado */}
+                {diagActual?._borrador
+                  ? <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"#FFF8EC",border:"1px solid #E8A020",borderRadius:8,fontSize:12,color:"#A07820",fontWeight:600}}>
+                      📝 Borrador guardado automáticamente
+                    </div>
+                  : diagActual?.fechaGuardado
+                    ? <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"#EAF7F2",border:"1px solid #3BAD8A",borderRadius:8,fontSize:12,color:"#16A085",fontWeight:600}}>
+                        ✓ Guardado
+                      </div>
+                    : null
+                }
+                <button onClick={()=>setShowModal(true)} style={{ padding:"10px 20px",background:`linear-gradient(135deg,${C.verde},#16A085)`,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",boxShadow:`0 2px 8px ${C.verde}44` }}>
+                  💾 Guardar diagnóstico
+                </button>
+                <button onClick={()=>setShowFicha(true)} style={{ padding:"10px 18px",background:`linear-gradient(135deg,${C.headerBg},${C.azul})`,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer" }}>📄 Ver ficha PDF</button>
                 <button onClick={()=>{
                   const pg=pglobal(dims,datosE); const nv=pg!==null?getNivel(pg):null;
                   const fecha=new Date().toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric"});
@@ -2747,6 +2779,8 @@ export default function App() {
   const [dims, setDims] = useState(DIMS_BASE);
   const [showBackup, setShowBackup] = useState(false);
   const [importError, setImportError] = useState("");
+  const [syncStatus, setSyncStatus] = useState("ok"); // "ok" | "saving" | "error"
+  const [syncError, setSyncError] = useState("");
   const [showPapelera, setShowPapelera] = useState(false);
   const [papelera, setPapelera] = useState(() => {
     try { return JSON.parse(localStorage.getItem("papelera-v1") || "[]"); } catch(e) { return []; }
@@ -2755,23 +2789,43 @@ export default function App() {
   useEffect(()=>{
     (async()=>{
       try {
-        // Intentar cargar desde Supabase
-        const data = await sbGet("proyectos-v1");
-        if (data) {
-          setProyectos(data);
-          localStorage.setItem("proyectos-v1", JSON.stringify(data));
-        } else {
-          // Fallback: cargar desde localStorage
-          const local = localStorage.getItem("proyectos-v1");
-          if (local) {
-            const parsed = JSON.parse(local);
-            setProyectos(parsed);
-            // Migrar datos locales a Supabase
-            await sbSet("proyectos-v1", parsed);
+        // Cargar desde Supabase Y localStorage, luego hacer merge
+        const [data, local] = await Promise.all([
+          sbGet("proyectos-v1").catch(() => null),
+          Promise.resolve(localStorage.getItem("proyectos-v1"))
+        ]);
+        const sbData  = data && Array.isArray(data) ? data : null;
+        const lcData  = local ? JSON.parse(local) : null;
+
+        if (sbData && lcData) {
+          // MERGE: no perder diagnósticos que están solo en localStorage
+          const sbDiagIds = new Set();
+          sbData.forEach(p => (p.diagnosticos||[]).forEach(d => sbDiagIds.add(p.id+"::"+d.id)));
+          let huboCambios = false;
+          const merged = sbData.map(prog => {
+            const lcProg = lcData.find(lp => lp.id === prog.id);
+            if (!lcProg) return prog;
+            const soloLocales = (lcProg.diagnosticos||[]).filter(d => !sbDiagIds.has(prog.id+"::"+d.id));
+            if (soloLocales.length > 0) {
+              huboCambios = true;
+              return {...prog, diagnosticos:[...(prog.diagnosticos||[]), ...soloLocales]};
+            }
+            return prog;
+          });
+          setProyectos(merged);
+          localStorage.setItem("proyectos-v1", JSON.stringify(merged));
+          if (huboCambios) {
+            // Subir a Supabase los datos locales recuperados
+            sbSet("proyectos-v1", merged).catch(console.error);
           }
+        } else if (sbData) {
+          setProyectos(sbData);
+          localStorage.setItem("proyectos-v1", JSON.stringify(sbData));
+        } else if (lcData) {
+          setProyectos(lcData);
+          sbSet("proyectos-v1", lcData).catch(console.error);
         }
       } catch(_) {
-        // Si falla Supabase, usar localStorage
         try {
           const local = localStorage.getItem("proyectos-v1");
           if (local) setProyectos(JSON.parse(local));
@@ -2783,8 +2837,27 @@ export default function App() {
 
   const saveProyectos = async (lista) => {
     setProyectos(lista);
+    // Guardar localmente primero — instantáneo
     try { localStorage.setItem("proyectos-v1", JSON.stringify(lista)); } catch(_){}
-    try { await sbSet("proyectos-v1", lista); } catch(_){}
+    // Sincronizar con Supabase con indicador y reintento
+    setSyncStatus("saving");
+    const intentarSync = async (intentos=0) => {
+      try {
+        await sbSet("proyectos-v1", lista);
+        setSyncStatus("ok");
+        setSyncError("");
+      } catch(e) {
+        if (intentos < 2) {
+          // Reintentar hasta 2 veces con delay
+          setTimeout(() => intentarSync(intentos+1), 2000);
+        } else {
+          setSyncStatus("error");
+          setSyncError("No se pudo sincronizar con el servidor. Los datos están guardados localmente, pero no estarán disponibles desde otros dispositivos hasta que se restaure la conexión.");
+          console.error("sbSet falló tras 3 intentos:", e);
+        }
+      }
+    };
+    intentarSync();
   };
 
   const guardarEnPapelera = (item) => {
@@ -2923,6 +2996,25 @@ export default function App() {
           )}
         </div>
         <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+          {/* Indicador de sincronización */}
+          {syncStatus==="saving" && (
+            <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 11px",background:"rgba(255,255,255,0.08)",borderRadius:8,fontSize:11,color:"rgba(255,255,255,0.65)"}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:"#F0C040"}}/>
+              Guardando…
+            </div>
+          )}
+          {syncStatus==="ok" && (
+            <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 11px",background:"rgba(255,255,255,0.05)",borderRadius:8,fontSize:11,color:"rgba(255,255,255,0.4)"}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:"#3BAD8A"}}/>
+              Sincronizado
+            </div>
+          )}
+          {syncStatus==="error" && (
+            <div title={syncError} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 11px",background:"rgba(231,76,60,0.2)",border:"1px solid rgba(231,76,60,0.35)",borderRadius:8,fontSize:11,color:"#FF8A80",cursor:"help"}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:"#E74C3C"}}/>
+              ⚠ Sin sincronizar
+            </div>
+          )}
           <button onClick={()=>setShowPapelera(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
             🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
           </button>
