@@ -1295,8 +1295,29 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 /* ═══════════════════════════════════════════
    MODAL GUARDAR DIAGNÓSTICO
 ═══════════════════════════════════════════ */
-function ModalGuardar({ infoGeneral, tieneInicial, onGuardar, onCerrar }) {
+function ModalGuardar({ infoGeneral, tieneInicial, esActualizacion, onGuardar, onCerrar }) {
   const tipo = tieneInicial ? "salida" : "entrada";
+  if (esActualizacion) {
+    // Es un diagnóstico inicial ya guardado — ofrecer actualizar
+    return (
+      <Modal onClose={onCerrar} width={440}>
+        <h2 style={{ fontSize:20, fontWeight:800, color:C.oscuro, margin:"0 0 4px 0" }}>Actualizar diagnóstico</h2>
+        <p style={{ fontSize:13, color:C.gris, margin:"0 0 20px 0" }}>Proveedor: <strong style={{color:C.oscuro}}>{infoGeneral.empresa||"Sin nombre"}</strong></p>
+        <div style={{ background:`${C.azul}10`, border:`2px solid ${C.azul}`, borderRadius:12, padding:18, marginBottom:16, textAlign:"center" }}>
+          <div style={{ fontSize:22, marginBottom:6 }}>📋</div>
+          <div style={{ fontSize:15, fontWeight:700, color:C.azul }}>Actualizar Diagnóstico Inicial</div>
+          <div style={{ fontSize:12, color:C.gris, marginTop:4 }}>Se sobreescribirá el diagnóstico inicial con los datos actuales</div>
+        </div>
+        <p style={{ fontSize:12, color:"#A07820", background:"#FFF8EC", border:"1px solid #E8A020", borderRadius:8, padding:"10px 14px", marginBottom:16 }}>
+          ⚠ Los cambios reemplazarán el diagnóstico inicial guardado anteriormente.
+        </p>
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={onCerrar} style={{ flex:1, padding:"11px", border:`1px solid ${C.borde}`, borderRadius:8, background:"transparent", color:C.gris, cursor:"pointer" }}>Cancelar</button>
+          <button onClick={()=>onGuardar("entrada")} style={{ flex:2, padding:"11px", background:`linear-gradient(135deg,${C.azul},#1A5A9A)`, border:"none", borderRadius:8, color:"#fff", fontWeight:700, cursor:"pointer" }}>✓ Actualizar diagnóstico inicial</button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal onClose={onCerrar} width={440}>
       <h2 style={{ fontSize:20, fontWeight:800, color:C.oscuro, margin:"0 0 4px 0" }}>Guardar diagnóstico</h2>
@@ -1449,14 +1470,13 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
   const interpS = tieneS ? generarInterpretacion(dims, datosS||{}) : null;
   const conclusion = esComparativa ? generarConclusion(dims, datosE, datosS, infoGeneral.empresa) : "";
 
-  // Para tab final: si datosS está vacío pero datosE tiene datos (modo salida_nueva en edición),
-  // usar datosE como fallback temporal
+  // datosActivos: usar datos del formulario, y si están vacíos, usar los del diagActual guardado
   const datosActivos = tab==="final"
-    ? (Object.keys(datosS||{}).length>0 ? datosS||{} : datosE||{})
-    : (datosE||{});
+    ? (Object.keys(datosS||{}).length>0 ? datosS : (diagActual?.datosSalida||datosE||{}))
+    : (Object.keys(datosE||{}).length>0 ? datosE : (diagActual?.datosEntrada||{}));
   const indsActivos = tab==="final"
-    ? (Object.keys(indS||{}).length>0 ? indS||{} : indE||{})
-    : (indE||{});
+    ? (Object.keys(indS||{}).length>0 ? indS : (diagActual?.indicadoresSalida||indE||{}))
+    : (Object.keys(indE||{}).length>0 ? indE : (diagActual?.indicadoresEntrada||{}));
   const dimRows = dims.map(d => ({
     d, pe: pdim(d, datosE||{}), ps: tieneS ? pdim(d, datosS||{}) : null,
     indE: indE?.[d.id], indS: indS?.[d.id],
@@ -2347,8 +2367,10 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
   const showT = (msg,c=C.verde) => { setToast({msg,c}); setTimeout(()=>setToast(null),3000); };
 
   // tieneInicial = el diagActual ya tiene un diagnóstico inicial guardado Y no es uno nuevo de salida
-  const tieneInicial = esSalidaNueva || (diagActual?.tipo === "salida") || 
-    !!(diagActual?.datosEntrada && Object.keys(diagActual.datosEntrada).length > 0 && diagActual?.tipo === "entrada" && diagActual?.fechaInicial && !diagActual?._borrador);
+  // tieneInicial = true solo cuando es explícitamente un diagnóstico FINAL nuevo
+  // Si es un diagnóstico inicial ya guardado que se está editando → NO es tieneInicial
+  const tieneInicial = esSalidaNueva || diagActual?.tipo === "salida";
+  const esActualizacion = !esSalidaNueva && diagActual?.tipo === "entrada" && diagActual?.fechaGuardado && !diagActual?._borrador;
   const guardar = (tipo) => {
     const baseId = (diagActual?.id||Date.now().toString()).replace("_final_new","").replace("_final","");
     const respuestasActuales = modo==="salida" ? datosS : datosE;
@@ -2387,7 +2409,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
           </div>
         </Modal>
       )}
-      {showModal && <ModalGuardar infoGeneral={infoGeneral} tieneInicial={tieneInicial} onGuardar={guardar} onCerrar={()=>setShowModal(false)}/>}
+      {showModal && <ModalGuardar infoGeneral={infoGeneral} tieneInicial={tieneInicial} esActualizacion={esActualizacion} onGuardar={guardar} onCerrar={()=>setShowModal(false)}/>}
       {showFicha && <FichaDiagnostico dims={dims} infoGeneral={infoGeneral}
         datosE={esSalidaNueva ? {} : datosE}
         datosS={esSalidaNueva ? datosE : datosS}
