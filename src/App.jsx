@@ -1219,9 +1219,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           </div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          {tieneAmbos && !dFinal?._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.verde, background:`${C.verde}15`, padding:"4px 10px", borderRadius:6 }}>✓ Completo</span>}
-                          {dInicial?._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>📝 Borrador</span>}
-                          {!dFinal && dInicial && !dInicial._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>⏳ En progreso</span>}
+                          {tieneAmbos && !dFinal?._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.verde, background:`${C.verde}15`, padding:"4px 10px", borderRadius:6 }}>✓ Inicial y Final guardados</span>}
+                          {dInicial?._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>📝 Borrador — pendiente guardar</span>}
+                          {!dFinal && dInicial && !dInicial._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.azul, background:`${C.azul}15`, padding:"4px 10px", borderRadius:6 }}>✓ Diagnóstico inicial guardado</span>}
                           {info.estado && <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:info.estado==="Validado"?"#EAF7F2":info.estado==="Descartado"?"#FFF0F0":"#FFFBF0", color:info.estado==="Validado"?"#16A085":info.estado==="Descartado"?"#E74C3C":"#A07820" }}>{info.estado==="Validado"?"🟢":info.estado==="Descartado"?"🔴":"🟡"} {info.estado}</span>}
                         </div>
                       </div>
@@ -1547,7 +1547,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
             setFocoEditado(autoFoco);
             // Pre-llenar síntesis
             setSintesisEditada(generarInterpretacion(dims, datosE||{})?.narrativa || "");
-            setNotaMentorEditada(infoGeneral.observaciones || "");
+            setNotaMentorEditada(infoGeneral.obsEnMentor ? (infoGeneral.notaMentor || infoGeneral.observaciones || "") : (infoGeneral.observaciones || ""));
             setShowMentorModal(true);
           }} style={{ padding:"9px 18px", background:"linear-gradient(135deg,#9B59B6,#8E44AD)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>📋 Ficha Mentor</button>
           <button onClick={onCerrar} style={{ padding:"9px 14px", background:"rgba(255,255,255,0.1)", border:"none", borderRadius:8, color:"#fff", fontSize:13, cursor:"pointer" }}>✕ Cerrar</button>
@@ -1852,7 +1852,7 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     ? `Concentrar la sesión en ${top2.map(x=>x.d.nombre).join(" y ")} (${top2.map(x=>x.pct+"%").join(" y ")}). ${top2[0].prom < 2.5 ? "Se detectan brechas críticas." : "Hay oportunidades concretas de mejora."} Iniciar con preguntas abiertas.`
     : `La empresa muestra madurez adecuada. Orientar hacia consolidación y crecimiento.`);
   const sintesis   = sintesisCustom  || (interp?.narrativa || "");
-  const notaInterna = notaCustom     || (infoGeneral.observaciones || "");
+  const notaInterna = notaCustom || (infoGeneral.obsEnMentor ? (infoGeneral.notaMentor || infoGeneral.observaciones || "") : (infoGeneral.observaciones || ""));
 
   const accionesPorDim = {
     "Estratégica y Comercial":     ["Definir propuesta de valor en 1 página","Establecer metas de venta mensuales","Identificar 2 nuevos clientes potenciales"],
@@ -2263,7 +2263,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
   const [pagina, setPagina] = useState(verComparativo ? 7 : 0);
   const [modo, setModo] = useState(esSalidaNueva ? "salida" : verComparativo ? "comparacion" : "entrada");
   const [validErr, setValidErr] = useState([]);
-  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",facturacionCMPC:"",consultor:"",modalidad:"",observaciones:"",estado:"Pendiente revisión"});
+  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",facturacionCMPC:"",consultor:"",modalidad:"",observaciones:"",obsEnMentor:false,notaMentor:"",estado:"Pendiente revisión"});
   const [datosE, setDatosE] = useState(esSalidaNueva ? {} : (diagActual?.datosEntrada||{}));
   const [datosS, setDatosS] = useState(esSalidaNueva ? {} : (dFinalRef?.datosSalida||diagActual?.datosSalida||{}));
   const [indE, setIndE] = useState(esSalidaNueva ? {} : (diagActual?.indicadoresEntrada||{}));
@@ -2711,6 +2711,45 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
                 </div>
               ))}
             </div>
+
+            {/* ── OBSERVACIONES PARA FICHA DEL MENTOR ── */}
+            <div style={{ marginTop:20, background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, overflow:"hidden" }}>
+              <div style={{ padding:"12px 18px", borderBottom:`1px solid ${C.borde}`, background:C.fondo, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div style={{ fontSize:10, letterSpacing:1, color:C.gris, textTransform:"uppercase", marginBottom:2 }}>Observaciones del Consultor</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.oscuro }}>Nota sobre la empresa para el mentor</div>
+                </div>
+                <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", userSelect:"none" }}>
+                  <div style={{ position:"relative", width:40, height:22, flexShrink:0 }} onClick={()=>setInfoGeneral(p=>({...p, obsEnMentor:!p.obsEnMentor}))}>
+                    <div style={{ position:"absolute", inset:0, borderRadius:11, background:infoGeneral.obsEnMentor?C.verde:C.borde, transition:"background 0.2s" }}/>
+                    <div style={{ position:"absolute", top:3, left:infoGeneral.obsEnMentor?20:3, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
+                  </div>
+                  <span style={{ fontSize:12, fontWeight:600, color:infoGeneral.obsEnMentor?C.verde:C.gris }}>
+                    {infoGeneral.obsEnMentor ? "✓ Incluir en ficha del mentor" : "No incluir en ficha del mentor"}
+                  </span>
+                </label>
+              </div>
+              <div style={{ padding:"16px 18px" }}>
+                <textarea
+                  value={infoGeneral.notaMentor||""}
+                  onChange={e=>setInfoGeneral(p=>({...p, notaMentor:e.target.value}))}
+                  placeholder="Ej: Empresa con buena disposición pero dueño con resistencia a delegar. Priorizar trabajo en gestión de personas. Contactar antes de la sesión para confirmar asistencia..."
+                  rows={4}
+                  style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1.5px solid ${infoGeneral.obsEnMentor?C.verde:C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", resize:"vertical", fontFamily:"inherit", boxSizing:"border-box", lineHeight:1.6, transition:"border-color 0.2s" }}
+                />
+                {infoGeneral.obsEnMentor && (
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:8, fontSize:11, color:C.verde }}>
+                    ✓ Esta nota aparecerá en la sección "Nota del consultor" de la ficha del mentor
+                  </div>
+                )}
+                {!infoGeneral.obsEnMentor && infoGeneral.notaMentor && (
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:8, fontSize:11, color:C.gris }}>
+                    La nota está escrita pero no se incluirá en la ficha del mentor hasta que actives la opción
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
         )}
       </div>
@@ -2833,6 +2872,29 @@ export default function App() {
       setCargando(false);
     })();
   },[]);
+
+  // Migración: limpiar _borrador:true de diagnósticos que sí tienen fechaGuardado
+  useEffect(() => {
+    if (proyectos.length === 0) return;
+    let huboFix = false;
+    const fixed = proyectos.map(p => ({
+      ...p,
+      diagnosticos: (p.diagnosticos||[]).map(d => {
+        // Si tiene _borrador:true pero ya tiene fechaGuardado o fechaInicial → ya fue guardado
+        if (d._borrador && (d.fechaGuardado || d.fechaInicial)) {
+          huboFix = true;
+          return { ...d, _borrador: false };
+        }
+        return d;
+      })
+    }));
+    if (huboFix) {
+      setProyectos(fixed);
+      try { localStorage.setItem("proyectos-v1", JSON.stringify(fixed)); } catch(_){}
+      sbSet("proyectos-v1", fixed).catch(console.error);
+    }
+  }, [proyectos.length]);
+
 
   const saveProyectos = async (lista) => {
     setProyectos(lista);
