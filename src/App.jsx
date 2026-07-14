@@ -477,6 +477,9 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
    VISTA DE UN PROGRAMA (diagnósticos dentro)
 ═══════════════════════════════════════════ */
 /* ── Coordenadas de regiones de Chile ── */
+// TODO: verificar existencia de campos lat/lng por región en Supabase; por ahora se usa esta tabla estática
+// como aproximación (coordenadas de la capital regional), ya que el campo "región" es texto libre ingresado
+// por el consultor y no está vinculado a una tabla de ubicaciones en la base de datos.
 const REGIONES_COORDS = {
   "Arica y Parinacota":[-18.4783,-70.3126],"Tarapacá":[-20.2137,-70.1522],
   "Antofagasta":[-23.6509,-70.3954],"Atacama":[-27.3668,-70.3322],
@@ -487,6 +490,22 @@ const REGIONES_COORDS = {
   "Los Ríos":[-39.8142,-73.2459],"Los Lagos":[-41.4717,-72.9369],
   "Aysén":[-45.5752,-72.0662],"Magallanes":[-53.1638,-70.9171],
 };
+
+/* ── Normalización de rubros a categorías macro ── */
+// TODO: verificar si conviene guardar rubro_categoria en Supabase; por ahora se deriva del texto libre
+function normalizarRubro(rubroRaw) {
+  const r = (rubroRaw||"").toLowerCase().trim();
+  if (!r) return "Otros";
+  // Transporte
+  if (/transp|logíst|logist|flet|camion|carga|distribu/.test(r)) return "Transporte";
+  // Maestranzas
+  if (/maestran|soldadur|estructura metál|estructura metal|calderer|metalmec|metal-mec|metal mec/.test(r)) return "Maestranzas";
+  // Repuestos y Maquinaria
+  if (/repuest|maquinar|equipo|arriendo de maq|venta de maq|herramient|neumátic|neumatic|lubricant/.test(r)) return "Repuestos y Maquinaria";
+  // Servicios Industriales (incluye obras, ingeniería, mantención, aseo industrial, etc.)
+  if (/servicio|industrial|obra|ingenier|construc|mantenc|manten|aseo|montaje|instalac|eléctric|electric|mecánic|mecanic|civil/.test(r)) return "Servicios Industriales";
+  return "Otros";
+}
 
 function MapaLeaflet({ regiones, getNivel, a5to100 }) {
   const mapRef = useRef(null);
@@ -506,7 +525,7 @@ function MapaLeaflet({ regiones, getNivel, a5to100 }) {
       if (!mapRef.current || mapInstanceRef.current) return;
       const L = window.L;
       if (!L) return;
-      const map = L.map(mapRef.current, { center:[-37,[-71]], zoom:5, zoomControl:true });
+      const map = L.map(mapRef.current, { center:[-37,-71], zoom:5, zoomControl:true });
       mapInstanceRef.current = map;
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution:"© OpenStreetMap contributors", maxZoom:18
@@ -524,7 +543,8 @@ function MapaLeaflet({ regiones, getNivel, a5to100 }) {
         }).addTo(map);
         circle.bindPopup(`
           <div style="font-family:Segoe UI,Arial,sans-serif;min-width:160px;">
-            <div style="font-size:13px;font-weight:800;color:#1C2B3A;margin-bottom:6px;">${r.nombre}</div>
+            <div style="font-size:13px;font-weight:800;color:#1C2B3A;margin-bottom:2px;">${r.nombre}</div>
+            <div style="font-size:10px;color:#8A9BB0;margin-bottom:6px;">${r.pais||"Chile"}</div>
             <div style="font-size:11px;color:#5A7A9A;margin-bottom:2px;">Proveedores: <strong>${r.count}</strong></div>
             <div style="font-size:11px;color:#5A7A9A;margin-bottom:2px;">Puntaje promedio: <strong style="color:${n.color}">${pct}% · ${n.label}</strong></div>
             <div style="font-size:11px;color:#5A7A9A;">Rubro predominante: <strong>${r.rubroPred}</strong></div>
@@ -1084,41 +1104,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         }]} size={220}/>
                       </div>
 
-                      {/* Puntaje por empresa */}
-                      {entradasConPG.length > 1 && (
-                        <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                          <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Puntaje por Empresa</div>
-                          <div style={{ fontSize:11, color:C.grisCl, marginBottom:12 }}>Ordenado de mayor a menor</div>
-                          <div style={{ position:"relative" }}>
-                            {[25,50,75,100].map(ref=>(
-                              <div key={ref} style={{ position:"absolute", left:`${ref}%`, top:0, bottom:0, borderLeft:`1px dashed ${C.borde}`, zIndex:0 }}/>
-                            ))}
-                            {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
-                              const nv=getNivel(p.pg); const pct=a5to100(p.pg);
-                              const pgF=p.pgS; const pctF=pgF!==null?a5to100(pgF):null;
-                              return (
-                                <div key={i} style={{ marginBottom:10, position:"relative", zIndex:1 }}
-                                  onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${p.empresa}\nBase: ${pct}%${pctF!==null?" · Final: "+pctF+"%":""}${pctF!==null?" · Avance: +"+(pctF-pct)+"pts":""}`})}
-                                  onMouseLeave={()=>setTooltip(null)}>
-                                  <div style={{ fontSize:11, color:C.oscuro, marginBottom:3, fontWeight:600 }}>{p.empresa}</div>
-                                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                    <div style={{ flex:1, position:"relative", height:18, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
-                                      <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}70`, borderRadius:4, transition:"width 0.4s" }}/>
-                                      {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:4, opacity:0.8, transition:"width 0.4s" }}/>}
-                                    </div>
-                                    <span style={{ fontSize:11, fontWeight:700, color:nv.color, minWidth:36 }}>{pct}%</span>
-                                    {pctF!==null&&<span style={{ fontSize:11, fontWeight:700, color:C.verde, minWidth:36 }}>→{pctF}%</span>}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                            <div style={{ display:"flex", justifyContent:"space-between", marginTop:6 }}>
-                              {[0,25,50,75,100].map(r=><span key={r} style={{fontSize:9,color:C.grisCl}}>{r}%</span>)}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
                       {/* Promedio por dimensión */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Promedio por Dimensión</div>
@@ -1210,33 +1195,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         })()}
                       </div>
 
-                      {/* Ranking */}
-                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Ranking de Proveedores</div>
-                        {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
-                          const nv=getNivel(p.pg); const pct=a5to100(p.pg);
-                          const pgF=p.pgS; const pctF=pgF!==null?a5to100(pgF):null;
-                          return (
-                            <div key={i} style={{ marginBottom:12 }}
-                              onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${p.empresa}\n${pct}%${pctF!==null?" → "+pctF+"% (+"+(pctF-pct)+" pts)":""}`})}
-                              onMouseLeave={()=>setTooltip(null)}>
-                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, alignItems:"center" }}>
-                                <span style={{ fontSize:12, color:C.oscuro, fontWeight:600 }}>{i+1}. {p.empresa}</span>
-                                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                                  <span style={{ fontSize:11, color:nv.color, fontWeight:700 }}>{pct}%</span>
-                                  {pctF!==null&&<span style={{ fontSize:11, color:C.verde, fontWeight:700 }}>→ {pctF}%</span>}
-                                </div>
-                              </div>
-                              <div style={{ position:"relative", height:10, background:C.fondo, borderRadius:5, overflow:"hidden" }}>
-                                <div style={{ position:"absolute", left:0, top:0, width:`${pct}%`, height:"100%", background:`${pColor}88`, borderRadius:5, transition:"width 0.4s" }}/>
-                                {pctF!==null&&<div style={{ position:"absolute", left:0, top:0, width:`${pctF}%`, height:"100%", background:C.verde, borderRadius:5, opacity:0.7, transition:"width 0.4s" }}/>}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {provsConAmbos.length>0&&<div style={{ fontSize:11, color:C.grisCl, marginTop:8 }}>Barra izquierda = base · barra verde = final</div>}
-                      </div>
-
                       {/* Contadores */}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                         <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:16 }}>
@@ -1311,31 +1269,44 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   );
                 })()}
 
-                {/* ── 2. PENDIENTES DE DIAGNÓSTICO ── */}
+                {/* ── 2. PROVEEDORES PENDIENTES DE DIAGNOSTICAR ── */}
                 {(() => {
-                  const conDiag = new Set((programa.diagnosticos||[]).filter(d=>d.tipo==="entrada"&&!d._borrador).map(d=>d.infoGeneral?.empresa||""));
-                  const borradores = (programa.diagnosticos||[]).filter(d=>d._borrador);
-                  if (!borradores.length) return null;
+                  const totalPreg = dims.reduce((a,d)=>a+d.preguntas.length,0);
+                  // Pendiente = borrador sin guardar, o diagnóstico inicial con preguntas sin responder
+                  const pendientes = ds
+                    .filter(d=>d.tipo==="entrada")
+                    .filter(d=>{
+                      const respondidas = Object.keys(d.datosEntrada||{}).length;
+                      return d._borrador || respondidas < totalPreg;
+                    });
                   return (
                     <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📝 Borradores pendientes de guardar</div>
-                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                        {borradores.map((d,i)=>{
-                          const empresa = d.infoGeneral?.empresa||"Sin nombre";
-                          const rubro = d.infoGeneral?.rubro||"—";
-                          const fecha = d.fechaGuardado ? new Date(d.fechaGuardado).toLocaleDateString("es-CL") : "—";
-                          return (
-                            <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 12px", background:"#FFF8EC", border:"1px solid #E8A02044", borderRadius:8 }}>
-                              <span style={{ fontSize:14 }}>📋</span>
-                              <div style={{ flex:1 }}>
-                                <div style={{ fontSize:12, fontWeight:700, color:C.oscuro }}>{empresa}</div>
-                                <div style={{ fontSize:11, color:C.gris }}>Rubro: {rubro} · Última actualización: {fecha}</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📝 Proveedores pendientes de diagnosticar</div>
+                      {pendientes.length===0 ? (
+                        <div style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 16px", background:"#EAF7F2", border:"1px solid #3BAD8A33", borderRadius:10 }}>
+                          <span style={{ fontSize:18 }}>✓</span>
+                          <span style={{ fontSize:13, color:"#16A085", fontWeight:600 }}>Todos los proveedores del programa están diagnosticados.</span>
+                        </div>
+                      ) : (
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          {pendientes.map((d,i)=>{
+                            const empresa = d.infoGeneral?.empresa||"Sin nombre";
+                            const rubro = d.infoGeneral?.rubro||"—";
+                            const fecha = d.fechaGuardado ? new Date(d.fechaGuardado).toLocaleDateString("es-CL") : "—";
+                            const respondidas = Object.keys(d.datosEntrada||{}).length;
+                            return (
+                              <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 12px", background:"#FFF8EC", border:"1px solid #E8A02044", borderRadius:8 }}>
+                                <span style={{ fontSize:14 }}>📋</span>
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:12, fontWeight:700, color:C.oscuro }}>{empresa}</div>
+                                  <div style={{ fontSize:11, color:C.gris }}>Rubro: {rubro} · Última actualización: {fecha} · {respondidas}/{totalPreg} preguntas</div>
+                                </div>
+                                <span style={{ fontSize:10, fontWeight:700, color:"#A07820", background:"#E8A02018", padding:"2px 8px", borderRadius:4 }}>{d._borrador?"Borrador":"Incompleto"}</span>
                               </div>
-                              <span style={{ fontSize:10, fontWeight:700, color:"#A07820", background:"#E8A02018", padding:"2px 8px", borderRadius:4 }}>Borrador</span>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -1379,12 +1350,13 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   </div>
                 </div>
 
-                {/* ── 4. CRUCE POR RUBRO (heatmap) ── */}
+                {/* ── 4. CRUCE POR RUBRO (heatmap) — agrupado por categoría macro ── */}
                 {(() => {
+                  // TODO: verificar existencia de este campo en Supabase — rubro se deriva del texto libre vía normalizarRubro()
                   const rubros = [...new Set(entradasConPG.map(p=>{
                     const d=ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
-                    return d?.infoGeneral?.rubro||"Sin rubro";
-                  }).filter(Boolean))];
+                    return normalizarRubro(d?.infoGeneral?.rubro);
+                  }))];
                   if (rubros.length < 2) return null;
                   return (
                     <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16, overflowX:"auto" }}>
@@ -1401,7 +1373,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           {rubros.map((rubro,ri)=>{
                             const provRubro = entradasConPG.filter(p=>{
                               const d=ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
-                              return (d?.infoGeneral?.rubro||"Sin rubro")===rubro;
+                              return normalizarRubro(d?.infoGeneral?.rubro)===rubro;
                             });
                             const promsRubro = dims.map(d=>{
                               const vals = provRubro.map(p=>{
@@ -1447,14 +1419,18 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   entradasConPG.forEach(p => {
                     const diag = ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
                     const region = diag?.infoGeneral?.region||"Sin región";
-                    if (!regMap[region]) regMap[region] = { count:0, pgs:[], rubros:{} };
+                    const pais = diag?.infoGeneral?.pais||"Chile";
+                    if (!regMap[region]) regMap[region] = { count:0, pgs:[], rubros:{}, paises:{} };
                     regMap[region].count++;
                     regMap[region].pgs.push(p.pg);
-                    const rubro = diag?.infoGeneral?.rubro||"—";
-                    regMap[region].rubros[rubro] = (regMap[region].rubros[rubro]||0)+1;
+                    regMap[region].paises[pais] = (regMap[region].paises[pais]||0)+1;
+                    // Rubro macro normalizado — ver normalizarRubro()
+                    const rubroMacro = normalizarRubro(diag?.infoGeneral?.rubro);
+                    regMap[region].rubros[rubroMacro] = (regMap[region].rubros[rubroMacro]||0)+1;
                   });
                   const regiones = Object.entries(regMap).map(([nombre,v])=>({
                     nombre,
+                    pais: Object.entries(v.paises).sort((a,b)=>b[1]-a[1])[0]?.[0]||"Chile",
                     count: v.count,
                     prom: v.pgs.reduce((a,b)=>a+b,0)/v.pgs.length,
                     rubroPred: Object.entries(v.rubros).sort((a,b)=>b[1]-a[1])[0]?.[0]||"—"
@@ -1472,7 +1448,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           return (
                             <div key={i} style={{ marginBottom:12 }}>
                               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                                <span style={{ fontSize:12, fontWeight:600, color:C.oscuro }}>{r.nombre}</span>
+                                <span style={{ fontSize:12, fontWeight:600, color:C.oscuro }}>{r.nombre}<span style={{fontWeight:400,color:C.gris}}> · {r.pais}</span></span>
                                 <div style={{ display:"flex", gap:12, alignItems:"center" }}>
                                   <span style={{ fontSize:11, color:C.gris }}>{r.count} prov.</span>
                                   <span style={{ fontSize:11, fontWeight:700, color:n.color }}>{pct}% prom.</span>
