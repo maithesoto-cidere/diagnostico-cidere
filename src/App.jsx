@@ -1467,25 +1467,25 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       <MapaLeaflet regiones={regiones} getNivel={getNivel} a5to100={a5to100}/>
                       <div style={{ marginTop:16, borderTop:`1px solid ${C.borde}`, paddingTop:14 }}>
                         <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Detalle por región</div>
-                      {regiones.map((r,i)=>{
-                        const n=getNivel(r.prom); const pct=a5to100(r.prom); const barW=Math.round((r.count/maxCount)*100);
-                        return (
-                          <div key={i} style={{ marginBottom:12 }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                              <span style={{ fontSize:12, fontWeight:600, color:C.oscuro }}>{r.nombre}</span>
-                              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-                                <span style={{ fontSize:11, color:C.gris }}>{r.count} prov.</span>
-                                <span style={{ fontSize:11, fontWeight:700, color:n.color }}>{pct}% prom.</span>
+                        {regiones.map((r,i)=>{
+                          const n=getNivel(r.prom); const pct=a5to100(r.prom); const barW=Math.round((r.count/maxCount)*100);
+                          return (
+                            <div key={i} style={{ marginBottom:12 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                                <span style={{ fontSize:12, fontWeight:600, color:C.oscuro }}>{r.nombre}</span>
+                                <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                                  <span style={{ fontSize:11, color:C.gris }}>{r.count} prov.</span>
+                                  <span style={{ fontSize:11, fontWeight:700, color:n.color }}>{pct}% prom.</span>
+                                </div>
+                              </div>
+                              <div style={{ height:14, background:C.fondo, borderRadius:7, overflow:"hidden" }}>
+                                <div style={{ width:`${barW}%`, height:"100%", background:n.color, borderRadius:7, opacity:0.85, transition:"width 0.4s" }}/>
                               </div>
                             </div>
-                            <div style={{ height:14, background:C.fondo, borderRadius:7, overflow:"hidden" }}>
-                              <div style={{ width:`${barW}%`, height:"100%", background:n.color, borderRadius:7, opacity:0.85, transition:"width 0.4s" }}/>
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  );
                 })()}
 
               </>)}
