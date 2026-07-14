@@ -1486,6 +1486,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         })}
                       </div>
                     </div>
+                  );
                 })()}
 
               </>)}
