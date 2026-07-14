@@ -476,6 +476,104 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
 /* ═══════════════════════════════════════════
    VISTA DE UN PROGRAMA (diagnósticos dentro)
 ═══════════════════════════════════════════ */
+/* ── Coordenadas de regiones de Chile ── */
+const REGIONES_COORDS = {
+  "Arica y Parinacota":[-18.4783,-70.3126],"Tarapacá":[-20.2137,-70.1522],
+  "Antofagasta":[-23.6509,-70.3954],"Atacama":[-27.3668,-70.3322],
+  "Coquimbo":[-29.9533,-71.3395],"Valparaíso":[-33.0472,-71.6127],
+  "Metropolitana":[-33.4569,-70.6483],"O'Higgins":[-34.1703,-70.7444],
+  "Maule":[-35.4264,-71.6554],"Ñuble":[-36.7226,-72.1034],
+  "Biobío":[-37.0228,-73.0246],"La Araucanía":[-38.9489,-72.3311],
+  "Los Ríos":[-39.8142,-73.2459],"Los Lagos":[-41.4717,-72.9369],
+  "Aysén":[-45.5752,-72.0662],"Magallanes":[-53.1638,-70.9171],
+};
+
+function MapaLeaflet({ regiones, getNivel, a5to100 }) {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+
+  useEffect(() => {
+    // Cargar CSS de Leaflet
+    if (!document.getElementById("leaflet-css")) {
+      const link = document.createElement("link");
+      link.id = "leaflet-css";
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(link);
+    }
+    // Cargar JS de Leaflet
+    const initMap = () => {
+      if (!mapRef.current || mapInstanceRef.current) return;
+      const L = window.L;
+      if (!L) return;
+      const map = L.map(mapRef.current, { center:[-37,[-71]], zoom:5, zoomControl:true });
+      mapInstanceRef.current = map;
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution:"© OpenStreetMap contributors", maxZoom:18
+      }).addTo(map);
+      const maxCount = Math.max(...regiones.map(r=>r.count), 1);
+      regiones.forEach(r => {
+        const coords = REGIONES_COORDS[r.nombre];
+        if (!coords) return;
+        const n = getNivel(r.prom);
+        const pct = a5to100(r.prom);
+        const radius = 10 + Math.round((r.count/maxCount)*30);
+        const circle = L.circleMarker(coords, {
+          radius, color:"#fff", weight:2,
+          fillColor: n.color, fillOpacity:0.85
+        }).addTo(map);
+        circle.bindPopup(`
+          <div style="font-family:Segoe UI,Arial,sans-serif;min-width:160px;">
+            <div style="font-size:13px;font-weight:800;color:#1C2B3A;margin-bottom:6px;">${r.nombre}</div>
+            <div style="font-size:11px;color:#5A7A9A;margin-bottom:2px;">Proveedores: <strong>${r.count}</strong></div>
+            <div style="font-size:11px;color:#5A7A9A;margin-bottom:2px;">Puntaje promedio: <strong style="color:${n.color}">${pct}% · ${n.label}</strong></div>
+            <div style="font-size:11px;color:#5A7A9A;">Rubro predominante: <strong>${r.rubroPred}</strong></div>
+          </div>`);
+      });
+      // Ajustar vista a los marcadores
+      const validCoords = regiones.filter(r=>REGIONES_COORDS[r.nombre]).map(r=>REGIONES_COORDS[r.nombre]);
+      if (validCoords.length > 1) map.fitBounds(validCoords, { padding:[20,20] });
+    };
+    if (window.L) {
+      initMap();
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.onload = initMap;
+      document.head.appendChild(script);
+    }
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [regiones.length]);
+
+  return (
+    <div>
+      <div ref={mapRef} style={{ height:320, borderRadius:10, overflow:"hidden", border:"1px solid #DDE6EF" }}/>
+      <div style={{ display:"flex", gap:12, marginTop:10, flexWrap:"wrap" }}>
+        {["Bajo (0-40%)", "Medio (41-70%)", "Alto (71-100%)"].map((l,i) => {
+          const colors = ["#E74C3C","#D4AC0D","#3BAD8A"];
+          return <div key={i} style={{ display:"flex", alignItems:"center", gap:5 }}>
+            <div style={{ width:12, height:12, borderRadius:"50%", background:colors[i], border:"1.5px solid #fff", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
+            <span style={{ fontSize:10, color:"#637D92" }}>{l}</span>
+          </div>;
+        })}
+        <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+          <div style={{ display:"flex", gap:3, alignItems:"center" }}>
+            <div style={{ width:8, height:8, borderRadius:"50%", background:"#8A9BB0" }}/>
+            <div style={{ width:14, height:14, borderRadius:"50%", background:"#8A9BB0" }}/>
+            <div style={{ width:20, height:20, borderRadius:"50%", background:"#8A9BB0" }}/>
+          </div>
+          <span style={{ fontSize:10, color:"#637D92" }}>= N° de proveedores</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver }) {
   const [filtro, setFiltro] = useState("");
   const [vistaTab, setVistaTab] = useState("dashboard");
@@ -1164,6 +1262,234 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   </div>
                 </>
               )}
+
+              {/* ══════════════════════════════════════════════════
+                  MÓDULOS NUEVOS
+              ══════════════════════════════════════════════════ */}
+              {entradasConPG.length > 0 && (<>
+
+                {/* ── 1. ALERTAS CRÍTICAS ── */}
+                {(() => {
+                  const alertas = [];
+                  entradasConPG.forEach(p => {
+                    // Dimensiones con puntaje < 30%
+                    dims.forEach(d => {
+                      const prom = pdim(d, p.dims?.find(x=>x.dim.id===d.id)?.dim ? {} : (() => {
+                        const diag = ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                        return diag?.datosEntrada||{};
+                      })());
+                      if (prom !== null && a5to100(prom) < 30) {
+                        alertas.push({ empresa: p.empresa, tipo: "dimension", detalle: `${d.icono} ${d.nombre}: ${a5to100(prom)}%`, color: "#E74C3C" });
+                      }
+                    });
+                    // Diagnóstico incompleto (tiene preguntas sin responder)
+                    const diag = ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                    if (diag) {
+                      const totalPreg = dims.reduce((a,d)=>a+d.preguntas.length,0);
+                      const respondidas = Object.keys(diag.datosEntrada||{}).length;
+                      if (respondidas < totalPreg) {
+                        alertas.push({ empresa: p.empresa, tipo: "incompleto", detalle: `${respondidas}/${totalPreg} preguntas respondidas`, color: "#E8A020" });
+                      }
+                    }
+                  });
+                  if (!alertas.length) return null;
+                  return (
+                    <div style={{ background:C.blanco, border:`1px solid #E74C3C33`, borderRadius:14, padding:20, marginTop:16 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:"#E74C3C", textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🚨 Alertas críticas</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        {alertas.slice(0,10).map((a,i)=>(
+                          <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 12px", background:`${a.color}08`, border:`1px solid ${a.color}33`, borderRadius:8 }}>
+                            <div style={{ width:8, height:8, borderRadius:"50%", background:a.color, flexShrink:0 }}/>
+                            <span style={{ fontSize:12, fontWeight:700, color:C.oscuro }}>{a.empresa}</span>
+                            <span style={{ fontSize:11, color:C.gris }}>·</span>
+                            <span style={{ fontSize:11, color:a.color, fontWeight:600 }}>{a.tipo==="incompleto"?"⚠ Diagnóstico incompleto":a.tipo==="dimension"?"Puntaje crítico":""} — {a.detalle}</span>
+                          </div>
+                        ))}
+                        {alertas.length>10 && <div style={{fontSize:11,color:C.gris,textAlign:"center"}}>...y {alertas.length-10} alertas más</div>}
+                      </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── 2. PENDIENTES DE DIAGNÓSTICO ── */}
+                {(() => {
+                  const conDiag = new Set((programa.diagnosticos||[]).filter(d=>d.tipo==="entrada"&&!d._borrador).map(d=>d.infoGeneral?.empresa||""));
+                  const borradores = (programa.diagnosticos||[]).filter(d=>d._borrador);
+                  if (!borradores.length) return null;
+                  return (
+                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📝 Borradores pendientes de guardar</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        {borradores.map((d,i)=>{
+                          const empresa = d.infoGeneral?.empresa||"Sin nombre";
+                          const rubro = d.infoGeneral?.rubro||"—";
+                          const fecha = d.fechaGuardado ? new Date(d.fechaGuardado).toLocaleDateString("es-CL") : "—";
+                          return (
+                            <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 12px", background:"#FFF8EC", border:"1px solid #E8A02044", borderRadius:8 }}>
+                              <span style={{ fontSize:14 }}>📋</span>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:12, fontWeight:700, color:C.oscuro }}>{empresa}</div>
+                                <div style={{ fontSize:11, color:C.gris }}>Rubro: {rubro} · Última actualización: {fecha}</div>
+                              </div>
+                              <span style={{ fontSize:10, fontWeight:700, color:"#A07820", background:"#E8A02018", padding:"2px 8px", borderRadius:4 }}>Borrador</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── 3. DISTRIBUCIÓN DE NIVELES POR DIMENSIÓN (barras apiladas) ── */}
+                <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📊 Distribución de niveles por dimensión</div>
+                  {dims.map(d => {
+                    const conteo = {}; NV_CFG.forEach(n=>conteo[n.label]=0);
+                    entradasConPG.forEach(p => {
+                      const diag = ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                      if (!diag) return;
+                      const prom = pdim(d, diag.datosEntrada||{});
+                      if (prom!==null) { const nv=getNivel(prom); conteo[nv.label]=(conteo[nv.label]||0)+1; }
+                    });
+                    const total = entradasConPG.length||1;
+                    return (
+                      <div key={d.id} style={{ marginBottom:12 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                          <span style={{ fontSize:12, fontWeight:600, color:C.oscuro }}>{d.icono} {d.nombre}</span>
+                          <span style={{ fontSize:11, color:C.gris }}>{entradasConPG.length} prov.</span>
+                        </div>
+                        <div style={{ display:"flex", height:16, borderRadius:8, overflow:"hidden", gap:1 }}>
+                          {NV_CFG.map((nv,i) => {
+                            const cnt = conteo[nv.label]||0;
+                            const pct = Math.round((cnt/total)*100);
+                            if (!cnt) return null;
+                            return (
+                              <div key={i} title={`${nv.label}: ${cnt} (${pct}%)`}
+                                style={{ width:`${pct}%`, background:nv.color, display:"flex", alignItems:"center", justifyContent:"center", transition:"width 0.4s" }}>
+                                {pct>10 && <span style={{ fontSize:9, color:"#fff", fontWeight:700 }}>{pct}%</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ display:"flex", gap:12, marginTop:10, flexWrap:"wrap" }}>
+                    {NV_CFG.map(n=><div key={n.label} style={{ display:"flex", alignItems:"center", gap:4 }}><div style={{ width:10, height:10, borderRadius:2, background:n.color }}/><span style={{ fontSize:10, color:C.gris }}>{n.label}</span></div>)}
+                  </div>
+                </div>
+
+                {/* ── 4. CRUCE POR RUBRO (heatmap) ── */}
+                {(() => {
+                  const rubros = [...new Set(entradasConPG.map(p=>{
+                    const d=ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                    return d?.infoGeneral?.rubro||"Sin rubro";
+                  }).filter(Boolean))];
+                  if (rubros.length < 2) return null;
+                  return (
+                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16, overflowX:"auto" }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🔥 Cruce por rubro y dimensión</div>
+                      <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ padding:"8px 12px", textAlign:"left", fontSize:11, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}` }}>Rubro</th>
+                            {dims.map(d=><th key={d.id} style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}`, maxWidth:80 }}>{d.icono} {d.nombre}</th>)}
+                            <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}` }}>Prom.</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rubros.map((rubro,ri)=>{
+                            const provRubro = entradasConPG.filter(p=>{
+                              const d=ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                              return (d?.infoGeneral?.rubro||"Sin rubro")===rubro;
+                            });
+                            const promsRubro = dims.map(d=>{
+                              const vals = provRubro.map(p=>{
+                                const diag=ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                                return pdim(d,diag?.datosEntrada||{});
+                              }).filter(v=>v!==null);
+                              return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+                            });
+                            const promGral = promsRubro.filter(v=>v!==null).reduce((a,b)=>a+b,0)/(promsRubro.filter(v=>v!==null).length||1);
+                            return (
+                              <tr key={ri} style={{ borderBottom:`1px solid ${C.borde}` }}>
+                                <td style={{ padding:"10px 12px", fontSize:12, fontWeight:600, color:C.oscuro }}>
+                                  {rubro}
+                                  <div style={{ fontSize:10, color:C.gris, fontWeight:400 }}>{provRubro.length} prov.</div>
+                                </td>
+                                {promsRubro.map((prom,di)=>{
+                                  const n=prom!==null?getNivel(prom):null;
+                                  const pct=prom!==null?a5to100(prom):null;
+                                  return <td key={di} style={{ padding:"10px 8px", textAlign:"center" }}>
+                                    {n ? <div style={{ background:`${n.color}22`, borderRadius:6, padding:"4px 0" }}>
+                                      <div style={{ fontSize:12, fontWeight:800, color:n.color }}>{pct}%</div>
+                                      <div style={{ fontSize:8, color:n.color }}>{n.label}</div>
+                                    </div> : <span style={{ color:C.grisCl }}>—</span>}
+                                  </td>;
+                                })}
+                                {(() => { const n=getNivel(promGral); const pct=a5to100(promGral);
+                                  return <td style={{ padding:"10px 8px", textAlign:"center" }}>
+                                    <div style={{ fontSize:13, fontWeight:800, color:n.color }}>{pct}%</div>
+                                  </td>;
+                                })()}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+
+                {/* ── 5. DISTRIBUCIÓN GEOGRÁFICA ── */}
+                {(() => {
+                  const regMap = {};
+                  entradasConPG.forEach(p => {
+                    const diag = ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                    const region = diag?.infoGeneral?.region||"Sin región";
+                    if (!regMap[region]) regMap[region] = { count:0, pgs:[], rubros:{} };
+                    regMap[region].count++;
+                    regMap[region].pgs.push(p.pg);
+                    const rubro = diag?.infoGeneral?.rubro||"—";
+                    regMap[region].rubros[rubro] = (regMap[region].rubros[rubro]||0)+1;
+                  });
+                  const regiones = Object.entries(regMap).map(([nombre,v])=>({
+                    nombre,
+                    count: v.count,
+                    prom: v.pgs.reduce((a,b)=>a+b,0)/v.pgs.length,
+                    rubroPred: Object.entries(v.rubros).sort((a,b)=>b[1]-a[1])[0]?.[0]||"—"
+                  })).sort((a,b)=>b.count-a.count);
+                  const maxCount = Math.max(...regiones.map(r=>r.count),1);
+                  if (regiones.length < 2) return null;
+                  return (
+                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🌎 Distribución geográfica</div>
+                      <MapaLeaflet regiones={regiones} getNivel={getNivel} a5to100={a5to100}/>
+                      <div style={{ marginTop:16, borderTop:`1px solid ${C.borde}`, paddingTop:14 }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Detalle por región</div>
+                      {regiones.map((r,i)=>{
+                        const n=getNivel(r.prom); const pct=a5to100(r.prom); const barW=Math.round((r.count/maxCount)*100);
+                        return (
+                          <div key={i} style={{ marginBottom:12 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                              <span style={{ fontSize:12, fontWeight:600, color:C.oscuro }}>{r.nombre}</span>
+                              <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                                <span style={{ fontSize:11, color:C.gris }}>{r.count} prov.</span>
+                                <span style={{ fontSize:11, fontWeight:700, color:n.color }}>{pct}% prom.</span>
+                              </div>
+                            </div>
+                            <div style={{ height:14, background:C.fondo, borderRadius:7, overflow:"hidden" }}>
+                              <div style={{ width:`${barW}%`, height:"100%", background:n.color, borderRadius:7, opacity:0.85, transition:"width 0.4s" }}/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+              </>)}
             </div>
           );
         })()}
@@ -2283,7 +2609,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
   const [pagina, setPagina] = useState(verComparativo ? 7 : 0);
   const [modo, setModo] = useState(esSalidaNueva ? "salida" : verComparativo ? "comparacion" : "entrada");
   const [validErr, setValidErr] = useState([]);
-  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",facturacionCMPC:"",consultor:"",modalidad:"",observaciones:"",obsEnMentor:false,notaMentor:"",estado:"Pendiente revisión"});
+  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",facturacionCMPC:"",consultor:"",modalidad:"",observaciones:"",obsEnMentor:false,notaMentor:"",estado:"Pendiente revisión",region:"",comuna:"",pais:"Chile"});
   const [datosE, setDatosE] = useState(esSalidaNueva ? {} : (diagActual?.datosEntrada||{}));
   const [datosS, setDatosS] = useState(esSalidaNueva ? {} : (dFinalRef?.datosSalida||diagActual?.datosSalida||{}));
   const [indE, setIndE] = useState(esSalidaNueva ? {} : (diagActual?.indicadoresEntrada||{}));
@@ -2507,7 +2833,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
                 </div>
               </div>
 
-              {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"rubro",l:"Rubro / Actividad",ph:"Ej: Transporte, Construcción, Servicios TI…"},{k:"tamano",l:"Tamaño de la empresa",ph:"Ej: Microempresa, Pequeña, Mediana"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"},{k:"facturacionCMPC",l:`Facturación con ${programa.nombre} 2025 (MM$)`,ph:"Ej: 45"}].map(f=>(
+              {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"rubro",l:"Rubro / Actividad",ph:"Ej: Transporte, Construcción, Servicios TI…"},{k:"tamano",l:"Tamaño de la empresa",ph:"Ej: Microempresa, Pequeña, Mediana"},{k:"region",l:"Región",ph:"Ej: Biobío, Metropolitana, La Araucanía…"},{k:"comuna",l:"Comuna",ph:"Ej: Concepción, Coronel…"},{k:"pais",l:"País",ph:"Chile"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"},{k:"facturacionCMPC",l:`Facturación con ${programa.nombre} 2025 (MM$)`,ph:"Ej: 45"}].map(f=>(
                 <div key={f.k}>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{f.l}</label>
                   <input value={infoGeneral[f.k]||""} onChange={e=>setInfoGeneral(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph}
