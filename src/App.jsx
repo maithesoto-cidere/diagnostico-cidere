@@ -1307,7 +1307,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         ))}
                         {alertas.length>10 && <div style={{fontSize:11,color:C.gris,textAlign:"center"}}>...y {alertas.length-10} alertas más</div>}
                       </div>
-                      </div>
                     </div>
                   );
                 })()}
