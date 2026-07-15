@@ -30,6 +30,39 @@ async function sbSet(key, value) {
   } catch(e) { console.error("sbSet error", e); }
 }
 
+/* ── Presencia en tiempo real (heartbeat + polling vía REST) ──────────────
+   TODO: verificar existencia de esta tabla en Supabase. Si no existe, crearla con:
+   create table presencia (
+     id text primary key,
+     nombre text,
+     last_seen timestamptz default now()
+   );
+   alter table presencia enable row level security;
+   create policy "allow all presencia" on presencia for all using (true) with check (true);
+   ─────────────────────────────────────────────────────────────────────── */
+async function sbHeartbeat(sessionId, nombre) {
+  try {
+    await fetch(`${SB_URL}/rest/v1/presencia`, {
+      method: "POST",
+      headers: { ...sbHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({ id: sessionId, nombre, last_seen: new Date().toISOString() })
+    });
+  } catch(e) { /* silencioso: la presencia no debe interrumpir el uso de la app */ }
+}
+async function sbGetPresentes() {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/presencia?select=id,nombre,last_seen`, { headers: sbHeaders });
+    if (!r.ok) return [];
+    const data = await r.json();
+    return Array.isArray(data) ? data : [];
+  } catch(e) { return []; }
+}
+async function sbSalirPresencia(sessionId) {
+  try {
+    await fetch(`${SB_URL}/rest/v1/presencia?id=eq.${encodeURIComponent(sessionId)}`, { method:"DELETE", headers: sbHeaders });
+  } catch(e) { /* best-effort */ }
+}
+
 
 /* ═══════════════════════════════════════════
    COLORES CIDERE BIOBÍO
@@ -295,6 +328,7 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
   const [logoUrl, setLogoUrl] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [color, setColor] = useState("#2B7BBF");
+  const [metaProveedores, setMetaProveedores] = useState("100");
 
   const abrirEditar = (p) => {
     setEditando(p);
@@ -302,10 +336,12 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
     setLogoUrl(p.logoUrl||"");
     setDescripcion(p.descripcion||"");
     setColor(p.color||"#2B7BBF");
+    setMetaProveedores(p.metaProveedores ? String(p.metaProveedores) : "");
   };
   const guardarEdicion = () => {
     if (!nombre.trim()) return;
-    onEditar({...editando, nombre:nombre.trim(), logoUrl, descripcion, color});
+    if (!metaProveedores || Number(metaProveedores)<=0) { window.alert("Ingresa una meta de proveedores válida (mayor a 0)."); return; }
+    onEditar({...editando, nombre:nombre.trim(), logoUrl, descripcion, color, metaProveedores:Number(metaProveedores)});
     setEditando(null);
   };
 
@@ -313,8 +349,9 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
 
   const crear = () => {
     if (!nombre.trim()) return;
-    onCrear({ id: Date.now().toString(), nombre: nombre.trim(), logoUrl, descripcion, color, diagnosticos: [] });
-    setShowNew(false); setNombre(""); setLogoUrl(""); setDescripcion(""); setColor("#2B7BBF");
+    if (!metaProveedores || Number(metaProveedores)<=0) { window.alert("Ingresa una meta de proveedores válida (mayor a 0)."); return; }
+    onCrear({ id: Date.now().toString(), nombre: nombre.trim(), logoUrl, descripcion, color, metaProveedores:Number(metaProveedores), diagnosticos: [] });
+    setShowNew(false); setNombre(""); setLogoUrl(""); setDescripcion(""); setColor("#2B7BBF"); setMetaProveedores("100");
   };
 
   return (
@@ -396,6 +433,12 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                   style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }} />
               </div>
             ))}
+            <div>
+              <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>N° de proveedores objetivo (meta) *</label>
+              <input type="number" min="1" value={metaProveedores} onChange={e=>setMetaProveedores(e.target.value)} placeholder="Ej: 100"
+                style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }} />
+              <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>Meta total de proveedores a diagnosticar durante el programa (usada para calcular la cobertura en el dashboard).</div>
+            </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               <div>
                 <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Color</label>
@@ -438,6 +481,12 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                   style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }} />
               </div>
             ))}
+            <div>
+              <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>N° de proveedores objetivo (meta) *</label>
+              <input type="number" min="1" value={metaProveedores} onChange={e=>setMetaProveedores(e.target.value)} placeholder="Ej: 100"
+                style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }} />
+              <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>Meta total de proveedores a diagnosticar durante el programa (usada para calcular la cobertura en el dashboard).</div>
+            </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               <div>
                 <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Color del programa</label>
@@ -657,6 +706,21 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
           const pgPromedio = entradasConPG.length ? entradasConPG.reduce((a,x)=>a+x.pg,0)/entradasConPG.length : null;
           const nivelPromedio = pgPromedio!==null?getNivel(pgPromedio):null;
+
+          // ── Cobertura vs. meta del programa ──────────────────────────────
+          // La meta (metaProveedores) es un dato del PROGRAMA, no de los proveedores ya cargados.
+          // Solo se usa para este indicador de cobertura; el resto del dashboard (radar, heatmap,
+          // distribución de niveles, etc.) sigue calculándose únicamente sobre proveedores con diagnóstico.
+          const totalPregDash = dims.reduce((a,d)=>a+d.preguntas.length,0);
+          const empresasRegistradas = [...new Set(ds.filter(d=>d.tipo==="entrada").map(d=>d.infoGeneral?.empresa||"").filter(Boolean))];
+          const totalRegistrados = empresasRegistradas.length;
+          const pendientesDiag = ds.filter(d=>d.tipo==="entrada").filter(d=>{
+            const respondidas = Object.keys(d.datosEntrada||{}).length;
+            return d._borrador || respondidas < totalPregDash;
+          });
+          const metaProveedores = programa.metaProveedores || 0;
+          const porRegistrar = metaProveedores > 0 ? Math.max(0, metaProveedores - totalRegistrados) : null;
+          const pctCobertura = metaProveedores > 0 ? Math.round((totalRegistrados/metaProveedores)*100) : null;
 
           const dimPromedios = dims.map(dim=>{
             const vals = ds.filter(d=>d.tipo==="entrada").map(d=>pdim(dim,d.datosEntrada||{})).filter(v=>v!==null);
@@ -1061,9 +1125,45 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   </div>
 
                   {/* KPIs fila superior */}
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:10, marginBottom:20 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1.7fr repeat(5,1fr)", gap:10, marginBottom:20 }}>
+                    {/* Tarjeta de cobertura vs. meta del programa */}
+                    <div
+                      onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:metaProveedores>0?`Meta del programa: ${metaProveedores} proveedores`:"Define la meta de proveedores editando el programa"})}
+                      onMouseLeave={()=>setTooltip(null)}
+                      style={{ background:C.blanco, border:`1px solid ${pColor}33`, borderRadius:10, padding:"12px 14px", cursor:"default", transition:"transform 0.15s,box-shadow 0.15s" }}
+                      onMouseOver={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 4px 16px ${pColor}22`;}}
+                      onMouseOut={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";setTooltip(null);}}>
+                      <div style={{ fontSize:9, color:C.gris, textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>Cobertura del programa</div>
+                      {metaProveedores>0 ? (
+                        <>
+                          <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:6 }}>
+                            <span style={{ fontSize:22, fontWeight:800, color:pColor, lineHeight:1 }}>{totalRegistrados}</span>
+                            <span style={{ fontSize:13, fontWeight:600, color:C.grisCl }}>/ {metaProveedores}</span>
+                            <span style={{ fontSize:12, fontWeight:700, color:pColor, marginLeft:"auto" }}>{pctCobertura}%</span>
+                          </div>
+                          <div style={{ height:6, background:C.fondo, borderRadius:3, overflow:"hidden", marginBottom:8 }}>
+                            <div style={{ width:`${Math.min(pctCobertura,100)}%`, height:"100%", background:pColor, borderRadius:3, transition:"width 0.4s" }}/>
+                          </div>
+                          <div style={{ display:"flex", gap:10 }}>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:13, fontWeight:800, color:"#E8A020" }}>{pendientesDiag.length}</div>
+                              <div style={{ fontSize:8, color:C.gris, lineHeight:1.3 }}>Registrados<br/>sin completar</div>
+                            </div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:13, fontWeight:800, color:C.grisCl }}>{porRegistrar}</div>
+                              <div style={{ fontSize:8, color:C.gris, lineHeight:1.3 }}>Por sumar<br/>al sistema</div>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontSize:22, fontWeight:800, color:pColor, lineHeight:1, marginBottom:6 }}>{totalRegistrados}</div>
+                          <div style={{ fontSize:10, color:C.grisCl }}>Define la meta de proveedores editando el programa para ver el % de cobertura.</div>
+                        </>
+                      )}
+                    </div>
+
                     {[
-                      {l:"Proveedores", v:entradasConPG.length, c:pColor, tip:"Total de proveedores con diagnóstico inicial"},
                       {l:"Puntaje promedio", v:pgPromedio!==null?`${a5to100(pgPromedio)}%`:"—", c:pgPromedio!==null?getNivel(pgPromedio).color:C.gris, tip:"Promedio general de madurez"},
                       {l:"Nivel promedio", v:nivelPromedio?.label||"—", c:nivelPromedio?.color||C.gris, tip:"Nivel de madurez promedio del programa"},
                       {l:"Con comparativo", v:provsConAmbos.length, c:"#9B59B6", tip:"Empresas con diagnóstico inicial y final"},
@@ -1271,14 +1371,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
                 {/* ── 2. PROVEEDORES PENDIENTES DE DIAGNOSTICAR ── */}
                 {(() => {
-                  const totalPreg = dims.reduce((a,d)=>a+d.preguntas.length,0);
+                  const totalPreg = totalPregDash;
                   // Pendiente = borrador sin guardar, o diagnóstico inicial con preguntas sin responder
-                  const pendientes = ds
-                    .filter(d=>d.tipo==="entrada")
-                    .filter(d=>{
-                      const respondidas = Object.keys(d.datosEntrada||{}).length;
-                      return d._borrador || respondidas < totalPreg;
-                    });
+                  const pendientes = pendientesDiag;
                   return (
                     <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
                       <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📝 Proveedores pendientes de diagnosticar</div>
@@ -3148,6 +3243,21 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("papelera-v1") || "[]"); } catch(e) { return []; }
   });
 
+  // ── Presencia: quién más está activo en la plataforma ahora mismo ──────────
+  const [miNombre, setMiNombre] = useState(() => {
+    try { return localStorage.getItem("cidere_user_name") || ""; } catch(e) { return ""; }
+  });
+  const [showNombrePrompt, setShowNombrePrompt] = useState(false);
+  const [presentes, setPresentes] = useState([]);
+  const sessionIdRef = useRef(null);
+  if (!sessionIdRef.current) {
+    try {
+      let sid = localStorage.getItem("cidere_session_id");
+      if (!sid) { sid = (crypto?.randomUUID?.() || ("s_"+Date.now()+"_"+Math.random().toString(36).slice(2))); localStorage.setItem("cidere_session_id", sid); }
+      sessionIdRef.current = sid;
+    } catch(e) { sessionIdRef.current = "s_"+Date.now(); }
+  }
+
   useEffect(()=>{
     (async()=>{
       try {
@@ -3218,6 +3328,37 @@ export default function App() {
       sbSet("proyectos-v1", fixed).catch(console.error);
     }
   }, [proyectos.length]);
+
+  // Pedir nombre/iniciales la primera vez que alguien entra, para identificarlo en "presencia"
+  useEffect(() => {
+    if (logueado && !miNombre) setShowNombrePrompt(true);
+  }, [logueado, miNombre]);
+
+  // Heartbeat + polling de presencia (sin bloquear edición, solo informativo)
+  useEffect(() => {
+    if (!logueado || !miNombre) return;
+    const sid = sessionIdRef.current;
+    let activo = true;
+    const latir = () => sbHeartbeat(sid, miNombre);
+    const consultar = async () => {
+      const rows = await sbGetPresentes();
+      if (!activo) return;
+      const ahora = Date.now();
+      const activos = rows.filter(r => (ahora - new Date(r.last_seen).getTime()) < 45000); // últimos 45s
+      setPresentes(activos);
+    };
+    latir(); consultar();
+    const hbInterval = setInterval(latir, 15000);
+    const pollInterval = setInterval(consultar, 15000);
+    const salir = () => { sbSalirPresencia(sid); };
+    window.addEventListener("beforeunload", salir);
+    return () => {
+      activo = false;
+      clearInterval(hbInterval); clearInterval(pollInterval);
+      window.removeEventListener("beforeunload", salir);
+      salir();
+    };
+  }, [logueado, miNombre]);
 
 
   const saveProyectos = async (lista) => {
@@ -3357,6 +3498,22 @@ export default function App() {
 
   return (
     <div style={{ minHeight:"100vh",display:"flex",flexDirection:"column",background:C.fondo,fontFamily:"'Segoe UI',system-ui,sans-serif",color:C.oscuro }}>
+      {showNombrePrompt && (
+        <Modal onClose={()=>{ setMiNombre("Anónimo"); try{localStorage.setItem("cidere_user_name","Anónimo");}catch(e){}; setShowNombrePrompt(false); }} width={400}>
+          <h2 style={{ fontSize:19, fontWeight:800, color:C.oscuro, margin:"0 0 6px 0" }}>¿Quién eres?</h2>
+          <p style={{ fontSize:13, color:C.gris, margin:"0 0 18px 0" }}>Para que el equipo sepa quién más está activo en la plataforma en este momento.</p>
+          <input autoFocus value={miNombre} onChange={e=>setMiNombre(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter" && miNombre.trim()){ try{localStorage.setItem("cidere_user_name",miNombre.trim());}catch(err){}; setMiNombre(miNombre.trim()); setShowNombrePrompt(false); } }}
+            placeholder="Ej: Pedro, PM, Camila R…"
+            style={{ width:"100%", padding:"11px 14px", background:C.fondo, border:`1.5px solid ${C.azul}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box", marginBottom:16 }}/>
+          <div style={{ display:"flex", gap:10 }}>
+            <button onClick={()=>{ setMiNombre("Anónimo"); try{localStorage.setItem("cidere_user_name","Anónimo");}catch(e){}; setShowNombrePrompt(false); }}
+              style={{ flex:1, padding:"10px", border:`1px solid ${C.borde}`, borderRadius:8, background:"transparent", color:C.gris, cursor:"pointer", fontSize:13 }}>Omitir</button>
+            <button onClick={()=>{ if(!miNombre.trim())return; try{localStorage.setItem("cidere_user_name",miNombre.trim());}catch(e){}; setMiNombre(miNombre.trim()); setShowNombrePrompt(false); }}
+              style={{ flex:2, padding:"10px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontWeight:700, cursor:"pointer", fontSize:13 }}>Continuar</button>
+          </div>
+        </Modal>
+      )}
       {/* HEADER OSCURO */}
       <div style={{ background:C.headerBg,borderBottom:`1px solid ${C.headerBd}`,padding:"0 24px",height:84,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,position:"sticky",top:0,zIndex:200 }}>
         <div style={{ display:"flex",alignItems:"center",gap:16,cursor:"pointer" }} onClick={()=>{setProyectoActivo(null);setDiagActivo(null);}}>
@@ -3398,6 +3555,25 @@ export default function App() {
             <div title={syncError} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 11px",background:"rgba(231,76,60,0.2)",border:"1px solid rgba(231,76,60,0.35)",borderRadius:8,fontSize:11,color:"#FF8A80",cursor:"help"}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:"#E74C3C"}}/>
               ⚠ Sin sincronizar
+            </div>
+          )}
+          {/* Presencia: quién más está activo ahora mismo */}
+          {presentes.length > 0 && (
+            <div title={presentes.map(p=>p.nombre||"—").join(", ")}
+              style={{display:"flex",alignItems:"center",gap:7,padding:"5px 11px",background:"rgba(255,255,255,0.05)",borderRadius:8,cursor:"help"}}>
+              <div style={{display:"flex"}}>
+                {presentes.slice(0,4).map((p,i)=>(
+                  <div key={p.id} style={{ width:20,height:20,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff",border:"2px solid "+C.headerBg,marginLeft:i>0?-7:0 }}>
+                    {(p.nombre||"?").trim().charAt(0).toUpperCase()}
+                  </div>
+                ))}
+                {presentes.length>4 && (
+                  <div style={{ width:20,height:20,borderRadius:"50%",background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:800,color:"#fff",border:"2px solid "+C.headerBg,marginLeft:-7 }}>
+                    +{presentes.length-4}
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>{presentes.length} activo{presentes.length!==1?"s":""}</span>
             </div>
           )}
           <button onClick={()=>setShowPapelera(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
