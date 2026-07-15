@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
 
 /* ═══════════════════════════════════════════
    SUPABASE CLIENT (REST directo, sin SDK)
@@ -31,10 +30,34 @@ async function sbSet(key, value) {
   } catch(e) { console.error("sbSet error", e); }
 }
 
-/* ── Cliente Supabase (solo para Realtime Presence — el resto de datos usa REST directo) ──
-   Presencia usa Supabase Realtime (canales/websocket), NO requiere crear ninguna tabla:
-   el estado de "quién está conectado" vive solo en memoria del canal mientras dura la sesión. */
-const supabase = createClient(SB_URL, SB_KEY);
+/* ── Presencia (reutiliza la misma tabla "proyectos" que ya existe — sin librerías ni tablas nuevas) ──
+   Se guarda un registro con id="presencia-v1" cuyo "data" es un array [{id,nombre,last_seen}, ...].
+   Cada usuario activo actualiza su entrada cada 15s; se descartan entradas de más de 45s sin actividad. */
+async function actualizarPresencia(sessionId, nombre) {
+  try {
+    const actual = await sbGet("presencia-v1");
+    const ahora = Date.now();
+    const vivos = (Array.isArray(actual) ? actual : []).filter(p => p.id !== sessionId && (ahora - new Date(p.last_seen).getTime()) < 45000);
+    const nuevo = [...vivos, { id: sessionId, nombre, last_seen: new Date().toISOString() }];
+    await sbSet("presencia-v1", nuevo);
+    return nuevo;
+  } catch(e) { return null; }
+}
+async function leerPresencia() {
+  try {
+    const data = await sbGet("presencia-v1");
+    if (!Array.isArray(data)) return [];
+    const ahora = Date.now();
+    return data.filter(p => (ahora - new Date(p.last_seen).getTime()) < 45000);
+  } catch(e) { return []; }
+}
+async function salirPresencia(sessionId) {
+  try {
+    const actual = await sbGet("presencia-v1");
+    const nuevo = (Array.isArray(actual) ? actual : []).filter(p => p.id !== sessionId);
+    await sbSet("presencia-v1", nuevo);
+  } catch(e) { /* best-effort */ }
+}
 
 
 /* ═══════════════════════════════════════════
@@ -3344,30 +3367,33 @@ export default function App() {
     if (logueado && !miNombre) setShowNombrePrompt(true);
   }, [logueado, miNombre]);
 
-  // Presencia en tiempo real vía Supabase Realtime (canal websocket, sin bloquear edición)
+  // Presencia: heartbeat + polling reutilizando la misma tabla "proyectos" ya existente
   useEffect(() => {
     if (!logueado || !miNombre) return;
     const sid = sessionIdRef.current;
-    const channel = supabase.channel("presencia-cidere", {
-      config: { presence: { key: sid } }
-    });
+    let activo = true;
 
-    channel.on("presence", { event: "sync" }, () => {
-      const state = channel.presenceState();
-      const lista = Object.entries(state).map(([key, metas]) => ({
-        id: key,
-        nombre: metas?.[0]?.nombre || "?"
-      }));
-      setPresentes(lista);
-    });
+    const latir = async () => {
+      const lista = await actualizarPresencia(sid, miNombre);
+      if (activo && lista) setPresentes(lista);
+    };
+    const consultar = async () => {
+      const lista = await leerPresencia();
+      if (activo) setPresentes(lista);
+    };
 
-    channel.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        await channel.track({ nombre: miNombre, online_at: new Date().toISOString() });
-      }
-    });
+    latir();
+    const hbInterval = setInterval(latir, 15000);
+    const pollInterval = setInterval(consultar, 10000);
+    const salir = () => { salirPresencia(sid); };
+    window.addEventListener("beforeunload", salir);
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      activo = false;
+      clearInterval(hbInterval); clearInterval(pollInterval);
+      window.removeEventListener("beforeunload", salir);
+      salir();
+    };
   }, [logueado, miNombre]);
 
 
