@@ -256,7 +256,7 @@ function RadarChart({ dims, series, size=280 }) {
 
       {axisPts.map((p,i)=>(
         <text key={i} x={p.lx} y={p.ly} textAnchor="middle" dominantBaseline="middle" fontSize="9.5" fill={C.gris} fontFamily="'Segoe UI',sans-serif" fontWeight="600">
-          {p.icono} D{i+1}
+          D{i+1}
         </text>
       ))}
     </svg>
@@ -538,6 +538,10 @@ const REGIONES_COORDS = {
 
 /* ── Normalización de rubros a categorías macro ── */
 // TODO: verificar si conviene guardar rubro_categoria en Supabase; por ahora se deriva del texto libre
+/* ── Opciones fijas para estandarizar Rubro y Tamaño (evita "Pequeña"/"pequeña"/"MEDIANA") ── */
+const RUBRO_OPCIONES = ["Transporte", "Servicios Industriales", "Maestranzas", "Repuestos y Maquinaria", "Otros"];
+const TAMANO_OPCIONES = ["Microempresa", "Pequeña", "Mediana", "Grande"];
+
 function normalizarRubro(rubroRaw) {
   const r = (rubroRaw||"").toLowerCase().trim();
   if (!r) return "Otros";
@@ -844,7 +848,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                 const pct=prom!==null?a5to100(prom):0, n=prom!==null?getNivel(prom):null;
                 const y=i*(H+G)+4;
                 const lbl=dim.nombre.length>13?dim.nombre.slice(0,12)+"…":dim.nombre;
-                return `<text x="${PL-5}" y="${y+H/2+4}" text-anchor="end" font-size="9" font-weight="600" font-family="Segoe UI,Arial" fill="#2A3A4A">${dim.icono} ${lbl}</text>
+                return `<text x="${PL-5}" y="${y+H/2+4}" text-anchor="end" font-size="9" font-weight="600" font-family="Segoe UI,Arial" fill="#2A3A4A">${lbl}</text>
                   <rect x="${PL}" y="${y}" width="${W}" height="${H}" rx="3" fill="#EEF3F8"/>
                   <rect x="${PL}" y="${y}" width="${Math.round(pct/100*W)}" height="${H}" rx="3" fill="${n?.color||pColor}"/>
                   <text x="${PL+Math.round(pct/100*W)+5}" y="${y+H/2+4}" font-size="9" font-weight="700" font-family="Segoe UI,Arial" fill="${n?.color||"#999"}">${pct}%</text>`;
@@ -1038,7 +1042,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     <div style="font-size:10px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">✓ Dimensiones más fuertes</div>
                     ${[...dimPromedios].filter(x=>x.prom!==null).sort((a,b)=>b.prom-a.prom).slice(0,3).map(({dim,prom})=>
                       `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F5F8FC;">
-                        <span style="font-size:11.5px;">${dim.icono} ${dim.nombre}</span>
+                        <span style="font-size:11.5px;">${dim.nombre}</span>
                         <span style="font-size:13px;font-weight:800;color:#3BAD8A;">${a5to100(prom)}%</span>
                       </div>`).join("")}
                   </div>
@@ -1046,7 +1050,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     <div style="font-size:10px;font-weight:700;color:#E74C3C;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">▲ Dimensiones a reforzar</div>
                     ${[...dimPromedios].filter(x=>x.prom!==null).sort((a,b)=>a.prom-b.prom).slice(0,3).map(({dim,prom})=>
                       `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F5F8FC;">
-                        <span style="font-size:11.5px;">${dim.icono} ${dim.nombre}</span>
+                        <span style="font-size:11.5px;">${dim.nombre}</span>
                         <span style="font-size:13px;font-weight:800;color:#E74C3C;">${a5to100(prom)}%</span>
                       </div>`).join("")}
                   </div>
@@ -1244,7 +1248,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                               onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${dim.nombre}: ${pct}% · ${n?.label||"Sin datos"}`})}
                               onMouseLeave={()=>setTooltip(null)}>
                               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                                <span style={{ fontSize:12, color:C.oscuro }}>{dim.icono} {dim.nombre}</span>
+                                <span style={{ fontSize:12, color:C.oscuro }}>{dim.nombre}</span>
                                 <span style={{ fontSize:11, fontWeight:700, color:n?.color||C.gris }}>{prom!==null?`${pct}%`:"—"} {n?`· ${n.label}`:""}</span>
                               </div>
                               <div style={{ height:8, background:C.fondo, borderRadius:4, overflow:"hidden" }}>
@@ -1367,7 +1371,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         return diag?.datosEntrada||{};
                       })());
                       if (prom !== null && a5to100(prom) < 30) {
-                        alertas.push({ empresa: p.empresa, tipo: "dimension", detalle: `${d.icono} ${d.nombre}: ${a5to100(prom)}%`, color: "#E74C3C" });
+                        alertas.push({ empresa: p.empresa, tipo: "dimension", detalle: `${d.nombre}: ${a5to100(prom)}%`, color: "#E74C3C" });
                       }
                     });
                     // Diagnóstico incompleto (tiene preguntas sin responder)
@@ -1454,7 +1458,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     return (
                       <div key={d.id} style={{ marginBottom:12 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:12, fontWeight:600, color:C.oscuro }}>{d.icono} {d.nombre}</span>
+                          <span style={{ fontSize:12, fontWeight:600, color:C.oscuro }}>{d.nombre}</span>
                           <span style={{ fontSize:11, color:C.gris }}>{entradasConPG.length} prov.</span>
                         </div>
                         <div style={{ display:"flex", height:16, borderRadius:8, overflow:"hidden", gap:1 }}>
@@ -1493,7 +1497,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                         <thead>
                           <tr>
                             <th style={{ padding:"8px 12px", textAlign:"left", fontSize:11, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}` }}>Rubro</th>
-                            {dims.map(d=><th key={d.id} style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}`, maxWidth:80 }}>{d.icono} {d.nombre}</th>)}
+                            {dims.map(d=><th key={d.id} style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}`, maxWidth:80 }}>{d.nombre}</th>)}
                             <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}` }}>Prom.</th>
                           </tr>
                         </thead>
@@ -1665,7 +1669,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                               <div style={{ fontSize:12, color:nvI?.color, fontWeight:700, marginBottom:6 }}>{nvI?.label}</div>
                               <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dInicial.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
                               {/* Barras rápidas */}
-                              {dims.map(dim=>{ const v=pdim(dim,dInicial.datosEntrada||{}); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:pColor}}/></div></div>; })}
+                              {dims.map(dim=>{ const v=pdim(dim,dInicial.datosEntrada||{}); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:pColor}}/></div></div>; })}
                               <div style={{ display:"flex", gap:6, marginTop:10 }}>
                                 <button onClick={()=>onAbrirDiag(dInicial)} style={{ flex:1, padding:"7px 10px", background:`${C.azul}12`, border:`1px solid ${C.azul}33`, borderRadius:7, color:C.azul, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
                                 <button title="Eliminar diagnóstico inicial" onClick={()=>{ if(window.confirm("¿Eliminar el diagnóstico inicial? No se puede deshacer.")) onEliminarDiag(dInicial.id); }} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>🗑</button>
@@ -1685,7 +1689,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                               <div style={{ fontSize:28, fontWeight:800, color:nvF?.color, lineHeight:1 }}>{a5to100(pgF)}%</div>
                               <div style={{ fontSize:12, color:nvF?.color, fontWeight:700, marginBottom:6 }}>{nvF?.label}</div>
                               <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dFinal.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
-                              {dims.map(dim=>{ const v=pdim(dim, Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{})); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.icono} {dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:C.verde}}/></div></div>; })}
+                              {dims.map(dim=>{ const v=pdim(dim, Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{})); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:C.verde}}/></div></div>; })}
                               <div style={{ display:"flex", gap:6, marginTop:10 }}>
                                 <button onClick={()=>onAbrirDiag(dFinal)} style={{ flex:1, padding:"7px 10px", background:`${C.verde}12`, border:`1px solid ${C.verde}33`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
                                 <button title="Eliminar diagnóstico final" onClick={()=>{ if(window.confirm("¿Eliminar el diagnóstico final? No se puede deshacer.")) onEliminarDiag(dFinal.id); }} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>🗑</button>
@@ -1793,7 +1797,7 @@ function EditorContenido({ dims, onSave, onClose }) {
         <div style={{ width:185, background:C.fondo, borderRight:`1px solid ${C.borde}`, overflowY:"auto" }}>
           {data.map((dd,di)=>(
             <div key={di} onClick={()=>{setDimSel(di);setPregSel(null);}} style={{ padding:"11px 16px", cursor:"pointer", borderLeft:`3px solid ${dimSel===di&&pregSel===null?dd.acento:"transparent"}`, background:dimSel===di&&pregSel===null?`${dd.acento}10`:"transparent" }}>
-              <div style={{ fontSize:13 }}>{dd.icono} <span style={{ fontSize:11, fontWeight:600, color:dimSel===di?dd.acento:C.gris }}>{dd.nombre}</span></div>
+              <div style={{ fontSize:13 }}><span style={{ fontSize:11, fontWeight:600, color:dimSel===di?dd.acento:C.gris }}>{dd.nombre}</span></div>
               <div style={{ fontSize:10, color:C.grisCl, marginTop:2 }}>{dd.preguntas.length} preguntas</div>
             </div>
           ))}
@@ -1873,8 +1877,6 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
   const defaultTab = (modo==="salida" || !tieneE) ? (tieneS?"final":"inicial") : esComparativa ? "comparativo" : "inicial";
   const [tab, setTab] = useState(defaultTab);
   const [showMentorModal, setShowMentorModal] = useState(false);
-  const [objetivoEditado, setObjetivoEditado] = useState("");
-  const [focoEditado, setFocoEditado] = useState("");
   const [sintesisEditada, setSintesisEditada] = useState("");
   const [notaMentorEditada, setNotaMentorEditada] = useState("");
   const fichaRef = useRef(null);
@@ -1951,7 +1953,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               {/* Toolbar */}
               <div style={{background:"#1A2E45",padding:"12px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}} onClick={e=>e.stopPropagation()}>
                 <div>
-                  <div style={{fontSize:10,color:"#90C8F0",textTransform:"uppercase",letterSpacing:1}}>Ficha del Mentor — Vista previa editable</div>
+                  <div style={{fontSize:10,color:"#90C8F0",textTransform:"uppercase",letterSpacing:1}}>Ficha Mentoría — Vista previa editable</div>
                   <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginTop:2}}>Haz clic en cualquier texto para editarlo directamente</div>
                 </div>
                 <div style={{display:"flex",gap:8}}>
@@ -1975,7 +1977,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               {/* Vista previa scrollable */}
               <div style={{flex:1,overflowY:"auto",padding:"20px"}} onClick={e=>e.stopPropagation()}>
                 <div id="mentor-preview-area" style={{maxWidth:"210mm",margin:"0 auto",background:"#fff",borderRadius:8,boxShadow:"0 4px 32px rgba(0,0,0,0.3)",padding:"11mm 13mm",minHeight:"297mm"}}
-                  dangerouslySetInnerHTML={{__html: buildFichaMentorHTML(dims,infoGeneral,datosE,indE,programa,objetivoEditado.trim()||null,focoEditado.trim()||null,sintesisEditada.trim()||null,notaMentorEditada.trim()||null)
+                  dangerouslySetInnerHTML={{__html: buildFichaMentorHTML(dims,infoGeneral,datosE,indE,programa,null,null,sintesisEditada.trim()||null,notaMentorEditada.trim()||null)
                     .replace(/<!DOCTYPE html>[\s\S]*?<body[^>]*>/i,"")
                     .replace(/<\/body>[\s\S]*?<\/html>/i,"")
                   }}
@@ -1985,17 +1987,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
           )}
           <button onClick={async()=>{
             const interp2=generarInterpretacion(dims,datosE||{});
-            const top2=dims.map(d=>({d,prom:pdim(d,datosE||{})})).filter(x=>x.prom!==null&&x.prom<3.5).sort((a,b)=>a.prom-b.prom).slice(0,2);
-            const autoObj=top2.length>0
-              ? `Apoyar a ${infoGeneral.empresa||"la empresa"} en fortalecer sus capacidades en ${top2.map(x=>x.d.nombre).join(" y ")}, identificando acciones concretas que puedan implementarse durante el Programa ${programa?.nombre||""}.`
-              : `Acompañar a ${infoGeneral.empresa||"la empresa"} en la consolidación de sus capacidades y en la definición de un plan de crecimiento sostenible dentro del Programa ${programa?.nombre||""}.`;
-            setObjetivoEditado(autoObj);
-            // Pre-llenar foco recomendado
-            const autoFoco = top2.length > 0
-              ? `Priorizar la sesión en ${top2.map(x=>x.d.nombre).join(" y ")}. ${top2[0].prom < 2.5 ? "Se detectan brechas críticas que pueden comprometer la continuidad operacional." : "Existen oportunidades concretas de mejora con impacto directo en los resultados."} Se recomienda comenzar con preguntas abiertas para explorar la perspectiva del empresario antes de proponer acciones.`
-              : "La empresa muestra un nivel de madurez general adecuado. El foco puede orientarse a consolidar las dimensiones más desarrolladas y planificar el crecimiento.";
-            setFocoEditado(autoFoco);
-            // Pre-llenar síntesis
+            // Pre-llenar síntesis y nota del mentor
             setSintesisEditada(generarInterpretacion(dims, datosE||{})?.narrativa || "");
             setNotaMentorEditada(infoGeneral.obsEnMentor ? (infoGeneral.notaMentor || infoGeneral.observaciones || "") : (infoGeneral.observaciones || ""));
             setShowMentorModal(true);
@@ -2055,11 +2047,11 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
                         <>
                           <div>
                             <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Mejor Dimensión</div>
-                            <div style={{ fontSize:14, fontWeight:700 }}>{interpActivo.mejor.d.icono} {interpActivo.mejor.d.nombre}</div>
+                            <div style={{ fontSize:14, fontWeight:700 }}>{interpActivo.mejor.d.nombre}</div>
                           </div>
                           <div>
                             <div style={{ fontSize:10, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Dimensión a Reforzar</div>
-                            <div style={{ fontSize:14, fontWeight:700 }}>{interpActivo.peor.d.icono} {interpActivo.peor.d.nombre}</div>
+                            <div style={{ fontSize:14, fontWeight:700 }}>{interpActivo.peor.d.nombre}</div>
                           </div>
                         </>
                       )}
@@ -2084,7 +2076,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
                     return (
                       <div key={d.id} style={{ marginBottom:14 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-                          <span style={{ fontSize:13, color:C.oscuro, fontWeight:600 }}>{d.icono} {d.nombre}</span>
+                          <span style={{ fontSize:13, color:C.oscuro, fontWeight:600 }}>{d.nombre}</span>
                           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                             {ie2 && <span style={{ fontSize:11, color:C.gris }}>{d.indicadorObjetivo.label.split("(")[0].trim()}: <strong style={{color:C.oscuro}}>{ie2}</strong></span>}
                             {n && <span style={{ fontSize:12, fontWeight:700, color:n.color, background:`${n.color}15`, padding:"2px 9px", borderRadius:5 }}>{pct}% · {n.label}</span>}
@@ -2110,19 +2102,19 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
                       <div style={{ background:`${C.verde}0A`, border:`1px solid ${C.verde}33`, borderRadius:10, padding:16 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:C.verde, marginBottom:8 }}>✓ Principales Fortalezas</div>
                         {interpActivo2.fortalezas.map(f=>(
-                          <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.icono} {f.d.nombre} <span style={{ color:C.gris, fontSize:11 }}>({a5to100(f.prom)}%)</span></div>
+                          <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.nombre} <span style={{ color:C.gris, fontSize:11 }}>({a5to100(f.prom)}%)</span></div>
                         ))}
                       </div>
                       <div style={{ background:"#FFF3E8", border:"1px solid #E67E2233", borderRadius:10, padding:16 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:"#D17A1F", marginBottom:8 }}>⚠ Principales Brechas</div>
                         {interpActivo2.brechas.map(f=>(
-                          <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.icono} {f.d.nombre} <span style={{ color:C.gris, fontSize:11 }}>({a5to100(f.prom)}%)</span></div>
+                          <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.nombre} <span style={{ color:C.gris, fontSize:11 }}>({a5to100(f.prom)}%)</span></div>
                         ))}
                       </div>
                       <div style={{ background:`${C.azul}0A`, border:`1px solid ${C.azul}33`, borderRadius:10, padding:16 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:C.azul, marginBottom:8 }}>🎯 Áreas Prioritarias</div>
                         {interpActivo2.prioritarias.map(f=>(
-                          <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.icono} {f.d.nombre}</div>
+                          <div key={f.d.id} style={{ fontSize:13, color:C.oscuro, marginBottom:4 }}>{f.d.nombre}</div>
                         ))}
                       </div>
                     </div>
@@ -2188,7 +2180,7 @@ function ComparativoView({ dims, infoGeneral, datosE, datosS, indE, indS, pgE, p
           const delta = (pe!==null&&ps!==null) ? a5to100(ps)-a5to100(pe) : null;
           return (
             <div key={d.id} style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr", padding:"12px 20px", borderBottom:i<dims.length-1?`1px solid ${C.borde}`:"none", alignItems:"center" }}>
-              <span style={{ fontSize:13, color:C.oscuro }}>{d.icono} {d.nombre}</span>
+              <span style={{ fontSize:13, color:C.oscuro }}>{d.nombre}</span>
               <span style={{ textAlign:"center", fontSize:13, color:C.azul, fontWeight:700 }}>{pe!==null?`${a5to100(pe)}%`:"—"}</span>
               <span style={{ textAlign:"center", fontSize:13, color:C.verde, fontWeight:700 }}>{ps!==null?`${a5to100(ps)}%`:"—"}</span>
               <span style={{ textAlign:"center", fontSize:13, fontWeight:800, color:delta>=0?"#16A085":"#E74C3C" }}>{delta!==null?`${delta>=0?"+":""}${delta} pts`:"—"}</span>
@@ -2212,7 +2204,7 @@ function ComparativoView({ dims, infoGeneral, datosE, datosS, indE, indS, pgE, p
         <div style={{ padding:"10px 20px", borderBottom:`1px solid ${C.borde}`, fontSize:10, letterSpacing:1, color:C.gris, textTransform:"uppercase", background:C.fondo }}>Evolución de Indicadores Cuantitativos</div>
         {dims.map((d,i)=>(
           <div key={d.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"11px 20px", borderBottom:i<dims.length-1?`1px solid ${C.borde}`:"none" }}>
-            <span style={{ fontSize:13, color:C.oscuro }}>{d.icono} {d.indicadorObjetivo.label}</span>
+            <span style={{ fontSize:13, color:C.oscuro }}>{d.indicadorObjetivo.label}</span>
             <span style={{ fontSize:13, color:C.gris }}>
               <strong style={{color:C.azul}}>{indE?.[d.id]||"—"}</strong> → <strong style={{color:C.verde}}>{indS?.[d.id]||"—"}</strong>
             </span>
@@ -2262,6 +2254,7 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   const logoPrograma = programa?.logoUrl || "";
   const pColor       = programa?.color || "#2B7BBF";
   const pDark        = "#1A2E45";
+  const oportColor   = "#5A7A9A"; // color distinto a rojo/naranja, para "Área de oportunidad"
   const pg     = pglobal(dims, datosE || {});
   const nivel  = pg !== null ? getNivel(pg) : null;
   const interp = generarInterpretacion(dims, datosE || {});
@@ -2282,36 +2275,18 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
 
   const areasDebiles   = dimRows.filter(x => x.prom !== null && x.prom < 3.5).sort((a,b) => a.prom - b.prom);
   const areasFortaleza = dimRows.filter(x => x.prom !== null && x.prom >= 3.5).sort((a,b) => b.prom - a.prom);
-  const top2           = areasDebiles.slice(0, 2);
 
-  const desafiosCriticos = dimRows.flatMap(({ d, respuestas }) =>
-    respuestas.filter(r => r.valor <= 2).map(r => ({ dim: d.nombre, icono: d.icono, texto: r.descripcion, criterio: r.criterio }))
-  );
-  const desafios = desafiosCriticos.length > 0
-    ? desafiosCriticos.slice(0, 3)
-    : dimRows.filter(x => x.prom !== null).sort((a,b) => a.prom - b.prom).slice(0,2)
-        .flatMap(({ d, respuestas }) =>
-          respuestas.sort((a,b) => a.valor - b.valor).slice(0,1)
-            .map(r => ({ dim: d.nombre, icono: d.icono, texto: r.descripcion, criterio: r.criterio }))
-        );
+  // Toda empresa debe tener al menos 1 área a trabajar en la mentoría.
+  // Si hay dimensiones débiles/críticas, se muestran (máx. 3). Si NO hay ninguna débil,
+  // se usa la dimensión con puntaje más bajo relativo a las demás como "Área de oportunidad".
+  let areasParaTrabajar = areasDebiles.slice(0, 3).map(x => ({ ...x, tipoArea: x.prom < 2.5 ? "critica" : "debil" }));
+  if (areasParaTrabajar.length === 0) {
+    const todasConDatos = dimRows.filter(x => x.prom !== null).sort((a,b) => a.prom - b.prom);
+    if (todasConDatos.length > 0) areasParaTrabajar = [{ ...todasConDatos[0], tipoArea: "oportunidad" }];
+  }
 
-  const objetivo   = objetivoCustom  || (top2.length > 0
-    ? `Apoyar a ${infoGeneral.empresa || "la empresa"} en fortalecer ${top2.map(x=>x.d.nombre).join(" y ")}, identificando acciones concretas para implementar durante el Programa ${programa?.nombre || ""}.`
-    : `Acompañar a ${infoGeneral.empresa || "la empresa"} en la consolidación de sus capacidades y planificación del crecimiento dentro del Programa ${programa?.nombre || ""}.`);
-  const foco       = focoCustom || (top2.length > 0
-    ? `Concentrar la sesión en ${top2.map(x=>x.d.nombre).join(" y ")} (${top2.map(x=>x.pct+"%").join(" y ")}). ${top2[0].prom < 2.5 ? "Se detectan brechas críticas." : "Hay oportunidades concretas de mejora."} Iniciar con preguntas abiertas.`
-    : `La empresa muestra madurez adecuada. Orientar hacia consolidación y crecimiento.`);
-  const sintesis   = sintesisCustom  || (interp?.narrativa || "");
+  const sintesis    = sintesisCustom || (interp?.narrativa || "");
   const notaInterna = notaCustom || (infoGeneral.obsEnMentor ? (infoGeneral.notaMentor || infoGeneral.observaciones || "") : (infoGeneral.observaciones || ""));
-
-  const accionesPorDim = {
-    "Estratégica y Comercial":     ["Definir propuesta de valor en 1 página","Establecer metas de venta mensuales","Identificar 2 nuevos clientes potenciales"],
-    "Operativa y Calidad":         ["Documentar el proceso principal","Implementar checklist de entrega","Medir cumplimiento de plazos"],
-    "Financiera y Administrativa": ["Crear planilla de flujo de caja","Calcular costo unitario del servicio principal","Calcular margen bruto de los últimos 3 meses"],
-    "Personas y Cultura":          ["Hacer organigrama con responsabilidades","Reunión semanal de 30 min con el equipo","Revisar contratos laborales"],
-    "Sostenibilidad":              ["Identificar 3 riesgos de seguridad","Implementar manejo básico de residuos","Redactar política de sostenibilidad"],
-    "Digitalización":              ["Adoptar herramienta digital para clientes","Digitalizar registros de clientes","Evaluar software de gestión"],
-  };
 
   const CSS = `
     @page{size:A4 portrait;margin:11mm 13mm}
@@ -2327,13 +2302,13 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     @media print{[contenteditable]{outline:none!important}}
   `;
 
-  // ── BARRAS POR DIMENSIÓN ──
+  // ── BARRAS POR DIMENSIÓN (sin ícono, solo nombre) ──
   const dimBarras = dimRows.map(({ d, prom, n, pct }) => {
     if (prom === null) return "";
     const esDebil = prom < 3.5;
     return `<div style="margin-bottom:7px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-        <span style="font-size:10px;color:#fff;font-weight:${esDebil?"700":"400"};opacity:${esDebil?"1":"0.8"};">${d.icono} ${d.nombre}</span>
+        <span style="font-size:10px;color:#fff;font-weight:${esDebil?"700":"400"};opacity:${esDebil?"1":"0.8"};">${d.nombre}</span>
         <div style="display:flex;align-items:center;gap:5px;">
           ${esDebil ? `<span style="font-size:8px;color:rgba(255,255,255,0.6);">▼</span>` : `<span style="font-size:8px;color:rgba(255,255,255,0.5);">✓</span>`}
           <span style="font-size:10px;font-weight:700;color:#fff;">${pct}%</span>
@@ -2345,65 +2320,48 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     </div>`;
   }).join("");
 
-  // ── ÁREAS PRIORITARIAS ──
-  const areasHTML = top2.map(({ d, prom, n, pct, respuestas }) => {
-    const esCrit = prom < 2.5;
-    const malas = respuestas.filter(r => r.valor <= 3).slice(0,2);
-    const acciones = (accionesPorDim[d.nombre] || []).slice(0,3);
+  // ── ÁREAS A TRABAJAR EN LA MENTORÍA (grid flexible, 1 columna ancha por tarjeta, sin acciones sugeridas) ──
+  const areasHTML = areasParaTrabajar.map(({ d, prom, n, pct, respuestas, tipoArea }) => {
+    const esCrit = tipoArea === "critica";
+    const esOportunidad = tipoArea === "oportunidad";
+    const borderColor = esCrit ? "#E74C3C" : esOportunidad ? oportColor : pColor;
+    const badge = esCrit
+      ? `<span style="font-size:8px;background:#E74C3C;color:#fff;padding:1px 5px;border-radius:3px;margin-top:2px;display:inline-block;">Área crítica</span>`
+      : esOportunidad
+        ? `<span style="font-size:8px;background:${oportColor};color:#fff;padding:1px 5px;border-radius:3px;margin-top:2px;display:inline-block;">Área de oportunidad</span>`
+        : "";
+    const malas = respuestas.filter(r => r.valor <= 3).slice(0, 4);
     return `
-    <div style="border:1.5px solid ${esCrit?"#E74C3C":pColor}33;border-radius:8px;overflow:hidden;margin-bottom:10px;">
+    <div style="border:1.5px solid ${borderColor}55;border-radius:8px;overflow:hidden;">
       <div style="background:${pColor};padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">
-        <div style="display:flex;align-items:center;gap:7px;">
-          <span style="font-size:14px;">${d.icono}</span>
-          <div>
-            <div style="font-size:11px;font-weight:700;color:#fff;">${d.nombre}</div>
-            ${esCrit?`<span style="font-size:8px;background:#E74C3C;color:#fff;padding:1px 5px;border-radius:3px;margin-top:2px;display:inline-block;">⚠ Área crítica</span>`:""}
-          </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#fff;">${d.nombre}</div>
+          ${badge}
         </div>
         <div style="text-align:right;">
           <div style="font-size:20px;font-weight:800;color:#fff;">${pct}%</div>
           <div style="font-size:8px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
         </div>
       </div>
-      <div style="padding:9px 12px;background:#fff;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div>
-          <div style="font-size:8px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Situación detectada</div>
-          ${malas.map(r=>`<div style="font-size:9px;color:#3A5A7A;line-height:1.4;margin-bottom:4px;padding-left:7px;border-left:2px solid ${r.color};">
+      <div style="padding:9px 12px;background:#fff;">
+        <div style="font-size:8px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Situación detectada</div>
+        ${malas.length ? malas.map(r=>`<div style="font-size:9px;color:#3A5A7A;line-height:1.4;margin-bottom:4px;padding-left:7px;border-left:2px solid ${r.color};">
             <strong style="color:#1C2B3A;">${r.criterio}:</strong> ${r.descripcion}
-          </div>`).join("")}
-        </div>
-        <div>
-          <div style="font-size:8px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Acciones sugeridas</div>
-          ${acciones.map((a,i)=>`<div style="display:flex;gap:5px;align-items:flex-start;margin-bottom:3px;">
-            <div style="min-width:13px;height:13px;border-radius:50%;background:${pColor};color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">${i+1}</div>
-            <span style="font-size:9px;color:#1C2B3A;line-height:1.4;">${a}</span>
-          </div>`).join("")}
-        </div>
+          </div>`).join("") : `<div style="font-size:9px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
       </div>
     </div>`;
   }).join("");
 
-  // ── FORTALEZAS ──
+  // ── FORTALEZAS (sin ícono) ──
   const fortalezasHTML = areasFortaleza.slice(0,4).map(({ d, n, pct }) =>
     `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:#F0FBF7;border-radius:5px;margin-bottom:4px;">
-      <span style="font-size:10px;font-weight:600;color:#1C2B3A;">${d.icono} ${d.nombre}</span>
+      <span style="font-size:10px;font-weight:600;color:#1C2B3A;">${d.nombre}</span>
       <span style="font-size:10px;font-weight:700;color:#3BAD8A;">${pct}%</span>
     </div>`
   ).join("");
 
-  // ── DESAFÍOS ──
-  const desafiosHTML = desafios.map(r =>
-    `<div style="display:flex;gap:7px;align-items:flex-start;margin-bottom:7px;padding-bottom:7px;border-bottom:1px solid #EEF3F8;">
-      <span style="font-size:13px;flex-shrink:0;margin-top:1px;">${r.icono}</span>
-      <div>
-        <div style="font-size:9px;font-weight:700;color:#5A7A9A;text-transform:uppercase;margin-bottom:2px;">${r.dim} · ${r.criterio}</div>
-        <div style="font-size:10px;color:#1C2B3A;line-height:1.4;">${r.texto}</div>
-      </div>
-    </div>`
-  ).join("");
-
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
-  <title>Ficha Mentor – ${infoGeneral.empresa || "Sin nombre"}</title>
+  <title>Ficha Mentoría – ${infoGeneral.empresa || "Sin nombre"}</title>
   <style>${CSS}</style>
   </head><body>
 
@@ -2414,7 +2372,7 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
       ${logoPrograma ? `<div style="width:1px;height:32px;background:rgba(255,255,255,0.2)"></div><img src="${logoPrograma}" style="height:32px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:4px;padding:2px 7px;" alt="${programa?.nombre||""}"/>` : ""}
       <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:12px;">
         <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:2px;">Ficha de preparación · Mentoría ${programa?.nombre||""}</div>
-        <div style="font-size:14px;font-weight:800;color:#fff;">Ficha del Mentor</div>
+        <div style="font-size:14px;font-weight:800;color:#fff;">Ficha Mentoría</div>
       </div>
     </div>
     <div style="text-align:right;">
@@ -2457,48 +2415,32 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     </div>
   </div>
 
-  <!-- ══ FILA 2: OBJETIVO + FOCO ══ -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-    <div style="background:#F0F6FF;border-radius:8px;padding:10px 13px;border-left:3px solid ${pColor};">
-      <div style="font-size:8px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">🎯 Objetivo de la mentoría</div>
-      <p style="font-size:10.5px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${objetivo}</p>
-    </div>
-    <div style="background:#FFFBF0;border-radius:8px;padding:10px 13px;border-left:3px solid #E8A020;">
-      <div style="font-size:8px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">🔍 Foco recomendado</div>
-      <p style="font-size:10.5px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${foco}</p>
-    </div>
+  <!-- ══ FILA 2: SÍNTESIS DIAGNÓSTICA ══ -->
+  <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:10px 13px;margin-bottom:10px;">
+    <div style="font-size:8px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Síntesis diagnóstica</div>
+    <p style="font-size:10.5px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
   </div>
 
-  <!-- ══ FILA 3: DESAFÍOS + SÍNTESIS ══ -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:10px 13px;">
-      <div style="font-size:8px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">${desafiosCriticos.length>0?"⚠ Desafíos detectados":"📌 Áreas con menor desarrollo"}</div>
-      ${desafiosHTML || `<div style="font-size:10px;color:#8A9BB0;font-style:italic;">Sin desafíos críticos detectados.</div>`}
-      ${notaInterna?`<div style="background:#FFFBF0;border-radius:5px;padding:7px 9px;border-left:2px solid #E8A020;margin-top:6px;">
-        <div style="font-size:8px;font-weight:700;color:#A07820;text-transform:uppercase;margin-bottom:3px;">🔒 Nota del consultor</div>
-        <div style="font-size:10px;color:#1C2B3A;line-height:1.4;" contenteditable="true">${notaInterna}</div>
-      </div>`:""}
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:10px 13px;flex:1;">
-        <div style="font-size:8px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">📝 Síntesis diagnóstica</div>
-        <p style="font-size:10px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
-      </div>
-      ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:10px 13px;">
-        <div style="font-size:8px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">✓ Fortalezas</div>
-        ${fortalezasHTML}
-      </div>`:""}
-    </div>
-  </div>
+  <!-- ══ FILA 3: FORTALEZAS + NOTA DEL CONSULTOR ══ -->
+  ${(areasFortaleza.length>0 || notaInterna) ? `
+  <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:10px;margin-bottom:10px;">
+    ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:10px 13px;">
+      <div style="font-size:8px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Fortalezas</div>
+      ${fortalezasHTML}
+    </div>`:""}
+    ${notaInterna?`<div style="background:#FFFBF0;border-radius:8px;padding:10px 13px;border-left:3px solid #E8A020;">
+      <div style="font-size:8px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Nota del consultor</div>
+      <div style="font-size:10px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
+    </div>`:""}
+  </div>`:""}
 
-  <!-- ══ FILA 4: ÁREAS PRIORITARIAS ══ -->
-  ${top2.length>0?`
+  <!-- ══ ÁREAS A TRABAJAR EN LA MENTORÍA (grid flexible: 1, 2 o 3 tarjetas) ══ -->
   <div style="margin-bottom:10px;">
-    <div style="font-size:8px;font-weight:700;color:#E74C3C;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">🎯 Áreas prioritarias a trabajar en la mentoría</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div style="font-size:8px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">Áreas prioritarias a trabajar en la mentoría</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;">
       ${areasHTML}
     </div>
-  </div>`:""}
+  </div>
 
   <!-- ══ PIE ══ -->
   <div style="display:flex;justify-content:space-between;border-top:1px solid #E4EBF2;padding-top:6px;margin-top:4px;">
@@ -2532,7 +2474,7 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
     const p = pdim(d,datos||{}); const pct=p!==null?a5to100(p):0; const n=p!==null?getNivel(p):null;
     return `<div style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-        <span style="font-size:10.5px;color:rgba(255,255,255,0.9);">${d.icono} ${d.nombre}</span>
+        <span style="font-size:10.5px;color:rgba(255,255,255,0.9);">${d.nombre}</span>
         <span style="font-size:10.5px;font-weight:700;color:#fff;">${pct}%</span>
       </div>
       <div style="height:7px;background:rgba(255,255,255,0.15);border-radius:4px;">
@@ -2545,7 +2487,7 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
     const p = pdim(d,datos||{}); const n=p!==null?getNivel(p):null; const pct=p!==null?a5to100(p):0;
     const ind = inds?.[d.id];
     return `<tr>
-      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;font-size:11px;font-weight:600;">${d.icono} ${d.nombre}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;font-size:11px;font-weight:600;">${d.nombre}</td>
       <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:11px;font-weight:700;color:${n?n.color:"#999"};">${pct}%</td>
       <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;">${n?`<span style="background:${n.color}18;color:${n.color};font-weight:700;padding:3px 11px;border-radius:4px;font-size:10.5px;">${n.label}</span>`:"—"}</td>
       <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:10.5px;color:#5A7A9A;">${ind||"—"}</td>
@@ -2553,13 +2495,13 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   }).join("");
 
   const fortalezasHTML = interp ? interp.fortalezas.map(f=>
-    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:#3BAD8A;font-weight:700;font-size:12px;">✓</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre} <span style="color:#3BAD8A;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
+    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:#3BAD8A;font-weight:700;font-size:12px;">✓</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.nombre} <span style="color:#3BAD8A;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
   ).join("") : "";
   const brechasHTML = interp ? interp.brechas.map(f=>
-    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:#E67E22;font-weight:700;font-size:12px;">▲</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre} <span style="color:#E67E22;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
+    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:#E67E22;font-weight:700;font-size:12px;">▲</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.nombre} <span style="color:#E67E22;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
   ).join("") : "";
   const prioridadesHTML = interp ? interp.prioritarias.map(f=>
-    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:${pColor};font-weight:700;font-size:12px;">›</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.icono} ${f.d.nombre}</span></div>`
+    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:${pColor};font-weight:700;font-size:12px;">›</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.nombre}</span></div>`
   ).join("") : "";
 
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
@@ -2663,9 +2605,9 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   const filas = dims.map(d=>{
     const pe=pdim(d,datosE||{}); const ps=pdim(d,datosS||{});
     const delta = (pe!==null&&ps!==null)?a5to100(ps)-a5to100(pe):null;
-    return `<tr><td style="padding:6px 10px;border-bottom:1px solid #DDE6EF;font-size:11px">${d.icono} ${d.nombre}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;color:${pColor};font-weight:bold">${pe!==null?a5to100(pe)+"%":"—"}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;color:#3BAD8A;font-weight:bold">${ps!==null?a5to100(ps)+"%":"—"}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-weight:bold;color:${delta>=0?"#16A085":"#E74C3C"}">${delta!==null?(delta>=0?"+":"")+delta+" pts":"—"}</td></tr>`;
+    return `<tr><td style="padding:6px 10px;border-bottom:1px solid #DDE6EF;font-size:11px">${d.nombre}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;color:${pColor};font-weight:bold">${pe!==null?a5to100(pe)+"%":"—"}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;color:#3BAD8A;font-weight:bold">${ps!==null?a5to100(ps)+"%":"—"}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-weight:bold;color:${delta>=0?"#16A085":"#E74C3C"}">${delta!==null?(delta>=0?"+":"")+delta+" pts":"—"}</td></tr>`;
   }).join("");
-  const indicadores = dims.map(d=>`<tr><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;font-size:12px">${d.icono} ${d.indicadorObjetivo.label}</td><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-size:12px"><strong style="color:${pColor}">${indE?.[d.id]||"—"}</strong> → <strong style="color:#3BAD8A">${indS?.[d.id]||"—"}</strong></td></tr>`).join("");
+  const indicadores = dims.map(d=>`<tr><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;font-size:12px">${d.indicadorObjetivo.label}</td><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-size:12px"><strong style="color:${pColor}">${indE?.[d.id]||"—"}</strong> → <strong style="color:#3BAD8A">${indS?.[d.id]||"—"}</strong></td></tr>`).join("");
 
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Informe Comparativo – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4 portrait;margin:12mm 14mm}
 html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
@@ -2878,7 +2820,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
           return (
             <div key={d.id} onClick={()=>navTo(i+1)} style={{ padding:"9px 16px", cursor:"pointer", borderLeft:`3px solid ${pagina===i+1?d.acento:"transparent"}`, background:pagina===i+1?`${d.acento}08`:"transparent" }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <span style={{ fontSize:11, fontWeight:600, color:pagina===i+1?d.acento:C.gris }}>{d.icono} D{d.id}. {d.nombre}</span>
+                <span style={{ fontSize:11, fontWeight:600, color:pagina===i+1?d.acento:C.gris }}>D{d.id}. {d.nombre}</span>
                 {prom!==null&&<span style={{ fontSize:10, fontWeight:700, color:getNivel(prom).color, background:`${getNivel(prom).color}15`, padding:"1px 5px", borderRadius:4 }}>{prom.toFixed(1)}</span>}
               </div>
               <div style={{ marginTop:3, height:2, background:C.borde, borderRadius:1, overflow:"hidden" }}>
@@ -2937,13 +2879,41 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
                 </div>
               </div>
 
-              {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"rubro",l:"Rubro / Actividad",ph:"Ej: Transporte, Construcción, Servicios TI…"},{k:"tamano",l:"Tamaño de la empresa",ph:"Ej: Microempresa, Pequeña, Mediana"},{k:"region",l:"Región",ph:"Ej: Biobío, Metropolitana, La Araucanía…"},{k:"comuna",l:"Comuna",ph:"Ej: Concepción, Coronel…"},{k:"pais",l:"País",ph:"Chile"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"},{k:"facturacionCMPC",l:`Facturación con ${programa.nombre} 2025 (MM$)`,ph:"Ej: 45"}].map(f=>(
+              {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"rubro",l:"Rubro / Actividad"},{k:"tamano",l:"Tamaño de la empresa"},{k:"region",l:"Región",ph:"Ej: Biobío, Metropolitana, La Araucanía…"},{k:"comuna",l:"Comuna",ph:"Ej: Concepción, Coronel…"},{k:"pais",l:"País",ph:"Chile"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"},{k:"facturacionCMPC",l:`Facturación con ${programa.nombre} 2025 (MM$)`,ph:"Ej: 45"}].map(f=>(
                 <div key={f.k}>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{f.l}</label>
-                  <input value={infoGeneral[f.k]||""} onChange={e=>setInfoGeneral(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph}
-                    style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }}/>
+                  {(f.k==="rubro"||f.k==="tamano") ? (
+                    <select value={infoGeneral[f.k]||""} onChange={e=>setInfoGeneral(p=>({...p,[f.k]:e.target.value}))}
+                      style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:infoGeneral[f.k]?C.oscuro:C.grisCl, fontSize:14, outline:"none", boxSizing:"border-box", cursor:"pointer" }}>
+                      <option value="">Selecciona una opción…</option>
+                      {(f.k==="rubro" ? RUBRO_OPCIONES : TAMANO_OPCIONES).map(op=><option key={op} value={op}>{op}</option>)}
+                    </select>
+                  ) : (
+                    <input value={infoGeneral[f.k]||""} onChange={e=>setInfoGeneral(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph}
+                      style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }}/>
+                  )}
                 </div>
               ))}
+              {(() => {
+                const nombreNorm = (infoGeneral.empresa||"").trim().toLowerCase();
+                if (!nombreNorm) return null;
+                const coincidencias = (programa.diagnosticos||[]).filter(d =>
+                  d.tipo==="entrada" && d.id!==diagActual?.id && (d.infoGeneral?.empresa||"").trim().toLowerCase()===nombreNorm
+                );
+                if (coincidencias.length === 0) return null;
+                return (
+                  <div style={{ background:"#FFF8EC", border:"1.5px solid #E8A020", borderRadius:10, padding:14 }}>
+                    <p style={{ fontSize:12.5, color:"#A07820", fontWeight:700, margin:"0 0 6px 0" }}>⚠ Ya existe {coincidencias.length>1?`${coincidencias.length} diagnósticos`:"un diagnóstico"} para "{infoGeneral.empresa}" en este programa</p>
+                    {coincidencias.map((d,i)=>(
+                      <div key={i} style={{ fontSize:12, color:"#8A6414", marginBottom:3 }}>
+                        · Guardado {d.fechaGuardado?new Date(d.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—"}
+                        {d._borrador?" (borrador sin confirmar)":""} · Respondente: {d.infoGeneral?.respondente||"—"}
+                      </div>
+                    ))}
+                    <p style={{ fontSize:11.5, color:"#A07820", margin:"6px 0 0 0" }}>Confirma con el equipo si esto es una carga en curso (por partes) o un duplicado antes de continuar.</p>
+                  </div>
+                );
+              })()}
               <div style={{ background:`${C.azul}08`, border:`1px solid ${C.azul}22`, borderRadius:10, padding:16 }}>
                 <p style={{ fontSize:12, color:C.azul, fontWeight:600, margin:"0 0 8px 0" }}>ℹ️ Acceso a información financiera</p>
                 <div style={{ display:"flex", gap:8 }}>
@@ -3000,7 +2970,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
         {dim && modo!=="comparacion" && (
           <div style={{ maxWidth:680 }}>
             <p style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Dimensión {dim.id} de {dims.length}</p>
-            <h1 style={{ fontSize:22, fontWeight:800, color:C.oscuro, margin:"0 0 4px 0" }}><span style={{ color:dim.acento }}>{dim.icono} </span>{dim.nombre}</h1>
+            <h1 style={{ fontSize:22, fontWeight:800, color:C.oscuro, margin:"0 0 4px 0" }}>{dim.nombre}</h1>
             <p style={{ color:C.gris, fontSize:13, lineHeight:1.6, margin:"0 0 12px 0" }}>{dim.objetivo}</p>
             <div style={{ background:modo==="salida"?`${C.verde}10`:`${C.azul}10`, border:`1px solid ${modo==="salida"?C.verde:C.azul}33`, borderRadius:7, padding:"8px 14px", fontSize:12, color:modo==="salida"?C.verde:C.azul, fontWeight:600, marginBottom:validErr.length>0?12:20 }}>
               {modo==="salida"?"📊 Evaluación FINAL — estado actual tras el programa":"📋 Evaluación BASE — línea base antes del programa"}
@@ -3088,7 +3058,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
                   const pg=pglobal(dims,datosE); const nv=pg!==null?getNivel(pg):null;
                   const fecha=new Date().toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric"});
                   const barras=dims.map(d=>{const p=pdim(d,datosE);const pct=p!==null?((p-1)/4)*100:0;const n=p!==null?getNivel(p):NV_CFG[0];return`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:12px;color:#1C2B3A">${d.nombre}</span><span style="font-size:12px;font-weight:bold;color:${n.color}">${p!==null?p.toFixed(2):"—"}</span></div><div style="height:6px;background:#DDE6EF;border-radius:3px"><div style="height:100%;width:${pct}%;background:${n.color};border-radius:3px"></div></div></div>`;}).join("");
-                  const tablaRows=dims.map(d=>{const p=pdim(d,datosE);const n=p!==null?getNivel(p):null;return`<tr><td style="padding:8px 12px;border-bottom:1px solid #dde6ef;font-size:13px">${d.icono} ${d.nombre}</td><td style="padding:8px 12px;border-bottom:1px solid #dde6ef;text-align:center">${p!==null?`<span style="font-weight:bold;color:${n.color}">${p.toFixed(2)}</span>`:"—"}</td><td style="padding:8px 12px;border-bottom:1px solid #dde6ef;text-align:center">${n?`<span style="background:${n.color}22;color:${n.color};font-weight:bold;padding:3px 10px;border-radius:4px;font-size:12px">${n.label}</span>`:"—"}</td></tr>`;}).join("");
+                  const tablaRows=dims.map(d=>{const p=pdim(d,datosE);const n=p!==null?getNivel(p):null;return`<tr><td style="padding:8px 12px;border-bottom:1px solid #dde6ef;font-size:13px">${d.nombre}</td><td style="padding:8px 12px;border-bottom:1px solid #dde6ef;text-align:center">${p!==null?`<span style="font-weight:bold;color:${n.color}">${p.toFixed(2)}</span>`:"—"}</td><td style="padding:8px 12px;border-bottom:1px solid #dde6ef;text-align:center">${n?`<span style="background:${n.color}22;color:${n.color};font-weight:bold;padding:3px 10px;border-radius:4px;font-size:12px">${n.label}</span>`:"—"}</td></tr>`;}).join("");
                   const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Diagnóstico – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4;margin:18mm}body{font-family:Arial,sans-serif;color:#1C2B3A;margin:0;padding:0}h1,h2{margin:0}</style></head><body>
 <div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:24px 28px;border-radius:8px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
   <div><div style="font-size:10px;letter-spacing:3px;color:#90C8F0;text-transform:uppercase;margin-bottom:4px">CIDERE Biobío · Programa Proveedores Locales · ${programa.nombre}</div><h1 style="font-size:22px;font-weight:bold;color:#fff;margin-bottom:3px">Ficha de Diagnóstico</h1></div>
@@ -3142,7 +3112,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
                 const nE=pe!==null?getNivel(pe):null; const nS=ps!==null?getNivel(ps):null;
                 return (
                   <div key={d.id} style={{ display:"grid",gridTemplateColumns:pgE&&pgS?"2fr 1fr 1fr 1fr":"2fr 1fr 1fr",padding:"12px 18px",borderBottom:i<dims.length-1?`1px solid ${C.borde}`:"none",alignItems:"center" }}>
-                    <div style={{ display:"flex",alignItems:"center",gap:8 }}><span style={{ color:d.acento,fontSize:15 }}>{d.icono}</span><span style={{ fontSize:13,color:C.oscuro }}>{d.nombre}</span></div>
+                    <div style={{ display:"flex",alignItems:"center",gap:8 }}><span style={{ fontSize:13,color:C.oscuro }}>{d.nombre}</span></div>
                     <div style={{ textAlign:"center" }}>{nE?<span style={{ fontSize:14,fontWeight:700,color:nE.color,background:`${nE.color}15`,padding:"3px 10px",borderRadius:6 }}>{pe.toFixed(1)}</span>:<span style={{color:C.grisCl}}>—</span>}</div>
                     {pgE&&pgS&&<div style={{ textAlign:"center" }}>{nS?<span style={{ fontSize:14,fontWeight:700,color:nS.color,background:`${nS.color}15`,padding:"3px 10px",borderRadius:6 }}>{ps.toFixed(1)}</span>:<span style={{color:C.grisCl}}>—</span>}</div>}
                     <div style={{ textAlign:"center" }}>
