@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 /* ═══════════════════════════════════════════
    SUPABASE CLIENT (REST directo, sin SDK)
@@ -30,38 +31,10 @@ async function sbSet(key, value) {
   } catch(e) { console.error("sbSet error", e); }
 }
 
-/* ── Presencia en tiempo real (heartbeat + polling vía REST) ──────────────
-   TODO: verificar existencia de esta tabla en Supabase. Si no existe, crearla con:
-   create table presencia (
-     id text primary key,
-     nombre text,
-     last_seen timestamptz default now()
-   );
-   alter table presencia enable row level security;
-   create policy "allow all presencia" on presencia for all using (true) with check (true);
-   ─────────────────────────────────────────────────────────────────────── */
-async function sbHeartbeat(sessionId, nombre) {
-  try {
-    await fetch(`${SB_URL}/rest/v1/presencia`, {
-      method: "POST",
-      headers: { ...sbHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify({ id: sessionId, nombre, last_seen: new Date().toISOString() })
-    });
-  } catch(e) { /* silencioso: la presencia no debe interrumpir el uso de la app */ }
-}
-async function sbGetPresentes() {
-  try {
-    const r = await fetch(`${SB_URL}/rest/v1/presencia?select=id,nombre,last_seen`, { headers: sbHeaders });
-    if (!r.ok) return [];
-    const data = await r.json();
-    return Array.isArray(data) ? data : [];
-  } catch(e) { return []; }
-}
-async function sbSalirPresencia(sessionId) {
-  try {
-    await fetch(`${SB_URL}/rest/v1/presencia?id=eq.${encodeURIComponent(sessionId)}`, { method:"DELETE", headers: sbHeaders });
-  } catch(e) { /* best-effort */ }
-}
+/* ── Cliente Supabase (solo para Realtime Presence — el resto de datos usa REST directo) ──
+   Presencia usa Supabase Realtime (canales/websocket), NO requiere crear ninguna tabla:
+   el estado de "quién está conectado" vive solo en memoria del canal mientras dura la sesión. */
+const supabase = createClient(SB_URL, SB_KEY);
 
 
 /* ═══════════════════════════════════════════
@@ -671,12 +644,46 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
         </div>
         {/* Stats */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
-          {[{l:"Diagnósticos totales",v:(programa.diagnosticos||[]).length,c:pColor},{l:"Proveedores evaluados",v:[...new Set((programa.diagnosticos||[]).map(d=>d.infoGeneral?.empresa||""))].filter(Boolean).length,c:C.verde},{l:"Con entrada y salida",v:(() => { const ds=programa.diagnosticos||[]; const empresas=[...new Set(ds.map(d=>d.infoGeneral?.empresa||""))]; return empresas.filter(e=>ds.some(d=>d.infoGeneral?.empresa===e&&d.tipo==="entrada")&&ds.some(d=>d.infoGeneral?.empresa===e&&d.tipo==="salida")).length; })(),c:"#9B59B6"}].map(s=>(
-            <div key={s.l} style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:"16px 20px", textAlign:"center" }}>
-              <div style={{ fontSize:30, fontWeight:800, color:s.c }}>{s.v}</div>
-              <div style={{ fontSize:11, color:C.gris, fontWeight:600 }}>{s.l}</div>
-            </div>
-          ))}
+          {(() => {
+            const dsTop = programa.diagnosticos||[];
+            const totalDiag = dsTop.length;
+            const empresasEvaluadas = [...new Set(dsTop.map(d=>d.infoGeneral?.empresa||""))].filter(Boolean).length;
+            const empresasTop = [...new Set(dsTop.map(d=>d.infoGeneral?.empresa||""))];
+            const conAmbos = empresasTop.filter(e=>dsTop.some(d=>d.infoGeneral?.empresa===e&&d.tipo==="entrada")&&dsTop.some(d=>d.infoGeneral?.empresa===e&&d.tipo==="salida")).length;
+            const meta = programa.metaProveedores || 0;
+            const pctMeta = meta>0 ? Math.round((empresasEvaluadas/meta)*100) : null;
+            return (
+              <>
+                <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:"16px 20px", textAlign:"center" }}>
+                  <div style={{ fontSize:30, fontWeight:800, color:pColor }}>{totalDiag}</div>
+                  <div style={{ fontSize:11, color:C.gris, fontWeight:600 }}>Diagnósticos totales</div>
+                </div>
+                <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:"16px 20px", textAlign:"center" }}>
+                  {meta>0 ? (
+                    <>
+                      <div style={{ display:"flex", alignItems:"baseline", justifyContent:"center", gap:5 }}>
+                        <span style={{ fontSize:26, fontWeight:800, color:C.verde }}>{empresasEvaluadas}</span>
+                        <span style={{ fontSize:15, fontWeight:700, color:C.grisCl }}>/ {meta}</span>
+                      </div>
+                      <div style={{ height:5, background:C.fondo, borderRadius:3, overflow:"hidden", margin:"7px 0 6px 0" }}>
+                        <div style={{ width:`${Math.min(pctMeta,100)}%`, height:"100%", background:C.verde, borderRadius:3, transition:"width 0.4s" }}/>
+                      </div>
+                      <div style={{ fontSize:11, color:C.gris, fontWeight:600 }}>Proveedores evaluados · {pctMeta}% de la meta</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:30, fontWeight:800, color:C.verde }}>{empresasEvaluadas}</div>
+                      <div style={{ fontSize:11, color:C.gris, fontWeight:600 }}>Proveedores evaluados</div>
+                    </>
+                  )}
+                </div>
+                <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:"16px 20px", textAlign:"center" }}>
+                  <div style={{ fontSize:30, fontWeight:800, color:"#9B59B6" }}>{conAmbos}</div>
+                  <div style={{ fontSize:11, color:C.gris, fontWeight:600 }}>Con entrada y salida</div>
+                </div>
+              </>
+            );
+          })()}
         </div>
         {/* Tabs Dashboard / Diagnósticos */}
         <div style={{ display:"flex", gap:8, marginBottom:20 }}>
@@ -1228,46 +1235,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
                     {/* Derecha */}
                     <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                      {/* Tabla comparativa */}
-                      <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden" }}>
-                        <div style={{ padding:"12px 16px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>Comparativo Proveedores</div>
-                        <div style={{ overflowX:"auto" }}>
-                          <table style={{ width:"100%", borderCollapse:"collapse", minWidth:400 }}>
-                            <thead>
-                              <tr style={{ background:`${pColor}08` }}>
-                                <th style={{ padding:"8px 12px", textAlign:"left", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Empresa</th>
-                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Base</th>
-                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Final</th>
-                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Var.</th>
-                                <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Estado</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
-                                const nv=getNivel(p.pg);
-                                const pgF=p.pgS; const delta=pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
-                                return (
-                                  <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}
-                                    onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${p.empresa} · Consultor: ${p.consultor}`})}
-                                    onMouseLeave={()=>setTooltip(null)}>
-                                    <td style={{ padding:"8px 12px", fontSize:12, color:C.oscuro, fontWeight:600 }}>{p.empresa}</td>
-                                    <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:nv.color }}>{a5to100(p.pg)}%</td>
-                                    <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:pgF!==null?getNivel(pgF).color:C.grisCl }}>{pgF!==null?`${a5to100(pgF)}%`:"—"}</td>
-                                    <td style={{ padding:"8px 8px", textAlign:"center", fontSize:12, fontWeight:700, color:delta!==null?(delta>=0?"#16A085":"#E74C3C"):C.grisCl }}>{delta!==null?`${delta>=0?"+":""}${delta}`:""}</td>
-                                    <td style={{ padding:"8px 8px", textAlign:"center" }}>
-                                      <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:4,
-                                        background:p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0",
-                                        color:p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"
-                                      }}>{p.estado==="Validado"?"🟢":p.estado==="Descartado"?"🔴":"🟡"} {p.estado||"Pendiente"}</span>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
                       {/* Distribución de niveles */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
                         <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Distribución de Niveles</div>
@@ -1316,6 +1283,46 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           )); })()}
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Comparativo Proveedores — sección de ancho completo, igual estilo que heatmap/mapa */}
+                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
+                    <div style={{ padding:"12px 16px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>Comparativo Proveedores</div>
+                    <div style={{ overflowX:"auto" }}>
+                      <table style={{ width:"100%", borderCollapse:"collapse", minWidth:400 }}>
+                        <thead>
+                          <tr style={{ background:`${pColor}08` }}>
+                            <th style={{ padding:"8px 12px", textAlign:"left", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Empresa</th>
+                            <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Base</th>
+                            <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Final</th>
+                            <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Var.</th>
+                            <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+                            const nv=getNivel(p.pg);
+                            const pgF=p.pgS; const delta=pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
+                            return (
+                              <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}
+                                onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${p.empresa} · Consultor: ${p.consultor}`})}
+                                onMouseLeave={()=>setTooltip(null)}>
+                                <td style={{ padding:"8px 12px", fontSize:12, color:C.oscuro, fontWeight:600 }}>{p.empresa}</td>
+                                <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:nv.color }}>{a5to100(p.pg)}%</td>
+                                <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:pgF!==null?getNivel(pgF).color:C.grisCl }}>{pgF!==null?`${a5to100(pgF)}%`:"—"}</td>
+                                <td style={{ padding:"8px 8px", textAlign:"center", fontSize:12, fontWeight:700, color:delta!==null?(delta>=0?"#16A085":"#E74C3C"):C.grisCl }}>{delta!==null?`${delta>=0?"+":""}${delta}`:""}</td>
+                                <td style={{ padding:"8px 8px", textAlign:"center" }}>
+                                  <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:4,
+                                    background:p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0",
+                                    color:p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"
+                                  }}>{p.estado==="Validado"?"🟢":p.estado==="Descartado"?"🔴":"🟡"} {p.estado||"Pendiente"}</span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </>
@@ -1380,7 +1387,10 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       {pendientes.length===0 ? (
                         <div style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 16px", background:"#EAF7F2", border:"1px solid #3BAD8A33", borderRadius:10 }}>
                           <span style={{ fontSize:18 }}>✓</span>
-                          <span style={{ fontSize:13, color:"#16A085", fontWeight:600 }}>Todos los proveedores del programa están diagnosticados.</span>
+                          <span style={{ fontSize:13, color:"#16A085", fontWeight:600 }}>
+                            No hay proveedores registrados con diagnóstico incompleto.
+                            {metaProveedores>0 && porRegistrar>0 && ` Aún faltan ${porRegistrar} proveedores por incorporar al sistema para alcanzar la meta de ${metaProveedores}.`}
+                          </span>
                         </div>
                       ) : (
                         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -3334,30 +3344,30 @@ export default function App() {
     if (logueado && !miNombre) setShowNombrePrompt(true);
   }, [logueado, miNombre]);
 
-  // Heartbeat + polling de presencia (sin bloquear edición, solo informativo)
+  // Presencia en tiempo real vía Supabase Realtime (canal websocket, sin bloquear edición)
   useEffect(() => {
     if (!logueado || !miNombre) return;
     const sid = sessionIdRef.current;
-    let activo = true;
-    const latir = () => sbHeartbeat(sid, miNombre);
-    const consultar = async () => {
-      const rows = await sbGetPresentes();
-      if (!activo) return;
-      const ahora = Date.now();
-      const activos = rows.filter(r => (ahora - new Date(r.last_seen).getTime()) < 45000); // últimos 45s
-      setPresentes(activos);
-    };
-    latir(); consultar();
-    const hbInterval = setInterval(latir, 15000);
-    const pollInterval = setInterval(consultar, 15000);
-    const salir = () => { sbSalirPresencia(sid); };
-    window.addEventListener("beforeunload", salir);
-    return () => {
-      activo = false;
-      clearInterval(hbInterval); clearInterval(pollInterval);
-      window.removeEventListener("beforeunload", salir);
-      salir();
-    };
+    const channel = supabase.channel("presencia-cidere", {
+      config: { presence: { key: sid } }
+    });
+
+    channel.on("presence", { event: "sync" }, () => {
+      const state = channel.presenceState();
+      const lista = Object.entries(state).map(([key, metas]) => ({
+        id: key,
+        nombre: metas?.[0]?.nombre || "?"
+      }));
+      setPresentes(lista);
+    });
+
+    channel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await channel.track({ nombre: miNombre, online_at: new Date().toISOString() });
+      }
+    });
+
+    return () => { supabase.removeChannel(channel); };
   }, [logueado, miNombre]);
 
 
