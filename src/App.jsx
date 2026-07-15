@@ -31,14 +31,14 @@ async function sbSet(key, value) {
 }
 
 /* ── Presencia (reutiliza la misma tabla "proyectos" que ya existe — sin librerías ni tablas nuevas) ──
-   Se guarda un registro con id="presencia-v1" cuyo "data" es un array [{id,nombre,last_seen}, ...].
+   Se guarda un registro con id="presencia-v1" cuyo "data" es un array [{id,nombre,actividad,last_seen}, ...].
    Cada usuario activo actualiza su entrada cada 15s; se descartan entradas de más de 45s sin actividad. */
-async function actualizarPresencia(sessionId, nombre) {
+async function actualizarPresencia(sessionId, nombre, actividad) {
   try {
     const actual = await sbGet("presencia-v1");
     const ahora = Date.now();
     const vivos = (Array.isArray(actual) ? actual : []).filter(p => p.id !== sessionId && (ahora - new Date(p.last_seen).getTime()) < 45000);
-    const nuevo = [...vivos, { id: sessionId, nombre, last_seen: new Date().toISOString() }];
+    const nuevo = [...vivos, { id: sessionId, nombre, actividad: actividad||"", last_seen: new Date().toISOString() }];
     await sbSet("presencia-v1", nuevo);
     return nuevo;
   } catch(e) { return null; }
@@ -57,6 +57,20 @@ async function salirPresencia(sessionId) {
     const nuevo = (Array.isArray(actual) ? actual : []).filter(p => p.id !== sessionId);
     await sbSet("presencia-v1", nuevo);
   } catch(e) { /* best-effort */ }
+}
+
+/* ── Modo mantenimiento (misma tabla "proyectos", registro id="mantenimiento-v1") ──
+   { activo:bool, activadoPor:nombre, activadoEn:ISOString, expiraEn:ISOString, mensaje:string }
+   Se apaga solo (client-side) cuando "ahora" supera expiraEn — no requiere escritura de apagado automático. */
+async function leerMantenimiento() {
+  try {
+    const data = await sbGet("mantenimiento-v1");
+    if (!data || typeof data !== "object") return null;
+    return data;
+  } catch(e) { return null; }
+}
+async function setMantenimientoRemoto(valor) {
+  try { await sbSet("mantenimiento-v1", valor); } catch(e) { /* best-effort */ }
 }
 
 
@@ -2647,7 +2661,7 @@ table{width:100%;border-collapse:collapse}
 </body></html>`;
 }
 
-function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
+function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mantenimientoActivo, onActividad }) {
   const scrollRef = useRef(null);
   const esSalidaNueva = diagActual?.tipo === "salida_nueva" || (diagActual?.id||"").endsWith("_final_new");
   const verComparativo = !!diagActual?._verComparativo;
@@ -2666,6 +2680,13 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
   const [showPw, setShowPw] = useState(false);
   const [showFicha, setShowFicha] = useState(false);
   const [pwInput, setPwInput] = useState("");
+
+  // Transmitir "qué estoy haciendo" al sistema de presencia mientras este formulario está abierto
+  useEffect(() => {
+    const empresaTxt = infoGeneral.empresa?.trim() ? `Cargando diagnóstico de ${infoGeneral.empresa.trim()}` : "Cargando un nuevo diagnóstico";
+    onActividad?.(empresaTxt);
+    return () => { onActividad?.(""); };
+  }, [infoGeneral.empresa]);
   const [pwErr, setPwErr] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -3040,6 +3061,11 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
               </div>
               <div style={{ display:"flex",gap:8,alignItems:"center" }}>
                 {/* Aviso visual de estado de guardado */}
+                {mantenimientoActivo && (
+                  <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"#FFF3DC",border:"1px solid #E8A020",borderRadius:8,fontSize:11.5,color:"#8A6414",fontWeight:600,maxWidth:220}}>
+                    🔧 Sistema en mantenimiento. No se puede guardar por ahora.
+                  </div>
+                )}
                 {diagActual?._borrador
                   ? <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"#FFF8EC",border:"1px solid #E8A020",borderRadius:8,fontSize:12,color:"#A07820",fontWeight:600}}>
                       📝 Borrador guardado automáticamente
@@ -3050,7 +3076,8 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver }) {
                       </div>
                     : null
                 }
-                <button onClick={()=>setShowModal(true)} style={{ padding:"10px 20px",background:`linear-gradient(135deg,${C.verde},#16A085)`,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",boxShadow:`0 2px 8px ${C.verde}44` }}>
+                <button onClick={()=>setShowModal(true)} disabled={mantenimientoActivo} title={mantenimientoActivo?"Deshabilitado durante el mantenimiento del sistema":""}
+                  style={{ padding:"10px 20px",background:mantenimientoActivo?"#C8CDD4":`linear-gradient(135deg,${C.verde},#16A085)`,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:800,cursor:mantenimientoActivo?"not-allowed":"pointer",boxShadow:mantenimientoActivo?"none":`0 2px 8px ${C.verde}44`,opacity:mantenimientoActivo?0.75:1 }}>
                   💾 Guardar diagnóstico
                 </button>
                 <button onClick={()=>setShowFicha(true)} style={{ padding:"10px 18px",background:`linear-gradient(135deg,${C.headerBg},${C.azul})`,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer" }}>📄 Ver ficha PDF</button>
@@ -3252,7 +3279,10 @@ export default function App() {
   });
   const [showNombrePrompt, setShowNombrePrompt] = useState(false);
   const [presentes, setPresentes] = useState([]);
+  const [showPresenciaPanel, setShowPresenciaPanel] = useState(false);
   const sessionIdRef = useRef(null);
+  const actividadRef = useRef(""); // texto de "qué estoy haciendo ahora", leído por el heartbeat sin causar re-render
+  const setMiActividad = (txt) => { actividadRef.current = txt || ""; };
   if (!sessionIdRef.current) {
     try {
       let sid = localStorage.getItem("cidere_session_id");
@@ -3260,6 +3290,38 @@ export default function App() {
       sessionIdRef.current = sid;
     } catch(e) { sessionIdRef.current = "s_"+Date.now(); }
   }
+
+  // ── Modo mantenimiento (solo administrador puede activarlo) ────────────────
+  const [esAdmin, setEsAdmin] = useState(() => {
+    try { return localStorage.getItem("cidere_is_admin") === "1"; } catch(e) { return false; }
+  });
+  const [mantenimiento, setMantenimiento] = useState(null); // {activo, activadoPor, activadoEn, expiraEn}
+  const MANTENIMIENTO_DURACION_MIN = 30;
+  const mantenimientoActivo = !!(mantenimiento?.activo && new Date(mantenimiento.expiraEn) > new Date());
+
+  const desbloquearAdmin = () => {
+    const pw = window.prompt("Contraseña de administrador:");
+    if (pw === "Cidere123") {
+      setEsAdmin(true);
+      try { localStorage.setItem("cidere_is_admin", "1"); } catch(e) {}
+    } else if (pw !== null) {
+      window.alert("Contraseña incorrecta.");
+    }
+  };
+
+  const toggleMantenimiento = async () => {
+    if (mantenimientoActivo) {
+      const nuevo = { activo:false, activadoPor:miNombre, activadoEn:new Date().toISOString(), expiraEn:new Date().toISOString() };
+      setMantenimiento(nuevo);
+      await setMantenimientoRemoto(nuevo);
+    } else {
+      const ahora = new Date();
+      const expira = new Date(ahora.getTime() + MANTENIMIENTO_DURACION_MIN*60000);
+      const nuevo = { activo:true, activadoPor:miNombre||"Administrador", activadoEn:ahora.toISOString(), expiraEn:expira.toISOString() };
+      setMantenimiento(nuevo);
+      await setMantenimientoRemoto(nuevo);
+    }
+  };
 
   useEffect(()=>{
     (async()=>{
@@ -3344,23 +3406,28 @@ export default function App() {
     let activo = true;
 
     const latir = async () => {
-      const lista = await actualizarPresencia(sid, miNombre);
+      const lista = await actualizarPresencia(sid, miNombre, actividadRef.current);
       if (activo && lista) setPresentes(lista);
     };
     const consultar = async () => {
       const lista = await leerPresencia();
       if (activo) setPresentes(lista);
     };
+    const consultarMantenimiento = async () => {
+      const m = await leerMantenimiento();
+      if (activo) setMantenimiento(m);
+    };
 
-    latir();
+    latir(); consultarMantenimiento();
     const hbInterval = setInterval(latir, 15000);
     const pollInterval = setInterval(consultar, 10000);
+    const mantInterval = setInterval(consultarMantenimiento, 10000);
     const salir = () => { salirPresencia(sid); };
     window.addEventListener("beforeunload", salir);
 
     return () => {
       activo = false;
-      clearInterval(hbInterval); clearInterval(pollInterval);
+      clearInterval(hbInterval); clearInterval(pollInterval); clearInterval(mantInterval);
       window.removeEventListener("beforeunload", salir);
       salir();
     };
@@ -3565,22 +3632,53 @@ export default function App() {
           )}
           {/* Presencia: quién más está activo ahora mismo */}
           {presentes.length > 0 && (
-            <div title={presentes.map(p=>p.nombre||"—").join(", ")}
-              style={{display:"flex",alignItems:"center",gap:7,padding:"5px 11px",background:"rgba(255,255,255,0.05)",borderRadius:8,cursor:"help"}}>
-              <div style={{display:"flex"}}>
-                {presentes.slice(0,4).map((p,i)=>(
-                  <div key={p.id} style={{ width:20,height:20,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff",border:"2px solid "+C.headerBg,marginLeft:i>0?-7:0 }}>
-                    {(p.nombre||"?").trim().charAt(0).toUpperCase()}
-                  </div>
-                ))}
-                {presentes.length>4 && (
-                  <div style={{ width:20,height:20,borderRadius:"50%",background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:800,color:"#fff",border:"2px solid "+C.headerBg,marginLeft:-7 }}>
-                    +{presentes.length-4}
-                  </div>
-                )}
+            <div style={{ position:"relative" }}>
+              <div onClick={()=>setShowPresenciaPanel(v=>!v)}
+                style={{display:"flex",alignItems:"center",gap:7,padding:"5px 11px",background:showPresenciaPanel?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.05)",borderRadius:8,cursor:"pointer"}}>
+                <div style={{display:"flex"}}>
+                  {presentes.slice(0,4).map((p,i)=>(
+                    <div key={p.id} style={{ width:20,height:20,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff",border:"2px solid "+C.headerBg,marginLeft:i>0?-7:0 }}>
+                      {(p.nombre||"?").trim().charAt(0).toUpperCase()}
+                    </div>
+                  ))}
+                  {presentes.length>4 && (
+                    <div style={{ width:20,height:20,borderRadius:"50%",background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:800,color:"#fff",border:"2px solid "+C.headerBg,marginLeft:-7 }}>
+                      +{presentes.length-4}
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>{presentes.length} activo{presentes.length!==1?"s":""}</span>
               </div>
-              <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>{presentes.length} activo{presentes.length!==1?"s":""}</span>
+              {showPresenciaPanel && (
+                <div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowPresenciaPanel(false)}>
+                  <div style={{position:"absolute",top:70,right:24,background:"#fff",borderRadius:12,boxShadow:"0 12px 40px rgba(0,0,0,0.25)",width:300,maxHeight:360,overflowY:"auto",padding:8}} onClick={e=>e.stopPropagation()}>
+                    <div style={{fontSize:10,color:"#8A9BB0",textTransform:"uppercase",letterSpacing:1,fontWeight:700,padding:"8px 10px 4px 10px"}}>Activos ahora ({presentes.length})</div>
+                    {presentes.map(p=>(
+                      <div key={p.id} style={{display:"flex",alignItems:"flex-start",gap:9,padding:"8px 10px",borderRadius:8}}>
+                        <div style={{ width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0 }}>
+                          {(p.nombre||"?").trim().charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{minWidth:0}}>
+                          <div style={{fontSize:12.5,fontWeight:700,color:"#1C2B3A"}}>{p.nombre||"—"}</div>
+                          <div style={{fontSize:11.5,color:p.actividad?"#16A085":"#A0B0C0",marginTop:1}}>{p.actividad || "Sin actividad activa"}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+          )}
+          {/* Modo mantenimiento — solo visible para el administrador */}
+          {esAdmin ? (
+            <button onClick={toggleMantenimiento}
+              title={mantenimientoActivo ? `Activado por ${mantenimiento?.activadoPor||"—"} · se apaga solo a las ${new Date(mantenimiento?.expiraEn).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})}` : "Activar modo mantenimiento"}
+              style={{ display:"flex",alignItems:"center",gap:6,padding:"7px 12px",background:mantenimientoActivo?"#E8A020":"rgba(255,255,255,0.08)",border:mantenimientoActivo?"none":"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:mantenimientoActivo?"#1C2B3A":"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:700 }}>
+              🔧 {mantenimientoActivo ? "Mantenimiento ON" : "Modo mantenimiento"}
+            </button>
+          ) : (
+            <button onClick={desbloquearAdmin} title="Acceso administrador"
+              style={{ padding:"7px 9px",background:"transparent",border:"none",color:"rgba(255,255,255,0.25)",fontSize:13,cursor:"pointer" }}>🔧</button>
           )}
           <button onClick={()=>setShowPapelera(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
             🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
@@ -3659,6 +3757,18 @@ export default function App() {
         )}
       </div>
 
+      {/* BANNER MODO MANTENIMIENTO — visible para todos mientras esté activo */}
+      {mantenimientoActivo && (
+        <div style={{ background:"#E8A020", padding:"9px 24px", display:"flex", alignItems:"center", justifyContent:"center", gap:10, flexShrink:0, position:"sticky", top:84, zIndex:190 }}>
+          <span style={{ fontSize:15 }}>🔧</span>
+          <span style={{ fontSize:13, color:"#1C2B3A", fontWeight:700 }}>El sistema está siendo actualizado — por favor no guardes cambios en este momento.</span>
+          <span style={{ fontSize:11.5, color:"#5A4310" }}>
+            ({mantenimiento?.activadoPor||"Admin"} · finaliza automáticamente a las {new Date(mantenimiento?.expiraEn).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})})
+          </span>
+          {esAdmin && <button onClick={toggleMantenimiento} style={{ marginLeft:10, padding:"4px 12px", background:"#1C2B3A", border:"none", borderRadius:6, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Desactivar ahora</button>}
+        </div>
+      )}
+
       {/* BODY */}
       <div style={{ flex:1,display:"flex",minHeight:0,position:"relative" }}>
         {!proyectoActivo && (
@@ -3668,7 +3778,7 @@ export default function App() {
           <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={()=>{setProyectoActivo(null);setDiagActivo(null);}}/>
         )}
         {proyectoActivo && diagActivo && (
-          <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)}/>
+          <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad}/>
         )}
       </div>
     </div>
