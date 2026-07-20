@@ -659,6 +659,7 @@ function MapaLeaflet({ regiones, getNivel, a5to100 }) {
 
 function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver }) {
   const [filtro, setFiltro] = useState("");
+  const [ordenDiag, setOrdenDiag] = useState("reciente"); // reciente | antiguo | az | za | puntajeDesc | puntajeAsc | estado
   const [vistaTab, setVistaTab] = useState("dashboard");
   const [filtroEmpresa, setFiltroEmpresa] = useState("todas");
   const [tooltip, setTooltip] = useState(null); // {x,y,text}
@@ -1667,11 +1668,46 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
           const empresas = Object.values(empresasMap).filter(e =>
             !filtro || e.nombre.toLowerCase().includes(filtro.toLowerCase())
           );
+          const fechaEmp = (emp) => {
+            const d = emp.diags.find(d=>d.tipo==="entrada") || emp.diags[0];
+            return d?.fechaGuardado ? new Date(d.fechaGuardado).getTime() : 0;
+          };
+          const puntajeEmp = (emp) => {
+            const d = emp.diags.find(d=>d.tipo==="entrada");
+            if (!d) return -1;
+            const pg = pglobal(dims, d.datosEntrada||{});
+            return pg===null ? -1 : pg;
+          };
+          const estadoEmp = (emp) => {
+            const d = emp.diags.find(d=>d.tipo==="entrada");
+            return d?.infoGeneral?.estado || "Pendiente revisión";
+          };
+          empresas.sort((a,b) => {
+            switch(ordenDiag) {
+              case "az": return a.nombre.localeCompare(b.nombre,"es");
+              case "za": return b.nombre.localeCompare(a.nombre,"es");
+              case "antiguo": return fechaEmp(a)-fechaEmp(b);
+              case "puntajeDesc": return puntajeEmp(b)-puntajeEmp(a);
+              case "puntajeAsc": return puntajeEmp(a)-puntajeEmp(b);
+              case "estado": return estadoEmp(a).localeCompare(estadoEmp(b),"es");
+              case "reciente": default: return fechaEmp(b)-fechaEmp(a);
+            }
+          });
           return (
             <>
             <div style={{ display:"flex", gap:10, marginBottom:14 }}>
               <input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="🔍 Buscar empresa…"
                 style={{ flex:1, padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none" }}/>
+              <select value={ordenDiag} onChange={e=>setOrdenDiag(e.target.value)}
+                style={{ padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", cursor:"pointer" }}>
+                <option value="reciente">🕐 Más reciente primero</option>
+                <option value="antiguo">🕐 Más antiguo primero</option>
+                <option value="az">A → Z</option>
+                <option value="za">Z → A</option>
+                <option value="puntajeDesc">📊 Puntaje: mayor a menor</option>
+                <option value="puntajeAsc">📊 Puntaje: menor a mayor</option>
+                <option value="estado">🏷 Por estado</option>
+              </select>
               {seleccionFichas.size>0 && (
                 <button disabled={descargando} onClick={()=>{
                   const seleccionados = empresas
@@ -3387,7 +3423,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
 
       {/* Botones header diagnóstico */}
       <div style={{ position:"absolute",top:12,right:20,display:"flex",gap:8,zIndex:50 }}>
-        <button onClick={onVolver} style={{ padding:"7px 13px",borderRadius:6,border:`1px solid ${C.borde}`,background:C.blanco,color:C.gris,cursor:"pointer",fontSize:12,fontWeight:600,boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>← Volver</button>
+        <button onClick={()=>{ if(pagina>0){ navTo(pagina-1); } else { onVolver(); } }} style={{ padding:"7px 13px",borderRadius:6,border:`1px solid ${C.borde}`,background:C.blanco,color:C.gris,cursor:"pointer",fontSize:12,fontWeight:600,boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>← Volver</button>
         <button onClick={()=>setShowPw(true)} style={{ padding:"7px 13px",borderRadius:6,border:`1px solid ${C.borde}`,background:C.blanco,color:C.gris,cursor:"pointer",fontSize:12,fontWeight:600,boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>✏️ Editar</button>
       </div>
     </div>
