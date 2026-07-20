@@ -1,7 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { jsPDF } from "jspdf";
-import JSZip from "jszip";
-import html2canvas from "html2canvas";
 
 /* ═══════════════════════════════════════════
    SUPABASE CLIENT (REST directo, sin SDK)
