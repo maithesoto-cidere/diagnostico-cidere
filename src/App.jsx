@@ -904,14 +904,14 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               </svg>`;
             };
 
-            // Tabla de proveedores (solo nombre y puntaje base)
-            const tablaRows = sorted.map((p,i)=>{
+            // Tabla de proveedores (solo nombre y puntaje base) — filas más espaciadas y legibles
+            const tablaFilasArr = sorted.map((p,i)=>{
               const nv=getNivel(p.pg);
               return `<tr style="border-bottom:1px solid #F0F4F8;${i%2===0?"":"background:#FAFBFD"}">
-                <td style="padding:9px 14px;font-size:11px;font-weight:600;">${i+1}. ${p.empresa}</td>
-                <td style="padding:9px 14px;text-align:center;font-size:12px;font-weight:800;color:${nv.color};">${a5to100(p.pg)}%</td>
+                <td style="padding:15px 20px;font-size:14px;font-weight:600;">${i+1}. ${p.empresa}</td>
+                <td style="padding:15px 20px;text-align:center;font-size:15px;font-weight:800;color:${nv.color};">${a5to100(p.pg)}%</td>
               </tr>`;
-            }).join("");
+            });
 
             // Header de página (logo sin fondo blanco en el logo del programa)
             const hdr = (title) => `
@@ -921,7 +921,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   ${logoPrograma?`<div style="width:1px;height:26px;background:rgba(255,255,255,0.18)"></div>
                   <img src="${logoPrograma}" style="height:26px;object-fit:contain;" alt="${programa.nombre}"/>`:""}
                   <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:11px;">
-                    <div style="font-size:12px;font-weight:800;color:#fff;">${title}</div>
+                    <div style="font-size:12px;font-weight:800;color:#fff;letter-spacing:0.5px;">${title.toUpperCase()}</div>
                     <div style="font-size:8px;color:#90C8F0;margin-top:1px;">${programa.nombre}</div>
                   </div>
                 </div>
@@ -1009,7 +1009,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               ${metaProveedores>0 ? `
               <div class="card" style="flex-shrink:0;display:flex;align-items:center;gap:20px;">
                 <div style="flex-shrink:0;">
-                  <div class="lbl" style="margin-bottom:4px;">Cobertura del Programa</div>
+                  <div class="lbl" style="margin-bottom:4px;">COBERTURA DEL PROGRAMA</div>
                   <div style="display:flex;align-items:baseline;gap:6px;">
                     <span style="font-size:26px;font-weight:800;color:${pColor};">${totalRegistrados}</span>
                     <span style="font-size:14px;font-weight:700;color:#8A9BB0;">/ ${metaProveedores}</span>
@@ -1144,7 +1144,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               ${hdr("Estado de Cobertura y Alertas")}
 
               <div class="card" style="flex-shrink:0;">
-                <div class="lbl" style="color:#E74C3C;">🚨 Alertas Críticas</div>
+                <div class="lbl" style="color:#E74C3C;">🚨 ALERTAS CRÍTICAS</div>
                 ${alertasCriticas.length===0
                   ? `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#EAF7F2;border-radius:8px;"><span style="font-size:14px;">✓</span><span style="font-size:11px;color:#16A085;font-weight:600;">Sin alertas críticas registradas</span></div>`
                   : alertasCriticas.slice(0,15).map(a=>`
@@ -1160,7 +1160,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
               <!-- Distribución de Niveles por Dimensión -->
               <div class="card" style="flex:1;min-height:0;overflow:auto;">
-                <div class="lbl">📊 Distribución de Niveles por Dimensión</div>
+                <div class="lbl">📊 DISTRIBUCIÓN DE NIVELES POR DIMENSIÓN</div>
                 ${nivelesPorDimHTML}
                 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;padding-top:7px;border-top:1px solid #F0F4F8;">
                   ${NV_CFG.map(n=>`<div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:2px;background:${n.color};"></div><span style="font-size:8.5px;color:#8A9BB0;">${n.label}</span></div>`).join("")}
@@ -1198,7 +1198,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
                 <!-- Distribución Geográfica -->
                 <div class="card" style="overflow:auto;">
-                  <div class="lbl">🌎 Distribución Geográfica</div>
+                  <div class="lbl">🌎 DISTRIBUCIÓN GEOGRÁFICA</div>
                   ${regionesPdf.length<2 ? `<div style="font-size:10px;color:#8A9BB0;">Sin datos suficientes de región.</div>` :
                     regionesPdf.map(r=>{
                       const n=getNivel(r.prom), pct=a5to100(r.prom), barW=Math.round((r.count/maxCountRegion)*100);
@@ -1236,7 +1236,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
                 <!-- Cruce por Rubro y Dimensión -->
                 <div class="card" style="padding:0;overflow:auto;">
-                  <div class="lbl" style="padding:13px 15px 0 15px;">🔥 Cruce por Rubro y Dimensión</div>
+                  <div class="lbl" style="padding:13px 15px 0 15px;">🔥 CRUCE POR RUBRO Y DIMENSIÓN</div>
                   ${rubrosPdf.length<2 ? `<div style="font-size:10px;color:#8A9BB0;padding:0 15px 13px 15px;">Sin datos suficientes de rubro.</div>` : `
                   <table style="width:100%;border-collapse:collapse;margin-top:8px;">
                     <thead><tr style="background:#F5F8FB;">
@@ -1269,22 +1269,31 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             </div>` : "";
 
             // ══════════════════════════════════════════════════════════════════
-            // PÁGINA 5: TABLA COMPLETA DE PROVEEDORES
+            // PÁGINA(S) FINAL(ES): TABLA COMPLETA DE PROVEEDORES
+            // Con el nuevo espaciado más legible, se reparte en varias páginas si no cabe en una sola
             // ══════════════════════════════════════════════════════════════════
-            const pag3 = `
-            <div class="pg">
-              ${hdr("Tabla de Proveedores")}
+            const FILAS_POR_PAGINA = 16;
+            const totalPaginasTabla = Math.max(1, Math.ceil(tablaFilasArr.length / FILAS_POR_PAGINA));
+            const pagsTabla = [];
+            for (let p=0; p<totalPaginasTabla; p++) {
+              const chunk = tablaFilasArr.slice(p*FILAS_POR_PAGINA, (p+1)*FILAS_POR_PAGINA).join("");
+              const tituloPagina = totalPaginasTabla>1 ? `Tabla de Proveedores (${p+1}/${totalPaginasTabla})` : "Tabla de Proveedores";
+              pagsTabla.push(`
+              <div class="pg">
+                ${hdr(tituloPagina)}
 
-              <div class="card" style="padding:0;overflow:hidden;flex:1;display:flex;flex-direction:column;">
-                <table style="width:100%;border-collapse:collapse;">
-                  <thead><tr style="background:#F5F8FB;">
-                    <th style="padding:12px 14px;text-align:left;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Proveedor</th>
-                    <th style="padding:12px 14px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Puntaje Base</th>
-                  </tr></thead>
-                  <tbody>${tablaRows}</tbody>
-                </table>
-              </div>
-            </div>`;
+                <div class="card" style="padding:0;overflow:hidden;flex:1;display:flex;flex-direction:column;">
+                  <table style="width:100%;border-collapse:collapse;">
+                    <thead><tr style="background:#F5F8FB;">
+                      <th style="padding:15px 20px;text-align:left;font-size:11px;color:#8A9BB0;font-weight:700;letter-spacing:.5px;">PROVEEDOR</th>
+                      <th style="padding:15px 20px;text-align:center;font-size:11px;color:#8A9BB0;font-weight:700;letter-spacing:.5px;">PUNTAJE BASE</th>
+                    </tr></thead>
+                    <tbody>${chunk}</tbody>
+                  </table>
+                </div>
+              </div>`);
+            }
+            const pag3 = pagsTabla.join("");
 
             const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
               <title>Informe – ${programa.nombre}</title>
@@ -1396,7 +1405,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
                       {/* Radar promedio */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>Radar Promedio del Programa</div>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>RADAR PROMEDIO DEL PROGRAMA</div>
                         <div style={{ fontSize:11, color:C.grisCl, marginBottom:12 }}>Promedio de todos los proveedores evaluados</div>
                         <RadarChart dims={dims} series={[{
                           data: (() => {
@@ -1413,7 +1422,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
                       {/* Promedio por dimensión */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Promedio por Dimensión</div>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>PROMEDIO POR DIMENSIÓN</div>
                         {dimPromedios.map(({dim,prom})=>{
                           const n=prom!==null?getNivel(prom):null; const pct=prom!==null?a5to100(prom):0;
                           return (
@@ -1437,7 +1446,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
                       {/* Distribución de niveles */}
                       <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20 }}>
-                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>Distribución de Niveles</div>
+                        <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>DISTRIBUCIÓN DE NIVELES</div>
                         {(() => {
                           const conteo = {}; NV_CFG.forEach(n => conteo[n.label] = 0);
                           entradasConPG.forEach(p => { const nv=getNivel(p.pg); conteo[nv.label]=(conteo[nv.label]||0)+1; });
@@ -1465,7 +1474,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       {/* Contadores */}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                         <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:16 }}>
-                          <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Por Consultor</div>
+                          <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>POR CONSULTOR</div>
                           {(()=>{ const m={}; (programa.diagnosticos||[]).forEach(d=>{const c=d.infoGeneral?.consultor||"Sin asignar";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
                             <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.borde}`, fontSize:12 }}>
                               <span style={{ color:C.oscuro }}>👤 {k}</span>
@@ -1474,7 +1483,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           )); })()}
                         </div>
                         <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, padding:16 }}>
-                          <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Por Modalidad</div>
+                          <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>POR MODALIDAD</div>
                           {(()=>{ const m={}; (programa.diagnosticos||[]).forEach(d=>{const c=d.infoGeneral?.modalidad||"Sin definir";m[c]=(m[c]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>(
                             <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${C.borde}`, fontSize:12 }}>
                               <span style={{ color:C.oscuro }}>{k}</span>
@@ -1488,7 +1497,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
                   {/* Comparativo Proveedores — sección de ancho completo, igual estilo que heatmap/mapa */}
                   <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
-                    <div style={{ padding:"12px 16px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>Comparativo Proveedores</div>
+                    <div style={{ padding:"12px 16px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>COMPARATIVO PROVEEDORES</div>
                     <div style={{ overflowX:"auto" }}>
                       <table style={{ width:"100%", borderCollapse:"collapse", minWidth:400 }}>
                         <thead>
@@ -1560,7 +1569,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   if (!alertas.length) return null;
                   return (
                     <div style={{ background:C.blanco, border:`1px solid #E74C3C33`, borderRadius:14, padding:20, marginTop:16 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:"#E74C3C", textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🚨 Alertas Críticas</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:"#E74C3C", textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🚨 ALERTAS CRÍTICAS</div>
                       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                         {alertas.slice(0,15).map((a,i)=>(
                           <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 12px", background:`${a.color}08`, border:`1px solid ${a.color}33`, borderRadius:8 }}>
@@ -1578,7 +1587,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
 
                 {/* ── 3. DISTRIBUCIÓN DE NIVELES POR DIMENSIÓN (barras apiladas) ── */}
                 <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📊 Distribución de Niveles por Dimensión</div>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📊 DISTRIBUCIÓN DE NIVELES POR DIMENSIÓN</div>
                   {dims.map(d => {
                     const conteo = {}; NV_CFG.forEach(n=>conteo[n.label]=0);
                     entradasConPG.forEach(p => {
@@ -1625,7 +1634,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   if (rubros.length < 2) return null;
                   return (
                     <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16, overflowX:"auto" }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🔥 Cruce por Rubro y Dimensión</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🔥 CRUCE POR RUBRO Y DIMENSIÓN</div>
                       <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
                         <thead>
                           <tr>
@@ -1704,10 +1713,10 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   if (regiones.length < 2) return null;
                   return (
                     <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🌎 Distribución Geográfica</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🌎 DISTRIBUCIÓN GEOGRÁFICA</div>
                       <MapaLeaflet regiones={regiones} getNivel={getNivel} a5to100={a5to100}/>
                       <div style={{ marginTop:16, borderTop:`1px solid ${C.borde}`, paddingTop:14 }}>
-                        <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Detalle por región</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>DETALLE POR REGIÓN</div>
                         {regiones.map((r,i)=>{
                           const n=getNivel(r.prom); const pct=a5to100(r.prom); const barW=Math.round((r.count/maxCount)*100);
                           return (
@@ -1892,7 +1901,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       {/* Columnas inicial / final */}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
                         <div style={{ padding:"16px 18px", borderRight:`1px solid ${C.borde}` }}>
-                          <div style={{ fontSize:10, fontWeight:700, color:dInicial?C.azul:C.grisCl, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>📋 Diagnóstico Inicial</div>
+                          <div style={{ fontSize:10, fontWeight:700, color:dInicial?C.azul:C.grisCl, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>📋 DIAGNÓSTICO INICIAL</div>
                           {dInicial ? (
                             <div>
                               <div style={{ fontSize:28, fontWeight:800, color:nvI?.color, lineHeight:1 }}>{a5to100(pgI)}%</div>
@@ -1913,7 +1922,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           )}
                         </div>
                         <div style={{ padding:"16px 18px" }}>
-                          <div style={{ fontSize:10, fontWeight:700, color:dFinal?C.verde:C.grisCl, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>📊 Diagnóstico Final</div>
+                          <div style={{ fontSize:10, fontWeight:700, color:dFinal?C.verde:C.grisCl, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>📊 DIAGNÓSTICO FINAL</div>
                           {dFinal ? (
                             <div>
                               <div style={{ fontSize:28, fontWeight:800, color:nvF?.color, lineHeight:1 }}>{a5to100(pgF)}%</div>
@@ -2701,28 +2710,28 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   </head><body>
 
   <!-- ══ ENCABEZADO ══ -->
-  <div style="background:${pDark};padding:27px 37px;border-radius:18px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;">
-    <div style="display:flex;align-items:center;gap:27px;">
-      ${logoCidere ? `<img src="${logoCidere}" style="height:72px;object-fit:contain;" alt="CIDERE"/>` : `<span style="font-size:32px;font-weight:800;color:#fff;">CIDERE Biobío</span>`}
-      ${logoPrograma ? `<div style="width:2px;height:72px;background:rgba(255,255,255,0.2)"></div><img src="${logoPrograma}" style="height:72px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:10px;padding:5px 16px;" alt="${programa?.nombre||""}"/>` : ""}
-      <div style="border-left:2px solid rgba(255,255,255,0.15);padding-left:27px;">
-        <div style="font-size:18px;color:#90C8F0;text-transform:uppercase;letter-spacing:3px;margin-bottom:5px;">Ficha de preparación · Mentoría ${programa?.nombre||""}</div>
-        <div style="font-size:32px;font-weight:800;color:#fff;">Ficha Mentoría</div>
+  <div style="background:${pDark};padding:20px 28px;border-radius:18px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:nowrap;">
+    <div style="display:flex;align-items:center;gap:20px;min-width:0;">
+      ${logoCidere ? `<img src="${logoCidere}" style="height:52px;object-fit:contain;flex-shrink:0;" alt="CIDERE"/>` : `<span style="font-size:26px;font-weight:800;color:#fff;flex-shrink:0;">CIDERE Biobío</span>`}
+      ${logoPrograma ? `<div style="width:2px;height:52px;background:rgba(255,255,255,0.2);flex-shrink:0;"></div><img src="${logoPrograma}" style="height:52px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:10px;padding:5px 14px;flex-shrink:0;" alt="${programa?.nombre||""}"/>` : ""}
+      <div style="border-left:2px solid rgba(255,255,255,0.15);padding-left:20px;min-width:0;">
+        <div style="font-size:13px;color:#90C8F0;letter-spacing:1.2px;margin-bottom:5px;">FICHA DE PREPARACIÓN · MENTORÍA ${(programa?.nombre||"").toUpperCase()}</div>
+        <div style="font-size:28px;font-weight:800;color:#fff;">Ficha Mentoría</div>
       </div>
     </div>
-    <div style="text-align:right;">
-      <div style="font-size:18px;color:#90C8F0;text-transform:uppercase;">Confidencial · ${fecha}</div>
+    <div style="text-align:right;flex-shrink:0;">
+      <div style="font-size:14px;color:#90C8F0;white-space:nowrap;">CONFIDENCIAL · ${fecha.toUpperCase()}</div>
     </div>
   </div>
 
   <!-- ══ FILA 1: EMPRESA + PUNTAJE ══ -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:22px;">
+  <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:22px;margin-bottom:22px;">
 
     <!-- Datos empresa -->
     <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:26px 32px;">
-      <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:18px;">Empresa</div>
-      <div style="font-size:34px;font-weight:800;color:#1C2B3A;margin-bottom:5px;" contenteditable="true">${infoGeneral.empresa||"—"}</div>
-      <div style="font-size:26px;color:#5A7A9A;margin-bottom:22px;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
+      <div style="font-size:18px;font-weight:700;color:#8A9BB0;letter-spacing:2px;margin-bottom:18px;">EMPRESA</div>
+      <div style="font-size:27px;font-weight:800;color:#1C2B3A;margin-bottom:6px;line-height:1.2;" contenteditable="true">${infoGeneral.empresa||"—"}</div>
+      <div style="font-size:19px;color:#5A7A9A;margin-bottom:22px;line-height:1.3;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         ${[
           ["Rubro",infoGeneral.rubro||"No especificado"],
@@ -2730,7 +2739,7 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
           ["Facturación 2025",infoGeneral.facturacionTotal?`MM$ ${infoGeneral.facturacionTotal}`:"No registrada"],
           [`Con ${programa?.nombre||"programa"}`,infoGeneral.facturacionCMPC?`MM$ ${infoGeneral.facturacionCMPC}`:"—"],
         ].map(([l,v])=>`<div style="background:#fff;border-radius:11px;padding:14px 18px;border:2px solid #E4EBF2;">
-          <div style="font-size:18px;color:#8A9BB0;text-transform:uppercase;margin-bottom:5px;">${l}</div>
+          <div style="font-size:18px;color:#8A9BB0;margin-bottom:5px;">${l.toUpperCase()}</div>
           <div style="font-size:22px;font-weight:600;color:#1C2B3A;" contenteditable="true">${v}</div>
         </div>`).join("")}
       </div>
@@ -2738,7 +2747,7 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
 
     <!-- Puntaje + barras -->
     <div style="background:${pDark};border-radius:18px;padding:26px 32px;">
-      <div style="font-size:18px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;">Madurez general</div>
+      <div style="font-size:18px;color:#90C8F0;letter-spacing:2px;margin-bottom:10px;">MADUREZ GENERAL</div>
       <div style="display:flex;align-items:flex-end;gap:18px;margin-bottom:22px;">
         <div style="font-size:86px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
         ${nivel?`<div style="font-size:27px;font-weight:700;color:${nivel.color};margin-bottom:14px;">${nivel.label}</div>`:""}
