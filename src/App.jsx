@@ -2642,9 +2642,9 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     if (prom === null) return "";
     const esDebil = prom < 3.5;
     return `<div style="margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-        <span style="font-size:22px;color:#fff;font-weight:${esDebil?"700":"400"};opacity:${esDebil?"1":"0.8"};">${d.nombre}</span>
-        <div style="display:flex;align-items:center;gap:11px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:5px;">
+        <span style="font-size:22px;color:#fff;font-weight:${esDebil?"700":"400"};opacity:${esDebil?"1":"0.8"};line-height:1.25;flex:1;">${d.nombre}</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;white-space:nowrap;padding-top:2px;">
           ${esDebil ? `<span style="font-size:18px;color:rgba(255,255,255,0.6);">▼</span>` : `<span style="font-size:18px;color:rgba(255,255,255,0.5);">✓</span>`}
           <span style="font-size:22px;font-weight:700;color:#fff;">${pct}%</span>
         </div>
