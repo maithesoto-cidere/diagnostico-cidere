@@ -904,16 +904,12 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               </svg>`;
             };
 
-            // Tabla comparativa
+            // Tabla de proveedores (solo nombre y puntaje base)
             const tablaRows = sorted.map((p,i)=>{
-              const nv=getNivel(p.pg),pgF=p.pgS;
-              const delta=pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
+              const nv=getNivel(p.pg);
               return `<tr style="border-bottom:1px solid #F0F4F8;${i%2===0?"":"background:#FAFBFD"}">
-                <td style="padding:7px 11px;font-size:10px;font-weight:600;">${i+1}. ${p.empresa}</td>
-                <td style="padding:7px 9px;text-align:center;font-size:11px;font-weight:800;color:${nv.color};">${a5to100(p.pg)}%</td>
-                <td style="padding:7px 9px;text-align:center;font-size:11px;font-weight:800;color:${pgF!==null?getNivel(pgF).color:"#ccc"};">${pgF!==null?a5to100(pgF)+"%":"—"}</td>
-                <td style="padding:7px 9px;text-align:center;font-size:10px;font-weight:700;color:${delta!==null?(delta>=0?"#16A085":"#E74C3C"):"#ccc"};">${delta!==null?(delta>=0?"+":"")+delta+" pts":"—"}</td>
-                <td style="padding:7px 9px;text-align:center;"><span style="font-size:8.5px;font-weight:700;padding:2px 8px;border-radius:4px;background:${p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0"};color:${p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"};">${p.estado||"Pendiente"}</span></td>
+                <td style="padding:9px 14px;font-size:11px;font-weight:600;">${i+1}. ${p.empresa}</td>
+                <td style="padding:9px 14px;text-align:center;font-size:12px;font-weight:800;color:${nv.color};">${a5to100(p.pg)}%</td>
               </tr>`;
             }).join("");
 
@@ -1009,11 +1005,11 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   </div>`).join("")}
               </div>
 
-              <!-- Cobertura del programa vs. meta -->
+              <!-- Cobertura del Programa vs. meta -->
               ${metaProveedores>0 ? `
               <div class="card" style="flex-shrink:0;display:flex;align-items:center;gap:20px;">
                 <div style="flex-shrink:0;">
-                  <div class="lbl" style="margin-bottom:4px;">Cobertura del programa</div>
+                  <div class="lbl" style="margin-bottom:4px;">Cobertura del Programa</div>
                   <div style="display:flex;align-items:baseline;gap:6px;">
                     <span style="font-size:26px;font-weight:800;color:${pColor};">${totalRegistrados}</span>
                     <span style="font-size:14px;font-weight:700;color:#8A9BB0;">/ ${metaProveedores}</span>
@@ -1147,47 +1143,24 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             <div class="pg">
               ${hdr("Estado de Cobertura y Alertas")}
 
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex-shrink:0;">
-                <!-- Alertas críticas -->
-                <div class="card">
-                  <div class="lbl" style="color:#E74C3C;">🚨 Alertas críticas</div>
-                  ${alertasCriticas.length===0
-                    ? `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#EAF7F2;border-radius:8px;"><span style="font-size:14px;">✓</span><span style="font-size:11px;color:#16A085;font-weight:600;">Sin alertas críticas registradas</span></div>`
-                    : alertasCriticas.slice(0,8).map(a=>`
-                      <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:${a.tipo==="incompleto"?"#FFF8EC":"#FFF0F0"};border-radius:6px;margin-bottom:5px;">
-                        <div style="width:6px;height:6px;border-radius:50%;background:${a.tipo==="incompleto"?"#E8A020":"#E74C3C"};flex-shrink:0;"></div>
-                        <span style="font-size:9.5px;font-weight:700;color:#1C2B3A;">${a.empresa}</span>
-                        <span style="font-size:9px;color:#8A9BB0;">·</span>
-                        <span style="font-size:9px;color:${a.tipo==="incompleto"?"#A07820":"#C0392B"};">${a.tipo==="incompleto"?"Incompleto":"Crítico"} — ${a.detalle}</span>
-                      </div>`).join("")
-                  }
-                  ${alertasCriticas.length>8?`<div style="font-size:8.5px;color:#8A9BB0;margin-top:4px;">...y ${alertasCriticas.length-8} alertas más</div>`:""}
-                </div>
-
-                <!-- Proveedores pendientes de diagnosticar -->
-                <div class="card">
-                  <div class="lbl">📝 Proveedores pendientes de diagnosticar</div>
-                  ${pendientesDiag.length===0
-                    ? `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#EAF7F2;border-radius:8px;">
-                        <span style="font-size:14px;">✓</span>
-                        <span style="font-size:10.5px;color:#16A085;font-weight:600;">No hay proveedores registrados con diagnóstico incompleto.${metaProveedores>0&&porRegistrar>0?` Aún faltan ${porRegistrar} proveedores por incorporar para alcanzar la meta de ${metaProveedores}.`:""}</span>
-                      </div>`
-                    : pendientesDiag.slice(0,8).map(d=>{
-                        const respondidas = Object.keys(d.datosEntrada||{}).length;
-                        return `<div style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:#FFF8EC;border-radius:6px;margin-bottom:5px;">
-                          <span style="font-size:9.5px;font-weight:700;color:#1C2B3A;">${d.infoGeneral?.empresa||"Sin nombre"}</span>
-                          <span style="font-size:9px;color:#8A9BB0;">·</span>
-                          <span style="font-size:9px;color:#A07820;">${respondidas}/${totalPregDash} preguntas${d._borrador?" · borrador":""}</span>
-                        </div>`;
-                      }).join("")
-                  }
-                  ${pendientesDiag.length>8?`<div style="font-size:8.5px;color:#8A9BB0;margin-top:4px;">...y ${pendientesDiag.length-8} más</div>`:""}
-                </div>
+              <div class="card" style="flex-shrink:0;">
+                <div class="lbl" style="color:#E74C3C;">🚨 Alertas Críticas</div>
+                ${alertasCriticas.length===0
+                  ? `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#EAF7F2;border-radius:8px;"><span style="font-size:14px;">✓</span><span style="font-size:11px;color:#16A085;font-weight:600;">Sin alertas críticas registradas</span></div>`
+                  : alertasCriticas.slice(0,15).map(a=>`
+                    <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:${a.tipo==="incompleto"?"#FFF8EC":"#FFF0F0"};border-radius:6px;margin-bottom:5px;">
+                      <div style="width:6px;height:6px;border-radius:50%;background:${a.tipo==="incompleto"?"#E8A020":"#E74C3C"};flex-shrink:0;"></div>
+                      <span style="font-size:9.5px;font-weight:700;color:#1C2B3A;">${a.empresa}</span>
+                      <span style="font-size:9px;color:#8A9BB0;">·</span>
+                      <span style="font-size:9px;color:${a.tipo==="incompleto"?"#A07820":"#C0392B"};">${a.tipo==="incompleto"?"Incompleto":"Crítico"} — ${a.detalle}</span>
+                    </div>`).join("")
+                }
+                ${alertasCriticas.length>15?`<div style="font-size:8.5px;color:#8A9BB0;margin-top:4px;">...y ${alertasCriticas.length-15} alertas más</div>`:""}
               </div>
 
-              <!-- Distribución de niveles por dimensión -->
+              <!-- Distribución de Niveles por Dimensión -->
               <div class="card" style="flex:1;min-height:0;overflow:auto;">
-                <div class="lbl">📊 Distribución de niveles por dimensión</div>
+                <div class="lbl">📊 Distribución de Niveles por Dimensión</div>
                 ${nivelesPorDimHTML}
                 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;padding-top:7px;border-top:1px solid #F0F4F8;">
                   ${NV_CFG.map(n=>`<div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:2px;background:${n.color};"></div><span style="font-size:8.5px;color:#8A9BB0;">${n.label}</span></div>`).join("")}
@@ -1223,9 +1196,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               ${hdr("Distribución Geográfica y por Rubro")}
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;min-height:0;">
 
-                <!-- Distribución geográfica -->
+                <!-- Distribución Geográfica -->
                 <div class="card" style="overflow:auto;">
-                  <div class="lbl">🌎 Distribución geográfica</div>
+                  <div class="lbl">🌎 Distribución Geográfica</div>
                   ${regionesPdf.length<2 ? `<div style="font-size:10px;color:#8A9BB0;">Sin datos suficientes de región.</div>` :
                     regionesPdf.map(r=>{
                       const n=getNivel(r.prom), pct=a5to100(r.prom), barW=Math.round((r.count/maxCountRegion)*100);
@@ -1261,9 +1234,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   </div>` : ""}
                 </div>
 
-                <!-- Cruce por rubro y dimensión -->
+                <!-- Cruce por Rubro y Dimensión -->
                 <div class="card" style="padding:0;overflow:auto;">
-                  <div class="lbl" style="padding:13px 15px 0 15px;">🔥 Cruce por rubro y dimensión</div>
+                  <div class="lbl" style="padding:13px 15px 0 15px;">🔥 Cruce por Rubro y Dimensión</div>
                   ${rubrosPdf.length<2 ? `<div style="font-size:10px;color:#8A9BB0;padding:0 15px 13px 15px;">Sin datos suficientes de rubro.</div>` : `
                   <table style="width:100%;border-collapse:collapse;margin-top:8px;">
                     <thead><tr style="background:#F5F8FB;">
@@ -1306,10 +1279,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                 <table style="width:100%;border-collapse:collapse;">
                   <thead><tr style="background:#F5F8FB;">
                     <th style="padding:12px 14px;text-align:left;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Proveedor</th>
-                    <th style="padding:12px 11px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Base</th>
-                    <th style="padding:12px 11px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Final</th>
-                    <th style="padding:12px 11px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Variación</th>
-                    <th style="padding:12px 11px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Estado</th>
+                    <th style="padding:12px 14px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Puntaje Base</th>
                   </tr></thead>
                   <tbody>${tablaRows}</tbody>
                 </table>
@@ -1370,7 +1340,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       style={{ background:C.blanco, border:`1px solid ${pColor}33`, borderRadius:10, padding:"12px 14px", cursor:"default", transition:"transform 0.15s,box-shadow 0.15s" }}
                       onMouseOver={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 4px 16px ${pColor}22`;}}
                       onMouseOut={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";setTooltip(null);}}>
-                      <div style={{ fontSize:9, color:C.gris, textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>Cobertura del programa</div>
+                      <div style={{ fontSize:9, color:C.gris, textTransform:"uppercase", letterSpacing:0.5, marginBottom:4 }}>Cobertura del Programa</div>
                       {metaProveedores>0 ? (
                         <>
                           <div style={{ display:"flex", alignItems:"baseline", gap:6, marginBottom:6 }}>
@@ -1590,9 +1560,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   if (!alertas.length) return null;
                   return (
                     <div style={{ background:C.blanco, border:`1px solid #E74C3C33`, borderRadius:14, padding:20, marginTop:16 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:"#E74C3C", textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🚨 Alertas críticas</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:"#E74C3C", textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🚨 Alertas Críticas</div>
                       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                        {alertas.slice(0,10).map((a,i)=>(
+                        {alertas.slice(0,15).map((a,i)=>(
                           <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 12px", background:`${a.color}08`, border:`1px solid ${a.color}33`, borderRadius:8 }}>
                             <div style={{ width:8, height:8, borderRadius:"50%", background:a.color, flexShrink:0 }}/>
                             <span style={{ fontSize:12, fontWeight:700, color:C.oscuro }}>{a.empresa}</span>
@@ -1600,55 +1570,15 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                             <span style={{ fontSize:11, color:a.color, fontWeight:600 }}>{a.tipo==="incompleto"?"⚠ Diagnóstico incompleto":a.tipo==="dimension"?"Puntaje crítico":""} — {a.detalle}</span>
                           </div>
                         ))}
-                        {alertas.length>10 && <div style={{fontSize:11,color:C.gris,textAlign:"center"}}>...y {alertas.length-10} alertas más</div>}
+                        {alertas.length>15 && <div style={{fontSize:11,color:C.gris,textAlign:"center"}}>...y {alertas.length-15} alertas más</div>}
                       </div>
-                    </div>
-                  );
-                })()}
-
-                {/* ── 2. PROVEEDORES PENDIENTES DE DIAGNOSTICAR ── */}
-                {(() => {
-                  const totalPreg = totalPregDash;
-                  // Pendiente = borrador sin guardar, o diagnóstico inicial con preguntas sin responder
-                  const pendientes = pendientesDiag;
-                  return (
-                    <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📝 Proveedores pendientes de diagnosticar</div>
-                      {pendientes.length===0 ? (
-                        <div style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 16px", background:"#EAF7F2", border:"1px solid #3BAD8A33", borderRadius:10 }}>
-                          <span style={{ fontSize:18 }}>✓</span>
-                          <span style={{ fontSize:13, color:"#16A085", fontWeight:600 }}>
-                            No hay proveedores registrados con diagnóstico incompleto.
-                            {metaProveedores>0 && porRegistrar>0 && ` Aún faltan ${porRegistrar} proveedores por incorporar al sistema para alcanzar la meta de ${metaProveedores}.`}
-                          </span>
-                        </div>
-                      ) : (
-                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                          {pendientes.map((d,i)=>{
-                            const empresa = d.infoGeneral?.empresa||"Sin nombre";
-                            const rubro = d.infoGeneral?.rubro||"—";
-                            const fecha = d.fechaGuardado ? new Date(d.fechaGuardado).toLocaleDateString("es-CL") : "—";
-                            const respondidas = Object.keys(d.datosEntrada||{}).length;
-                            return (
-                              <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 12px", background:"#FFF8EC", border:"1px solid #E8A02044", borderRadius:8 }}>
-                                <span style={{ fontSize:14 }}>📋</span>
-                                <div style={{ flex:1 }}>
-                                  <div style={{ fontSize:12, fontWeight:700, color:C.oscuro }}>{empresa}</div>
-                                  <div style={{ fontSize:11, color:C.gris }}>Rubro: {rubro} · Última actualización: {fecha} · {respondidas}/{totalPreg} preguntas</div>
-                                </div>
-                                <span style={{ fontSize:10, fontWeight:700, color:"#A07820", background:"#E8A02018", padding:"2px 8px", borderRadius:4 }}>{d._borrador?"Borrador":"Incompleto"}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
                     </div>
                   );
                 })()}
 
                 {/* ── 3. DISTRIBUCIÓN DE NIVELES POR DIMENSIÓN (barras apiladas) ── */}
                 <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📊 Distribución de niveles por dimensión</div>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>📊 Distribución de Niveles por Dimensión</div>
                   {dims.map(d => {
                     const conteo = {}; NV_CFG.forEach(n=>conteo[n.label]=0);
                     entradasConPG.forEach(p => {
@@ -1695,7 +1625,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   if (rubros.length < 2) return null;
                   return (
                     <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16, overflowX:"auto" }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🔥 Cruce por rubro y dimensión</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🔥 Cruce por Rubro y Dimensión</div>
                       <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
                         <thead>
                           <tr>
@@ -1774,7 +1704,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   if (regiones.length < 2) return null;
                   return (
                     <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, padding:20, marginTop:16 }}>
-                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🌎 Distribución geográfica</div>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:14 }}>🌎 Distribución Geográfica</div>
                       <MapaLeaflet regiones={regiones} getNivel={getNivel} a5to100={a5to100}/>
                       <div style={{ marginTop:16, borderTop:`1px solid ${C.borde}`, paddingTop:14 }}>
                         <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Detalle por región</div>
@@ -2696,14 +2626,14 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;margin:0;padding:0}
-    html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:15px;background:#fff}
-    @media screen{body{max-width:210mm;margin:0 auto;padding:8mm;box-shadow:0 0 34px rgba(0,0,0,0.12)}}
+    html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:24px;background:#fff}
+    @media screen{body{max-width:210mm;margin:0 auto;padding:8mm;box-shadow:0 0 54px rgba(0,0,0,0.12)}}
     @media print{button,.no-print{display:none!important}}
     h1,h2,h3,p,ul,li{margin:0;padding:0}
-    ul{padding-left:20px}
-    li{margin-bottom:4px;font-size:14px}
+    ul{padding-left:32px}
+    li{margin-bottom:6px;font-size:22px}
     table{width:100%;border-collapse:collapse}
-    [contenteditable]:focus{outline:3px dashed ${pColor}44;outline-offset:3px;border-radius:4px}
+    [contenteditable]:focus{outline:5px dashed ${pColor}44;outline-offset:5px;border-radius:6px}
     @media print{[contenteditable]{outline:none!important}}
   `;
 
@@ -2711,16 +2641,16 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   const dimBarras = dimRows.map(({ d, prom, n, pct }) => {
     if (prom === null) return "";
     const esDebil = prom < 3.5;
-    return `<div style="margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-        <span style="font-size:14px;color:#fff;font-weight:${esDebil?"700":"400"};opacity:${esDebil?"1":"0.8"};">${d.nombre}</span>
-        <div style="display:flex;align-items:center;gap:7px;">
-          ${esDebil ? `<span style="font-size:11px;color:rgba(255,255,255,0.6);">▼</span>` : `<span style="font-size:11px;color:rgba(255,255,255,0.5);">✓</span>`}
-          <span style="font-size:14px;font-weight:700;color:#fff;">${pct}%</span>
+    return `<div style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+        <span style="font-size:22px;color:#fff;font-weight:${esDebil?"700":"400"};opacity:${esDebil?"1":"0.8"};">${d.nombre}</span>
+        <div style="display:flex;align-items:center;gap:11px;">
+          ${esDebil ? `<span style="font-size:18px;color:rgba(255,255,255,0.6);">▼</span>` : `<span style="font-size:18px;color:rgba(255,255,255,0.5);">✓</span>`}
+          <span style="font-size:22px;font-weight:700;color:#fff;">${pct}%</span>
         </div>
       </div>
-      <div style="height:7px;background:rgba(255,255,255,0.15);border-radius:4px;">
-        <div style="height:100%;width:${pct}%;background:${n?.color||"#fff"};border-radius:4px;"></div>
+      <div style="height:11px;background:rgba(255,255,255,0.15);border-radius:6px;">
+        <div style="height:100%;width:${pct}%;background:${n?.color||"#fff"};border-radius:6px;"></div>
       </div>
     </div>`;
   }).join("");
@@ -2731,37 +2661,37 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     const esOportunidad = tipoArea === "oportunidad";
     const borderColor = esCrit ? "#E74C3C" : esOportunidad ? oportColor : pColor;
     const badge = esCrit
-      ? `<span style="font-size:11px;background:#E74C3C;color:#fff;padding:1px 7px;border-radius:4px;margin-top:3px;display:inline-block;">Área crítica</span>`
+      ? `<span style="font-size:18px;background:#E74C3C;color:#fff;padding:2px 11px;border-radius:6px;margin-top:5px;display:inline-block;">Área crítica</span>`
       : esOportunidad
-        ? `<span style="font-size:11px;background:${oportColor};color:#fff;padding:1px 7px;border-radius:4px;margin-top:3px;display:inline-block;">Área de oportunidad</span>`
+        ? `<span style="font-size:18px;background:${oportColor};color:#fff;padding:2px 11px;border-radius:6px;margin-top:5px;display:inline-block;">Área de oportunidad</span>`
         : "";
     const malas = respuestas.filter(r => r.valor <= 3).slice(0, 4);
     return `
-    <div style="border:2px solid ${borderColor}55;border-radius:11px;overflow:hidden;">
-      <div style="background:${pColor};padding:11px 17px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="border:3px solid ${borderColor}55;border-radius:18px;overflow:hidden;">
+      <div style="background:${pColor};padding:18px 27px;display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:16px;font-weight:700;color:#fff;">${d.nombre}</div>
+          <div style="font-size:26px;font-weight:700;color:#fff;">${d.nombre}</div>
           ${badge}
         </div>
         <div style="text-align:right;">
-          <div style="font-size:28px;font-weight:800;color:#fff;">${pct}%</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
+          <div style="font-size:45px;font-weight:800;color:#fff;">${pct}%</div>
+          <div style="font-size:18px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
         </div>
       </div>
-      <div style="padding:13px 17px;background:#fff;">
-        <div style="font-size:11px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">Situación detectada</div>
-        ${malas.length ? malas.map(r=>`<div style="font-size:13px;color:#3A5A7A;line-height:1.4;margin-bottom:6px;padding-left:10px;border-left:3px solid ${r.color};">
+      <div style="padding:21px 27px;background:#fff;">
+        <div style="font-size:18px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:2px;margin-bottom:11px;">Situación detectada</div>
+        ${malas.length ? malas.map(r=>`<div style="font-size:21px;color:#3A5A7A;line-height:1.4;margin-bottom:10px;padding-left:16px;border-left:5px solid ${r.color};">
             <strong style="color:#1C2B3A;">${r.criterio}:</strong> ${r.descripcion}
-          </div>`).join("") : `<div style="font-size:13px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
+          </div>`).join("") : `<div style="font-size:21px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
       </div>
     </div>`;
   }).join("");
 
   // ── FORTALEZAS (sin ícono) ──
   const fortalezasHTML = areasFortaleza.slice(0,4).map(({ d, n, pct }) =>
-    `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 11px;background:#F0FBF7;border-radius:7px;margin-bottom:6px;">
-      <span style="font-size:14px;font-weight:600;color:#1C2B3A;">${d.nombre}</span>
-      <span style="font-size:14px;font-weight:700;color:#3BAD8A;">${pct}%</span>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 18px;background:#F0FBF7;border-radius:11px;margin-bottom:10px;">
+      <span style="font-size:22px;font-weight:600;color:#1C2B3A;">${d.nombre}</span>
+      <span style="font-size:22px;font-weight:700;color:#3BAD8A;">${pct}%</span>
     </div>`
   ).join("");
 
@@ -2771,86 +2701,86 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   </head><body>
 
   <!-- ══ ENCABEZADO ══ -->
-  <div style="background:${pDark};padding:17px 23px;border-radius:11px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
-    <div style="display:flex;align-items:center;gap:17px;">
-      ${logoCidere ? `<img src="${logoCidere}" style="height:45px;object-fit:contain;" alt="CIDERE"/>` : `<span style="font-size:20px;font-weight:800;color:#fff;">CIDERE Biobío</span>`}
-      ${logoPrograma ? `<div style="width:1px;height:45px;background:rgba(255,255,255,0.2)"></div><img src="${logoPrograma}" style="height:45px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:6px;padding:3px 10px;" alt="${programa?.nombre||""}"/>` : ""}
-      <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:17px;">
-        <div style="font-size:11px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:3px;">Ficha de preparación · Mentoría ${programa?.nombre||""}</div>
-        <div style="font-size:20px;font-weight:800;color:#fff;">Ficha Mentoría</div>
+  <div style="background:${pDark};padding:27px 37px;border-radius:18px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="display:flex;align-items:center;gap:27px;">
+      ${logoCidere ? `<img src="${logoCidere}" style="height:72px;object-fit:contain;" alt="CIDERE"/>` : `<span style="font-size:32px;font-weight:800;color:#fff;">CIDERE Biobío</span>`}
+      ${logoPrograma ? `<div style="width:2px;height:72px;background:rgba(255,255,255,0.2)"></div><img src="${logoPrograma}" style="height:72px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:10px;padding:5px 16px;" alt="${programa?.nombre||""}"/>` : ""}
+      <div style="border-left:2px solid rgba(255,255,255,0.15);padding-left:27px;">
+        <div style="font-size:18px;color:#90C8F0;text-transform:uppercase;letter-spacing:3px;margin-bottom:5px;">Ficha de preparación · Mentoría ${programa?.nombre||""}</div>
+        <div style="font-size:32px;font-weight:800;color:#fff;">Ficha Mentoría</div>
       </div>
     </div>
     <div style="text-align:right;">
-      <div style="font-size:11px;color:#90C8F0;text-transform:uppercase;">Confidencial · ${fecha}</div>
+      <div style="font-size:18px;color:#90C8F0;text-transform:uppercase;">Confidencial · ${fecha}</div>
     </div>
   </div>
 
   <!-- ══ FILA 1: EMPRESA + PUNTAJE ══ -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:22px;">
 
     <!-- Datos empresa -->
-    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:11px;padding:16px 20px;">
-      <div style="font-size:11px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:11px;">Empresa</div>
-      <div style="font-size:21px;font-weight:800;color:#1C2B3A;margin-bottom:3px;" contenteditable="true">${infoGeneral.empresa||"—"}</div>
-      <div style="font-size:16px;color:#5A7A9A;margin-bottom:14px;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:26px 32px;">
+      <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:18px;">Empresa</div>
+      <div style="font-size:34px;font-weight:800;color:#1C2B3A;margin-bottom:5px;" contenteditable="true">${infoGeneral.empresa||"—"}</div>
+      <div style="font-size:26px;color:#5A7A9A;margin-bottom:22px;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         ${[
           ["Rubro",infoGeneral.rubro||"No especificado"],
           ["Tamaño",infoGeneral.tamano||"No especificado"],
           ["Facturación 2025",infoGeneral.facturacionTotal?`MM$ ${infoGeneral.facturacionTotal}`:"No registrada"],
           [`Con ${programa?.nombre||"programa"}`,infoGeneral.facturacionCMPC?`MM$ ${infoGeneral.facturacionCMPC}`:"—"],
-        ].map(([l,v])=>`<div style="background:#fff;border-radius:7px;padding:9px 11px;border:1px solid #E4EBF2;">
-          <div style="font-size:11px;color:#8A9BB0;text-transform:uppercase;margin-bottom:3px;">${l}</div>
-          <div style="font-size:14px;font-weight:600;color:#1C2B3A;" contenteditable="true">${v}</div>
+        ].map(([l,v])=>`<div style="background:#fff;border-radius:11px;padding:14px 18px;border:2px solid #E4EBF2;">
+          <div style="font-size:18px;color:#8A9BB0;text-transform:uppercase;margin-bottom:5px;">${l}</div>
+          <div style="font-size:22px;font-weight:600;color:#1C2B3A;" contenteditable="true">${v}</div>
         </div>`).join("")}
       </div>
     </div>
 
     <!-- Puntaje + barras -->
-    <div style="background:${pDark};border-radius:11px;padding:16px 20px;">
-      <div style="font-size:11px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Madurez general</div>
-      <div style="display:flex;align-items:flex-end;gap:11px;margin-bottom:14px;">
-        <div style="font-size:54px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
-        ${nivel?`<div style="font-size:17px;font-weight:700;color:${nivel.color};margin-bottom:9px;">${nivel.label}</div>`:""}
+    <div style="background:${pDark};border-radius:18px;padding:26px 32px;">
+      <div style="font-size:18px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;">Madurez general</div>
+      <div style="display:flex;align-items:flex-end;gap:18px;margin-bottom:22px;">
+        <div style="font-size:86px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
+        ${nivel?`<div style="font-size:27px;font-weight:700;color:${nivel.color};margin-bottom:14px;">${nivel.label}</div>`:""}
       </div>
-      <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;margin-bottom:14px;">
-        <div style="height:100%;width:${pg!==null?a5to100(pg):0}%;background:${nivel?nivel.color:"#fff"};border-radius:3px;"></div>
+      <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:5px;overflow:hidden;margin-bottom:22px;">
+        <div style="height:100%;width:${pg!==null?a5to100(pg):0}%;background:${nivel?nivel.color:"#fff"};border-radius:5px;"></div>
       </div>
       ${dimBarras}
     </div>
   </div>
 
   <!-- ══ FILA 2: SÍNTESIS DIAGNÓSTICA ══ -->
-  <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:11px;padding:14px 18px;margin-bottom:14px;">
-    <div style="font-size:11px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;">Síntesis diagnóstica</div>
-    <p style="font-size:15px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
+  <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;margin-bottom:22px;">
+    <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Síntesis diagnóstica</div>
+    <p style="font-size:24px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
   </div>
 
   <!-- ══ FILA 3: FORTALEZAS + NOTA DEL CONSULTOR ══ -->
   ${(areasFortaleza.length>0 || notaInterna) ? `
-  <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:14px;margin-bottom:14px;">
-    ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:11px;padding:14px 18px;">
-      <div style="font-size:11px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;">Fortalezas</div>
+  <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:22px;margin-bottom:22px;">
+    ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
+      <div style="font-size:18px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Fortalezas</div>
       ${fortalezasHTML}
     </div>`:""}
-    ${notaInterna?`<div style="background:#FFFBF0;border-radius:11px;padding:14px 18px;border-left:4px solid #E8A020;">
-      <div style="font-size:11px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;">Nota del consultor</div>
-      <div style="font-size:14px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
+    ${notaInterna?`<div style="background:#FFFBF0;border-radius:18px;padding:22px 29px;border-left:6px solid #E8A020;">
+      <div style="font-size:18px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Nota del consultor</div>
+      <div style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
     </div>`:""}
   </div>`:""}
 
   <!-- ══ ÁREAS A TRABAJAR EN LA MENTORÍA (grid flexible: 1, 2 o 3 tarjetas) ══ -->
-  <div style="margin-bottom:14px;">
-    <div style="font-size:11px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Áreas prioritarias a trabajar en la mentoría</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(327px,1fr));gap:14px;">
+  <div style="margin-bottom:22px;">
+    <div style="font-size:18px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">Áreas Prioritarias a Trabajar en la Mentoría</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(523px,1fr));gap:22px;">
       ${areasHTML}
     </div>
   </div>
 
   <!-- ══ PIE ══ -->
-  <div style="display:flex;justify-content:space-between;border-top:1px solid #E4EBF2;padding-top:9px;margin-top:6px;">
-    <span style="font-size:11px;color:#A0B0C0;">Documento confidencial · CIDERE Biobío · Programa ${programa?.nombre||""}</span>
-    <span style="font-size:11px;color:#A0B0C0;">${fecha}</span>
+  <div style="display:flex;justify-content:space-between;border-top:2px solid #E4EBF2;padding-top:14px;margin-top:10px;">
+    <span style="font-size:18px;color:#A0B0C0;">Documento confidencial · CIDERE Biobío · Programa ${programa?.nombre||""}</span>
+    <span style="font-size:18px;color:#A0B0C0;">${fecha}</span>
   </div>
 
   </body></html>`;
