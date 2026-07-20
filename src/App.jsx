@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { jsPDF } from "jspdf";
+import JSZip from "jszip";
+import html2canvas from "html2canvas";
 
 /* ═══════════════════════════════════════════
    SUPABASE CLIENT (REST directo, sin SDK)
@@ -662,8 +665,45 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
   const [vistaTab, setVistaTab] = useState("dashboard");
   const [filtroEmpresa, setFiltroEmpresa] = useState("todas");
   const [tooltip, setTooltip] = useState(null); // {x,y,text}
+  const [seleccionFichas, setSeleccionFichas] = useState(() => new Set());
+  const [duplicadosAbiertos, setDuplicadosAbiertos] = useState(() => new Set());
+  const [descargando, setDescargando] = useState(false);
   const pColor = programa.color || C.azul;
   const diags = (programa.diagnosticos||[]).filter(d=>!filtro||(d.infoGeneral?.empresa||"").toLowerCase().includes(filtro.toLowerCase()));
+
+  /* Descarga individual o múltiple (.zip si hay más de una) de Fichas Mentoría */
+  const descargarFichasSeleccionadas = async (dInicialesSeleccionados) => {
+    if (dInicialesSeleccionados.length === 0) return;
+    setDescargando(true);
+    try {
+      await cargarLibsDescarga();
+      if (dInicialesSeleccionados.length === 1) {
+        const d = dInicialesSeleccionados[0];
+        const html = buildFichaMentorHTML(dims, d.infoGeneral||{}, d.datosEntrada||{}, d.indicadoresEntrada||{}, programa, null, null, null, null);
+        await descargarFichaPDF(html, { tipo:"mentoria", empresa: d.infoGeneral?.empresa||"Sin_nombre", programaId: programa.id, programaNombre: programa.nombre, diagId: d.id });
+      } else {
+        const zip = new JSZip();
+        const nombresUsados = {};
+        for (const d of dInicialesSeleccionados) {
+          const html = buildFichaMentorHTML(dims, d.infoGeneral||{}, d.datosEntrada||{}, d.indicadoresEntrada||{}, programa, null, null, null, null);
+          const blob = await htmlToPdfBlob(html);
+          let filename = nombreArchivoFicha("mentoria", d.infoGeneral?.empresa||"Sin_nombre");
+          if (nombresUsados[filename]) { nombresUsados[filename]++; filename = filename.replace(".pdf", `_${nombresUsados[filename]}.pdf`); }
+          else nombresUsados[filename] = 1;
+          zip.file(filename, blob);
+          registrarDescarga({ tipo:"mentoria", empresa: d.infoGeneral?.empresa||"Sin_nombre", programaId: programa.id, programaNombre: programa.nombre, diagId: d.id, filename });
+        }
+        const zipBlob = await zip.generateAsync({ type:"blob" });
+        descargarBlob(zipBlob, `Fichas_Mentoria_${sanitizarNombreArchivo(programa.nombre)}_${formatearFechaArchivo()}.zip`);
+      }
+      setSeleccionFichas(new Set());
+    } catch(err) {
+      alert("Error al generar las fichas: " + err.message);
+    } finally {
+      setDescargando(false);
+    }
+  };
+
   return (
     <div style={{ flex:1, padding:"28px 36px", overflowY:"auto" }}>
       <div style={{ maxWidth:960, margin:"0 auto" }}>
@@ -1134,7 +1174,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               <style>${CSS}</style>
             </head><body>${pag1}${pag2}${pag3}</body></html>`;
 
-            openPDF(html);
+            try {
+              await descargarFichaPDF(html, { tipo:"dashboard", empresa: programa.nombre, programaId: programa.id, programaNombre: programa.nombre, pageSelector:".pg", orientacion:"landscape" });
+            } catch(err) { alert("Error al generar el PDF del dashboard: " + err.message); }
           };
 
 
@@ -1168,7 +1210,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     </div>
                     <button onClick={exportarDashboard}
                       style={{padding:"9px 18px",background:`linear-gradient(135deg,${pColor},${C.headerBg})`,border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:7}}>
-                      📄 Exportar Dashboard PDF
+                      ⬇ Exportar Dashboard PDF
                     </button>
                   </div>
 
@@ -1633,6 +1675,17 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             <div style={{ display:"flex", gap:10, marginBottom:14 }}>
               <input value={filtro} onChange={e=>setFiltro(e.target.value)} placeholder="🔍 Buscar empresa…"
                 style={{ flex:1, padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none" }}/>
+              {seleccionFichas.size>0 && (
+                <button disabled={descargando} onClick={()=>{
+                  const seleccionados = empresas
+                    .filter(emp => seleccionFichas.has(emp.nombre))
+                    .map(emp => emp.diags.find(d=>d.tipo==="entrada"))
+                    .filter(Boolean);
+                  descargarFichasSeleccionadas(seleccionados);
+                }} style={{ padding:"10px 18px", background: descargando?"#C8CDD4":"linear-gradient(135deg,#9B59B6,#8E44AD)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:descargando?"wait":"pointer", whiteSpace:"nowrap" }}>
+                  {descargando ? "Generando…" : `⬇ Descargar fichas seleccionadas (${seleccionFichas.size})`}
+                </button>
+              )}
               <button onClick={onNuevoDiag} style={{ padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>+ Nueva empresa</button>
             </div>
             {empresas.length===0 ? (
@@ -1643,8 +1696,11 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             ) : (
               <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
                 {empresas.map((emp,ei) => {
-                  const dInicial = emp.diags.find(d=>d.tipo==="entrada");
+                  const entradasEmpresa = emp.diags.filter(d=>d.tipo==="entrada");
+                  const dInicial = entradasEmpresa[0];
                   const dFinal   = emp.diags.find(d=>d.tipo==="salida");
+                  const tieneDuplicados = entradasEmpresa.length > 1;
+                  const duplicadosVisibles = duplicadosAbiertos.has(emp.nombre);
                   const pgI = dInicial?pglobal(dims, dInicial.datosEntrada||{}):null;
                   const pgF = dFinal?pglobal(dims, Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{})):null;
                   const nvI = pgI!==null?getNivel(pgI):null;
@@ -1655,15 +1711,23 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     <div key={ei} style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden", boxShadow:"0 1px 6px rgba(0,0,0,0.05)" }}>
                       {/* Header empresa */}
                       <div style={{ padding:"14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid ${C.borde}`, background:`${pColor}06` }}>
-                        <div>
-                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                          {(() => { const logoE = emp.diags[0]?.infoGeneral?.logoEmpresa; return logoE ? <img src={logoE} alt="" style={{ height:32, objectFit:"contain", background:C.fondo, borderRadius:6, padding:"2px 6px", border:`1px solid ${C.borde}` }}/> : null; })()}
-                          <div style={{ fontSize:15, fontWeight:800, color:C.oscuro }}>{emp.nombre}</div>
-                        </div>
-                          <div style={{ fontSize:12, color:C.gris, marginTop:2 }}>
-                            {info.respondente&&`${info.respondente}`}{info.cargo&&` · ${info.cargo}`}
-                            {info.consultor&&<span style={{marginLeft:6}}>👤 {info.consultor}</span>}
-                            {info.modalidad&&<span style={{marginLeft:6, color:C.grisCl}}>· {info.modalidad}</span>}
+                        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                          {dInicial && (
+                            <input type="checkbox" checked={seleccionFichas.has(emp.nombre)}
+                              onChange={()=>setSeleccionFichas(prev=>{ const s=new Set(prev); s.has(emp.nombre)?s.delete(emp.nombre):s.add(emp.nombre); return s; })}
+                              title="Seleccionar para descarga múltiple"
+                              style={{ width:16, height:16, cursor:"pointer", accentColor:pColor, flexShrink:0 }}/>
+                          )}
+                          <div>
+                            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                            {(() => { const logoE = emp.diags[0]?.infoGeneral?.logoEmpresa; return logoE ? <img src={logoE} alt="" style={{ height:32, objectFit:"contain", background:C.fondo, borderRadius:6, padding:"2px 6px", border:`1px solid ${C.borde}` }}/> : null; })()}
+                            <div style={{ fontSize:15, fontWeight:800, color:C.oscuro }}>{emp.nombre}</div>
+                          </div>
+                            <div style={{ fontSize:12, color:C.gris, marginTop:2 }}>
+                              {info.respondente&&`${info.respondente}`}{info.cargo&&` · ${info.cargo}`}
+                              {info.consultor&&<span style={{marginLeft:6}}>👤 {info.consultor}</span>}
+                              {info.modalidad&&<span style={{marginLeft:6, color:C.grisCl}}>· {info.modalidad}</span>}
+                            </div>
                           </div>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -1671,8 +1735,48 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           {dInicial?._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>📝 Borrador — pendiente guardar</span>}
                           {!dFinal && dInicial && !dInicial._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.azul, background:`${C.azul}15`, padding:"4px 10px", borderRadius:6 }}>✓ Diagnóstico inicial guardado</span>}
                           {info.estado && <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:info.estado==="Validado"?"#EAF7F2":info.estado==="Descartado"?"#FFF0F0":"#FFFBF0", color:info.estado==="Validado"?"#16A085":info.estado==="Descartado"?"#E74C3C":"#A07820" }}>{info.estado==="Validado"?"🟢":info.estado==="Descartado"?"🔴":"🟡"} {info.estado}</span>}
+                          {tieneDuplicados && (
+                            <button onClick={()=>setDuplicadosAbiertos(prev=>{const s=new Set(prev); s.has(emp.nombre)?s.delete(emp.nombre):s.add(emp.nombre); return s;})}
+                              style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:"#FFF0F0", color:"#E74C3C", border:"1px solid #E74C3C55", cursor:"pointer" }}>
+                              ⚠ {entradasEmpresa.length} diagnósticos duplicados {duplicadosVisibles?"▲":"▼"}
+                            </button>
+                          )}
+                          {dInicial && (
+                            <button title={`Descargar Ficha Mentoría de ${emp.nombre}`} disabled={descargando}
+                              onClick={()=>descargarFichasSeleccionadas([dInicial])}
+                              style={{ padding:"6px 9px", background:`${pColor}12`, border:`1px solid ${pColor}33`, borderRadius:7, color:pColor, fontSize:14, cursor:descargando?"wait":"pointer", display:"flex", alignItems:"center" }}>
+                              ⬇
+                            </button>
+                          )}
                         </div>
                       </div>
+                      {/* Panel de diagnósticos duplicados */}
+                      {tieneDuplicados && duplicadosVisibles && (
+                        <div style={{ padding:"14px 18px", background:"#FFF8F8", borderBottom:`1px solid ${C.borde}` }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:"#E74C3C", marginBottom:10, textTransform:"uppercase", letterSpacing:0.5 }}>
+                            Todos los diagnósticos "entrada" de {emp.nombre} — revisa cuál conservar
+                          </div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                            {entradasEmpresa.map((d,di) => {
+                              const respondidas = Object.keys(d.datosEntrada||{}).length;
+                              const fecha = d.fechaGuardado ? new Date(d.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
+                              return (
+                                <div key={d.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8 }}>
+                                  <div style={{ width:24, height:24, borderRadius:"50%", background:"#FFF0F0", color:"#E74C3C", fontSize:11, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{di+1}</div>
+                                  <div style={{ flex:1, minWidth:0 }}>
+                                    <div style={{ fontSize:12, color:C.oscuro, fontWeight:600 }}>Guardado {fecha}</div>
+                                    <div style={{ fontSize:11, color:C.gris }}>
+                                      {d.infoGeneral?.respondente||"—"}{d.infoGeneral?.cargo?` · ${d.infoGeneral.cargo}`:""} · {respondidas}/{dims.reduce((a,dm)=>a+dm.preguntas.length,0)} preguntas{d._borrador?" · 📝 borrador":""}
+                                    </div>
+                                  </div>
+                                  <button onClick={()=>onAbrirDiag(d)} style={{ padding:"6px 10px", background:`${C.azul}12`, border:`1px solid ${C.azul}33`, borderRadius:6, color:C.azul, fontSize:11, fontWeight:700, cursor:"pointer" }}>Ver</button>
+                                  <button onClick={()=>{ if(window.confirm(`¿Eliminar este diagnóstico de ${emp.nombre}? Se moverá a la papelera y podrás restaurarlo.`)) onEliminarDiag(d.id); }} style={{ padding:"6px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:6, color:"#E74C3C", fontSize:11, cursor:"pointer" }}>🗑 Eliminar</button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       {/* Columnas inicial / final */}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
                         <div style={{ padding:"16px 18px", borderRight:`1px solid ${C.borde}` }}>
@@ -1884,7 +1988,7 @@ function EditorContenido({ dims, onSave, onClose }) {
 /* ═══════════════════════════════════════════
    FICHA DE DIAGNÓSTICO (individual + comparativa)
 ═══════════════════════════════════════════ */
-function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, programa, modo, onCerrar }) {
+function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, programa, modo, diagActual, onCerrar }) {
   const tieneE = Object.keys(datosE||{}).length>0;
   const tieneS = Object.keys(datosS||{}).length>0 || (modo==="salida" && Object.keys(datosE||{}).length>0);
   const esComparativa = tieneE && tieneS;
@@ -1893,20 +1997,6 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
   const [showMentorModal, setShowMentorModal] = useState(false);
   const [sintesisEditada, setSintesisEditada] = useState("");
   const [notaMentorEditada, setNotaMentorEditada] = useState("");
-  const fichaRef = useRef(null);
-
-  const exportarFichaEditable = () => {
-    if (!fichaRef.current) return;
-    const css = [
-      "@page{size:A4 portrait;margin:12mm 14mm}",
-      "html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;background:#fff}",
-      "*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}",
-      "[contenteditable]{outline:none!important;border:none!important}",
-      "@media print{button,.no-print{display:none!important}}"
-    ].join(" ");
-    const html = "<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"UTF-8\"/><title>Ficha</title><style>" + css + "</style></head><body>" + fichaRef.current.innerHTML + "</body></html>";
-    openPDF(html);
-  };
 
   const pgE = pglobal(dims, datosE||{});
   const pgS = tieneS ? pglobal(dims, Object.keys(datosS||{}).length>0 ? datosS : datosE) : null;
@@ -1959,9 +2049,10 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
               const html = tab==="comparativo"
                 ? buildComparativoHTML(dims,{...infoGeneral,logoEmpresa:le},datosE,datosS,indE,indS,{...(programa||{}),logoUrl:lp})
                 : buildFichaIndividualHTML(dims,{...infoGeneral,logoEmpresa:le},datosActivos,indsActivos,{...(programa||{}),logoUrl:lp},tab==="final");
-              openPDF(html);
+              const tipoDoc = tab==="comparativo" ? "comparativo" : (tab==="final" ? "final" : "inicial");
+              await descargarFichaPDF(html, { tipo:tipoDoc, empresa: infoGeneral?.empresa||"Sin_nombre", programaId: programa?.id, programaNombre: programa?.nombre, diagId: diagActual?.id });
             } catch(err) { alert("Error al exportar: " + err.message); }
-          }} style={{ padding:"9px 18px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>⬇ Exportar PDF</button>
+          }} style={{ padding:"9px 18px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>⬇ Descargar PDF</button>
           {showMentorModal && (
             <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.85)",zIndex:900,display:"flex",flexDirection:"column"}} onClick={()=>setShowMentorModal(false)}>
               {/* Toolbar */}
@@ -1982,10 +2073,13 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
                     let contenido = mentorArea.innerHTML;
                     if(lp && programa?.logoUrl && !programa.logoUrl.startsWith("data:")) contenido = contenido.replaceAll(programa.logoUrl, lp);
                     if(le && infoGeneral?.logoEmpresa && !infoGeneral.logoEmpresa.startsWith("data:")) contenido = contenido.replaceAll(infoGeneral.logoEmpresa, le);
-                    const css = "@page{size:A4 portrait;margin:11mm 13mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}[contenteditable]{outline:none!important}@media print{button,.no-print{display:none!important}}";
-                    const html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'/><title>Ficha Mentor</title><style>" + css + "</style></head><body style='padding:0;margin:0'>" + contenido + "</body></html>";
-                    openPDF(html);
-                  }} style={{padding:"8px 18px",background:"linear-gradient(135deg,#9B59B6,#8E44AD)",border:"none",borderRadius:7,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>🖨 Guardar PDF</button>
+                    const css = "@page{size:A4 portrait;margin:11mm 13mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}[contenteditable]{outline:none!important}";
+                    const html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'/><title>Ficha Mentoría</title><style>" + css + "</style></head><body style='padding:0;margin:0'>" + contenido + "</body></html>";
+                    setShowMentorModal(false);
+                    try {
+                      await descargarFichaPDF(html, { tipo:"mentoria", empresa: infoGeneral?.empresa||"Sin_nombre", programaId: programa?.id, programaNombre: programa?.nombre, diagId: diagActual?.id });
+                    } catch(err) { alert("Error al generar el PDF: " + err.message); }
+                  }} style={{padding:"8px 18px",background:"linear-gradient(135deg,#9B59B6,#8E44AD)",border:"none",borderRadius:7,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13}}>⬇ Descargar PDF</button>
                 </div>
               </div>
               {/* Vista previa scrollable */}
@@ -2235,10 +2329,125 @@ function ComparativoView({ dims, infoGeneral, datosE, datosS, indE, indS, pgE, p
   );
 }
 
+/* ══════════════════════════════════════════════════════════════
+   DESCARGA DE PDFs — generación real de archivos (no diálogo de impresión)
+   Usa html2canvas + jsPDF para producir un Blob real, descargable con
+   un solo clic y empaquetable en .zip (JSZip) cuando hay varias fichas.
+══════════════════════════════════════════════════════════════ */
 
-/* ── Ficha para Mentores ── */
+function sanitizarNombreArchivo(txt) {
+  return (txt || "Sin_nombre")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // quita tildes
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60) || "Sin_nombre";
+}
 
-/* ── Abre HTML como PDF compatible con Safari/Mac ── */
+function formatearFechaArchivo(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth()+1).padStart(2,"0");
+  const d = String(date.getDate()).padStart(2,"0");
+  return `${y}-${m}-${d}`;
+}
+
+function nombreArchivoFicha(tipo, empresa, fecha = new Date()) {
+  const prefijo = { mentoria:"Ficha_Mentoria", inicial:"Ficha_Diagnostico_Inicial", final:"Ficha_Diagnostico_Final", comparativo:"Ficha_Comparativa", dashboard:"Dashboard" }[tipo] || "Documento";
+  return `${prefijo}_${sanitizarNombreArchivo(empresa)}_${formatearFechaArchivo(fecha)}.pdf`;
+}
+
+/* Renderiza HTML en un iframe oculto y espera a que cargue (imágenes, fuentes) */
+/* ── Carga perezosa de librerías de generación de PDF/ZIP vía CDN (sin tocar package.json) ── */
+let _descargaLibsPromise = null;
+function cargarLibsDescarga() {
+  if (_descargaLibsPromise) return _descargaLibsPromise;
+  const cargarScript = (src) => new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = src; s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("No se pudo cargar la librería: " + src));
+    document.head.appendChild(s);
+  });
+  _descargaLibsPromise = (async () => {
+    if (!window.JSZip) await cargarScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
+    if (!window.html2canvas) await cargarScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+    if (!window.jsPDF && !window.jspdf?.jsPDF) await cargarScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+    if (!window.jsPDF && window.jspdf?.jsPDF) window.jsPDF = window.jspdf.jsPDF; // normaliza el nombre global usado en el resto del código
+  })();
+  return _descargaLibsPromise;
+}
+
+function renderizarEnIframeOculto(html) {
+  return new Promise((resolve, reject) => {
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;left:-99999px;top:0;width:1240px;height:1754px;border:none;background:#fff;";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open(); doc.write(html); doc.close();
+    const limpiar = () => { if (document.body.contains(iframe)) document.body.removeChild(iframe); };
+    iframe.onload = () => setTimeout(() => resolve({ iframe, doc, limpiar }), 500);
+    setTimeout(() => resolve({ iframe, doc, limpiar }), 1800); // fallback si onload no dispara
+  });
+}
+
+/* Convierte HTML (una o varias "páginas" .pg) en un Blob PDF real usando html2canvas + jsPDF */
+async function htmlToPdfBlob(html, { pageSelector = null, orientacion = "portrait" } = {}) {
+  await cargarLibsDescarga();
+  const { doc, limpiar } = await renderizarEnIframeOculto(html);
+  try {
+    const paginas = pageSelector ? Array.from(doc.querySelectorAll(pageSelector)) : [doc.body];
+    if (paginas.length === 0) paginas.push(doc.body);
+    const pdf = new jsPDF({ orientation: orientacion, unit: "mm", format: "a4" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    for (let i = 0; i < paginas.length; i++) {
+      const canvas = await html2canvas(paginas[i], { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false });
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
+      const imgH = (canvas.height * pageW) / canvas.width;
+      if (i > 0) pdf.addPage();
+      // Si el contenido es más alto que la página, se ajusta al ancho (una imagen por página, sin cortar)
+      const alturaFinal = Math.min(imgH, pageH);
+      pdf.addImage(imgData, "JPEG", 0, 0, pageW, alturaFinal);
+    }
+    return pdf.output("blob");
+  } finally {
+    limpiar();
+  }
+}
+
+function descargarBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* ── Centro de Descargas: historial liviano (metadata, no los PDFs en sí) en localStorage ── */
+const HISTORIAL_DESCARGAS_KEY = "historial-descargas-v1";
+const HISTORIAL_DESCARGAS_MAX = 40;
+
+function registrarDescarga(entry) {
+  try {
+    const actual = JSON.parse(localStorage.getItem(HISTORIAL_DESCARGAS_KEY) || "[]");
+    const nuevo = [{ ...entry, id: Date.now()+"_"+Math.random().toString(36).slice(2), fecha: new Date().toISOString() }, ...actual].slice(0, HISTORIAL_DESCARGAS_MAX);
+    localStorage.setItem(HISTORIAL_DESCARGAS_KEY, JSON.stringify(nuevo));
+  } catch(e) { /* best-effort */ }
+}
+function leerHistorialDescargas() {
+  try { return JSON.parse(localStorage.getItem(HISTORIAL_DESCARGAS_KEY) || "[]"); } catch(e) { return []; }
+}
+
+/* Genera + descarga un PDF y lo registra en el Centro de Descargas — punto único usado en toda la app */
+async function descargarFichaPDF(html, { tipo, empresa, programaId, programaNombre, diagId, pageSelector, orientacion }) {
+  const filename = nombreArchivoFicha(tipo, empresa);
+  const blob = await htmlToPdfBlob(html, { pageSelector, orientacion });
+  descargarBlob(blob, filename);
+  registrarDescarga({ tipo, empresa, programaId, programaNombre, diagId, filename });
+  return filename;
+}
+
+/* ── Abre HTML como PDF vía diálogo de impresión (fallback, ya no se usa en los flujos principales) ── */
 function openPDF(htmlContent) {
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;width:0;height:0;border:none;left:-9999px;top:-9999px;";
@@ -2808,7 +3017,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
         datosS={esSalidaNueva ? datosE : datosS}
         indE={esSalidaNueva ? {} : indE}
         indS={esSalidaNueva ? indE : indS}
-        programa={programa} modo={esSalidaNueva?"salida":"entrada"} onCerrar={()=>setShowFicha(false)}/>}
+        programa={programa} modo={esSalidaNueva?"salida":"entrada"} diagActual={diagActual} onCerrar={()=>setShowFicha(false)}/>}
       {showEditor && <EditorContenido dims={dims} onSave={d=>{showT("✓ Cambios guardados");}} onClose={()=>setShowEditor(false)}/>}
 
       {/* SIDEBAR */}
@@ -3081,38 +3290,14 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                   💾 Guardar diagnóstico
                 </button>
                 <button onClick={()=>setShowFicha(true)} style={{ padding:"10px 18px",background:`linear-gradient(135deg,${C.headerBg},${C.azul})`,border:"none",borderRadius:8,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer" }}>📄 Ver ficha PDF</button>
-                <button onClick={()=>{
-                  const pg=pglobal(dims,datosE); const nv=pg!==null?getNivel(pg):null;
-                  const fecha=new Date().toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric"});
-                  const barras=dims.map(d=>{const p=pdim(d,datosE);const pct=p!==null?((p-1)/4)*100:0;const n=p!==null?getNivel(p):NV_CFG[0];return`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:12px;color:#1C2B3A">${d.nombre}</span><span style="font-size:12px;font-weight:bold;color:${n.color}">${p!==null?p.toFixed(2):"—"}</span></div><div style="height:6px;background:#DDE6EF;border-radius:3px"><div style="height:100%;width:${pct}%;background:${n.color};border-radius:3px"></div></div></div>`;}).join("");
-                  const tablaRows=dims.map(d=>{const p=pdim(d,datosE);const n=p!==null?getNivel(p):null;return`<tr><td style="padding:8px 12px;border-bottom:1px solid #dde6ef;font-size:13px">${d.nombre}</td><td style="padding:8px 12px;border-bottom:1px solid #dde6ef;text-align:center">${p!==null?`<span style="font-weight:bold;color:${n.color}">${p.toFixed(2)}</span>`:"—"}</td><td style="padding:8px 12px;border-bottom:1px solid #dde6ef;text-align:center">${n?`<span style="background:${n.color}22;color:${n.color};font-weight:bold;padding:3px 10px;border-radius:4px;font-size:12px">${n.label}</span>`:"—"}</td></tr>`;}).join("");
-                  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Diagnóstico – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4;margin:18mm}body{font-family:Arial,sans-serif;color:#1C2B3A;margin:0;padding:0}h1,h2{margin:0}</style></head><body>
-<div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);color:#fff;padding:24px 28px;border-radius:8px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
-  <div><div style="font-size:10px;letter-spacing:3px;color:#90C8F0;text-transform:uppercase;margin-bottom:4px">CIDERE Biobío · Programa Proveedores Locales · ${programa.nombre}</div><h1 style="font-size:22px;font-weight:bold;color:#fff;margin-bottom:3px">Ficha de Diagnóstico</h1></div>
-  <div style="text-align:right"><div style="font-size:10px;color:#90C8F0">Fecha</div><div style="font-size:14px;color:#fff;font-weight:bold">${fecha}</div></div>
-</div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
-  <div style="background:#F5F7FA;border-radius:8px;padding:14px"><div style="font-size:10px;letter-spacing:2px;color:#5A7A9A;text-transform:uppercase;margin-bottom:8px">Datos de la Empresa</div>
-    <div style="margin-bottom:5px"><span style="font-size:10px;color:#5A7A9A">Empresa:</span><br/><strong>${infoGeneral.empresa||"—"}</strong></div>
-    <div style="margin-bottom:5px"><span style="font-size:10px;color:#5A7A9A">Respondente:</span><br/>${infoGeneral.respondente||"—"}</div>
-    <div><span style="font-size:10px;color:#5A7A9A">Cargo:</span><br/>${infoGeneral.cargo||"—"}</div>
-  </div>
-  <div style="background:#F5F7FA;border-radius:8px;padding:14px"><div style="font-size:10px;letter-spacing:2px;color:#5A7A9A;text-transform:uppercase;margin-bottom:8px">Financiero</div>
-    <div style="margin-bottom:5px"><span style="font-size:10px;color:#5A7A9A">Facturación total:</span><br/><strong>MM$ ${infoGeneral.facturacionTotal||"—"}</strong></div>
-    <div><span style="font-size:10px;color:#5A7A9A">Con ${programa.nombre}:</span><br/><strong>MM$ ${infoGeneral.facturacionCMPC||"—"}</strong></div>
-  </div>
-</div>
-<div style="background:linear-gradient(135deg,#1A2E45,#2B7BBF);border-radius:8px;padding:18px 22px;margin-bottom:20px;display:flex;align-items:center;gap:20px">
-  <div style="text-align:center;min-width:90px"><div style="font-size:9px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase;margin-bottom:3px">Puntaje Global</div><div style="font-size:38px;font-weight:bold;color:${nv?nv.color:"#fff"}">${pg!==null?pg.toFixed(2):"—"}</div>${nv?`<div style="font-size:11px;color:${nv.color};font-weight:bold">${nv.label}</div>`:""}</div>
-  <div style="flex:1;border-left:1px solid rgba(255,255,255,0.2);padding-left:20px">${barras}</div>
-</div>
-<table style="width:100%;border-collapse:collapse;background:#F8FAFC;border-radius:8px;overflow:hidden;margin-bottom:20px">
-  <thead><tr style="background:#EEF3F8"><th style="padding:9px 12px;text-align:left;font-size:10px;color:#5A7A9A;text-transform:uppercase">Dimensión</th><th style="padding:9px 12px;text-align:center;font-size:10px;color:#5A7A9A;text-transform:uppercase">Puntaje</th><th style="padding:9px 12px;text-align:center;font-size:10px;color:#5A7A9A;text-transform:uppercase">Nivel</th></tr></thead>
-  <tbody>${tablaRows}</tbody>
-</table>
-<div style="text-align:center;font-size:8px;color:#5A7A9A;margin-top:8px">Generado por CIDERE Biobío · Sistema de Diagnóstico · ${fecha}</div>
-</body></html>`;
-                  openPDF(html);
+                <button onClick={async()=>{
+                  try {
+                    const esFinal = modo==="salida";
+                    const datosActuales = esFinal ? datosS : datosE;
+                    const indsActuales = esFinal ? indS : indE;
+                    const html = buildFichaIndividualHTML(dims, infoGeneral, datosActuales, indsActuales, programa, esFinal);
+                    await descargarFichaPDF(html, { tipo: esFinal?"final":"inicial", empresa: infoGeneral?.empresa||"Sin_nombre", programaId: programa?.id, programaNombre: programa?.nombre, diagId: diagActual?.id });
+                  } catch(err) { alert("Error al generar el PDF: " + err.message); }
                 }} style={{ padding:"10px 18px",background:`${C.verde}12`,border:`1px solid ${C.verde}44`,borderRadius:8,color:C.verde,fontSize:13,fontWeight:700,cursor:"pointer" }}>⬇ Descargar Ficha</button>
               </div>
             </div>
@@ -3269,6 +3454,9 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState("ok"); // "ok" | "saving" | "error"
   const [syncError, setSyncError] = useState("");
   const [showPapelera, setShowPapelera] = useState(false);
+  const [showCentroDescargas, setShowCentroDescargas] = useState(false);
+  const [historialDescargas, setHistorialDescargas] = useState(() => leerHistorialDescargas());
+  const [redescargando, setRedescargando] = useState(null); // id de la entrada en proceso
   const [papelera, setPapelera] = useState(() => {
     try { return JSON.parse(localStorage.getItem("papelera-v1") || "[]"); } catch(e) { return []; }
   });
@@ -3566,6 +3754,57 @@ export default function App() {
     try { localStorage.removeItem("papelera-v1"); } catch(e) {}
   };
 
+  // ── Centro de Descargas: volver a generar y descargar un documento del historial ───
+  const abrirCentroDescargas = () => {
+    setHistorialDescargas(leerHistorialDescargas());
+    setShowCentroDescargas(true);
+  };
+
+  const volverADescargar = async (entry) => {
+    setRedescargando(entry.id);
+    try {
+      const prog = proyectos.find(p => p.id === entry.programaId);
+      if (!prog) { alert(`El programa "${entry.programaNombre||""}" ya no existe.`); return; }
+
+      if (entry.tipo === "dashboard") {
+        // El dashboard depende de mucho estado interno de la vista — llevamos al usuario directo a generarlo de nuevo
+        setProyectoActivo(prog); setDiagActivo(null); setShowCentroDescargas(false);
+        return;
+      }
+
+      const ds = prog.diagnosticos||[];
+      const diagEntrada = ds.find(d => d.id===entry.diagId && d.tipo==="entrada")
+        || ds.find(d => d.infoGeneral?.empresa===entry.empresa && d.tipo==="entrada");
+      if (!diagEntrada && entry.tipo!=="final") { alert(`El diagnóstico de "${entry.empresa}" ya no existe (pudo haber sido eliminado).`); return; }
+
+      let html, tipo = entry.tipo;
+      if (tipo === "mentoria") {
+        html = buildFichaMentorHTML(dims, diagEntrada.infoGeneral||{}, diagEntrada.datosEntrada||{}, diagEntrada.indicadoresEntrada||{}, prog, null, null, null, null);
+      } else if (tipo === "inicial") {
+        html = buildFichaIndividualHTML(dims, diagEntrada.infoGeneral||{}, diagEntrada.datosEntrada||{}, diagEntrada.indicadoresEntrada||{}, prog, false);
+      } else if (tipo === "final") {
+        const diagFinal = ds.find(d => d.id===entry.diagId && d.tipo==="salida")
+          || ds.find(d => d.infoGeneral?.empresa===entry.empresa && d.tipo==="salida");
+        if (!diagFinal) { alert(`El diagnóstico final de "${entry.empresa}" ya no existe.`); return; }
+        const datosF = Object.keys(diagFinal.datosSalida||{}).length>0 ? diagFinal.datosSalida : (diagFinal.datosEntrada||{});
+        const indsF  = Object.keys(diagFinal.indicadoresSalida||{}).length>0 ? diagFinal.indicadoresSalida : (diagFinal.indicadoresEntrada||{});
+        html = buildFichaIndividualHTML(dims, diagFinal.infoGeneral||{}, datosF, indsF, prog, true);
+      } else if (tipo === "comparativo") {
+        const diagFinal = ds.find(d => d.infoGeneral?.empresa===entry.empresa && d.tipo==="salida");
+        if (!diagFinal) { alert(`Ya no existe un diagnóstico final de "${entry.empresa}" para generar el comparativo.`); return; }
+        html = buildComparativoHTML(dims, diagEntrada.infoGeneral||{}, diagEntrada.datosEntrada||{}, diagFinal.datosSalida||diagFinal.datosEntrada||{}, diagEntrada.indicadoresEntrada||{}, diagFinal.indicadoresSalida||diagFinal.indicadoresEntrada||{}, prog);
+      } else {
+        alert("Tipo de documento no reconocido."); return;
+      }
+      await descargarFichaPDF(html, { tipo, empresa: entry.empresa, programaId: prog.id, programaNombre: prog.nombre, diagId: diagEntrada?.id });
+      setHistorialDescargas(leerHistorialDescargas());
+    } catch(err) {
+      alert("Error al regenerar el documento: " + err.message);
+    } finally {
+      setRedescargando(null);
+    }
+  };
+
   if(!logueado) return <PantallaLogin onOk={()=>setLogueado(true)}/>;
   if(cargando) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.fondo,color:C.gris}}>Cargando…</div>;
 
@@ -3680,12 +3919,57 @@ export default function App() {
             <button onClick={desbloquearAdmin} title="Acceso administrador"
               style={{ padding:"7px 9px",background:"transparent",border:"none",color:"rgba(255,255,255,0.25)",fontSize:13,cursor:"pointer" }}>🔧</button>
           )}
+          <button onClick={abrirCentroDescargas} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
+            🗂 Descargas{historialDescargas.length>0?<span style={{position:"absolute",top:-5,right:-5,background:C.azul,color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{historialDescargas.length>9?"9+":historialDescargas.length}</span>:null}
+          </button>
           <button onClick={()=>setShowPapelera(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
             🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
           </button>
           <button onClick={()=>{setShowBackup(true);setImportError("");}} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>💾 Backup</button>
           <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff" }}>C</div>
         </div>
+        {showCentroDescargas && (
+          <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShowCentroDescargas(false)}>
+            <div style={{background:"#fff",borderRadius:16,padding:0,width:"100%",maxWidth:640,maxHeight:"80vh",boxShadow:"0 24px 72px rgba(0,0,0,0.3)",display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+              <div style={{padding:"18px 24px",borderBottom:"1px solid #EEF3F8",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+                <div>
+                  <h2 style={{fontSize:18,fontWeight:800,color:"#1C2B3A",margin:0}}>🗂 Centro de Descargas</h2>
+                  <p style={{fontSize:12,color:"#637D92",margin:"3px 0 0 0"}}>Fichas y reportes generados recientemente — vuelve a descargarlos sin buscar la empresa de nuevo.</p>
+                </div>
+                <button onClick={()=>setShowCentroDescargas(false)} style={{padding:"7px 12px",border:"1px solid #DDE6EF",borderRadius:8,background:"transparent",color:"#637D92",fontSize:12,cursor:"pointer"}}>Cerrar</button>
+              </div>
+              <div style={{overflowY:"auto",flex:1,padding:"12px 16px"}}>
+                {historialDescargas.length===0 ? (
+                  <div style={{textAlign:"center",padding:"40px 20px",color:"#A0B0C0"}}>
+                    <div style={{fontSize:40,marginBottom:10}}>🗂</div>
+                    <div style={{fontSize:14,fontWeight:600}}>Aún no has generado ninguna descarga</div>
+                    <div style={{fontSize:12,marginTop:4}}>Las fichas y reportes que descargues aparecerán aquí para acceso rápido</div>
+                  </div>
+                ) : historialDescargas.map(entry => {
+                  const iconos = { mentoria:"📋", inicial:"📄", final:"📊", comparativo:"📈", dashboard:"🗺" };
+                  const etiquetas = { mentoria:"Ficha Mentoría", inicial:"Ficha Diagnóstico Inicial", final:"Ficha Diagnóstico Final", comparativo:"Ficha Comparativa", dashboard:"Dashboard del Programa" };
+                  const fecha = new Date(entry.fecha).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+                  return (
+                    <div key={entry.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"#FAFBFC",borderRadius:10,marginBottom:8,border:"1px solid #EEF3F8"}}>
+                      <div style={{width:40,height:40,borderRadius:10,background:"#EAF1FA",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                        {iconos[entry.tipo]||"📄"}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#1C2B3A",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{entry.empresa}</div>
+                        <div style={{fontSize:11,color:"#637D92",marginTop:2}}>{etiquetas[entry.tipo]||entry.tipo} · {entry.programaNombre}</div>
+                        <div style={{fontSize:10,color:"#A0B0C0",marginTop:2}}>Generado {fecha}</div>
+                      </div>
+                      <button onClick={()=>volverADescargar(entry)} disabled={redescargando===entry.id}
+                        style={{padding:"8px 14px",background:redescargando===entry.id?"#C8CDD4":"linear-gradient(135deg,#3BAD8A,#2A9070)",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:redescargando===entry.id?"wait":"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
+                        {redescargando===entry.id ? "Generando…" : (entry.tipo==="dashboard" ? "Ir al programa" : "⬇ Descargar")}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
         {showPapelera && (
           <div style={{position:"fixed",inset:0,background:"rgba(10,20,30,0.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setShowPapelera(false)}>
             <div style={{background:"#fff",borderRadius:16,padding:0,width:"100%",maxWidth:620,maxHeight:"80vh",boxShadow:"0 24px 72px rgba(0,0,0,0.3)",display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
