@@ -1046,6 +1046,34 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   </div>`).join("")}
               </div>
 
+              <!-- Cobertura del programa vs. meta -->
+              ${metaProveedores>0 ? `
+              <div class="card" style="flex-shrink:0;display:flex;align-items:center;gap:20px;">
+                <div style="flex-shrink:0;">
+                  <div class="lbl" style="margin-bottom:4px;">Cobertura del programa</div>
+                  <div style="display:flex;align-items:baseline;gap:6px;">
+                    <span style="font-size:26px;font-weight:800;color:${pColor};">${totalRegistrados}</span>
+                    <span style="font-size:14px;font-weight:700;color:#8A9BB0;">/ ${metaProveedores}</span>
+                    <span style="font-size:14px;font-weight:800;color:${pColor};">(${Math.round((totalRegistrados/metaProveedores)*100)}%)</span>
+                  </div>
+                </div>
+                <div style="flex:1;">
+                  <div style="height:10px;background:#EEF3F8;border-radius:5px;overflow:hidden;">
+                    <div style="height:100%;width:${Math.min(Math.round((totalRegistrados/metaProveedores)*100),100)}%;background:${pColor};border-radius:5px;"></div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:20px;flex-shrink:0;">
+                  <div style="text-align:center;">
+                    <div style="font-size:18px;font-weight:800;color:#E8A020;">${pendientesDiag.length}</div>
+                    <div style="font-size:8.5px;color:#8A9BB0;">Registrados<br/>sin completar</div>
+                  </div>
+                  <div style="text-align:center;">
+                    <div style="font-size:18px;font-weight:800;color:#8A9BB0;">${porRegistrar}</div>
+                    <div style="font-size:8.5px;color:#8A9BB0;">Por sumar<br/>al sistema</div>
+                  </div>
+                </div>
+              </div>` : ""}
+
               <!-- Fila principal: 3 columnas -->
               <div style="display:grid;grid-template-columns:200px 1fr 1fr;gap:9px;flex:1;min-height:0;">
 
@@ -1111,6 +1139,181 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             </div>`;
 
             // ══════════════════════════════════════════════════════════════════
+            // PÁGINA 3: ESTADO DE COBERTURA Y ALERTAS
+            // ══════════════════════════════════════════════════════════════════
+            const alertasCriticas = [];
+            entradasConPG.forEach(p => {
+              const diag = ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+              dims.forEach(d => {
+                const prom = pdim(d, diag?.datosEntrada||{});
+                if (prom !== null && a5to100(prom) < 30) {
+                  alertasCriticas.push({ empresa:p.empresa, tipo:"dimension", detalle:`${d.nombre}: ${a5to100(prom)}%` });
+                }
+              });
+              if (diag) {
+                const respondidas = Object.keys(diag.datosEntrada||{}).length;
+                if (respondidas < totalPregDash) alertasCriticas.push({ empresa:p.empresa, tipo:"incompleto", detalle:`${respondidas}/${totalPregDash} preguntas respondidas` });
+              }
+            });
+
+            const nivelesPorDimHTML = dims.map(d => {
+              const conteo = {}; NV_CFG.forEach(n=>conteo[n.label]=0);
+              let totalConDatos = 0;
+              entradasConPG.forEach(p => {
+                const diag = ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                const prom = diag ? pdim(d, diag.datosEntrada||{}) : null;
+                if (prom!==null) { totalConDatos++; const nv=getNivel(prom); conteo[nv.label]=(conteo[nv.label]||0)+1; }
+              });
+              const total = totalConDatos||1;
+              return `<div style="margin-bottom:11px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                  <span style="font-size:10.5px;font-weight:600;">${d.nombre}</span>
+                  <span style="font-size:9px;color:#8A9BB0;">${totalConDatos} prov.</span>
+                </div>
+                <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;gap:1px;">
+                  ${NV_CFG.map(nv=>{
+                    const cnt=conteo[nv.label]||0; const pct=Math.round((cnt/total)*100);
+                    if(!cnt) return "";
+                    return `<div style="width:${pct}%;background:${nv.color};display:flex;align-items:center;justify-content:center;">${pct>12?`<span style="font-size:8px;color:#fff;font-weight:700;">${pct}%</span>`:""}</div>`;
+                  }).join("")}
+                </div>
+              </div>`;
+            }).join("");
+
+            const pagEstado = `
+            <div class="pg">
+              ${hdr("Estado de Cobertura y Alertas")}
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex-shrink:0;">
+                <!-- Alertas críticas -->
+                <div class="card">
+                  <div class="lbl" style="color:#E74C3C;">🚨 Alertas críticas</div>
+                  ${alertasCriticas.length===0
+                    ? `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#EAF7F2;border-radius:8px;"><span style="font-size:14px;">✓</span><span style="font-size:11px;color:#16A085;font-weight:600;">Sin alertas críticas registradas</span></div>`
+                    : alertasCriticas.slice(0,8).map(a=>`
+                      <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:${a.tipo==="incompleto"?"#FFF8EC":"#FFF0F0"};border-radius:6px;margin-bottom:5px;">
+                        <div style="width:6px;height:6px;border-radius:50%;background:${a.tipo==="incompleto"?"#E8A020":"#E74C3C"};flex-shrink:0;"></div>
+                        <span style="font-size:9.5px;font-weight:700;color:#1C2B3A;">${a.empresa}</span>
+                        <span style="font-size:9px;color:#8A9BB0;">·</span>
+                        <span style="font-size:9px;color:${a.tipo==="incompleto"?"#A07820":"#C0392B"};">${a.tipo==="incompleto"?"Incompleto":"Crítico"} — ${a.detalle}</span>
+                      </div>`).join("")
+                  }
+                  ${alertasCriticas.length>8?`<div style="font-size:8.5px;color:#8A9BB0;margin-top:4px;">...y ${alertasCriticas.length-8} alertas más</div>`:""}
+                </div>
+
+                <!-- Proveedores pendientes de diagnosticar -->
+                <div class="card">
+                  <div class="lbl">📝 Proveedores pendientes de diagnosticar</div>
+                  ${pendientesDiag.length===0
+                    ? `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#EAF7F2;border-radius:8px;">
+                        <span style="font-size:14px;">✓</span>
+                        <span style="font-size:10.5px;color:#16A085;font-weight:600;">No hay proveedores registrados con diagnóstico incompleto.${metaProveedores>0&&porRegistrar>0?` Aún faltan ${porRegistrar} proveedores por incorporar para alcanzar la meta de ${metaProveedores}.`:""}</span>
+                      </div>`
+                    : pendientesDiag.slice(0,8).map(d=>{
+                        const respondidas = Object.keys(d.datosEntrada||{}).length;
+                        return `<div style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:#FFF8EC;border-radius:6px;margin-bottom:5px;">
+                          <span style="font-size:9.5px;font-weight:700;color:#1C2B3A;">${d.infoGeneral?.empresa||"Sin nombre"}</span>
+                          <span style="font-size:9px;color:#8A9BB0;">·</span>
+                          <span style="font-size:9px;color:#A07820;">${respondidas}/${totalPregDash} preguntas${d._borrador?" · borrador":""}</span>
+                        </div>`;
+                      }).join("")
+                  }
+                  ${pendientesDiag.length>8?`<div style="font-size:8.5px;color:#8A9BB0;margin-top:4px;">...y ${pendientesDiag.length-8} más</div>`:""}
+                </div>
+              </div>
+
+              <!-- Distribución de niveles por dimensión -->
+              <div class="card" style="flex:1;min-height:0;overflow:auto;">
+                <div class="lbl">📊 Distribución de niveles por dimensión</div>
+                ${nivelesPorDimHTML}
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;padding-top:7px;border-top:1px solid #F0F4F8;">
+                  ${NV_CFG.map(n=>`<div style="display:flex;align-items:center;gap:4px;"><div style="width:8px;height:8px;border-radius:2px;background:${n.color};"></div><span style="font-size:8.5px;color:#8A9BB0;">${n.label}</span></div>`).join("")}
+                </div>
+              </div>
+            </div>`;
+
+            // ══════════════════════════════════════════════════════════════════
+            // PÁGINA 4: DISTRIBUCIÓN GEOGRÁFICA Y POR RUBRO
+            // ══════════════════════════════════════════════════════════════════
+            const regMapPdf = {};
+            entradasConPG.forEach(p => {
+              const diag = ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+              const region = diag?.infoGeneral?.region||"Sin región";
+              const pais = diag?.infoGeneral?.pais||"Chile";
+              if (!regMapPdf[region]) regMapPdf[region] = { count:0, pgs:[], paises:{} };
+              regMapPdf[region].count++; regMapPdf[region].pgs.push(p.pg);
+              regMapPdf[region].paises[pais] = (regMapPdf[region].paises[pais]||0)+1;
+            });
+            const regionesPdf = Object.entries(regMapPdf).map(([nombre,v])=>({
+              nombre, pais: Object.entries(v.paises).sort((a,b)=>b[1]-a[1])[0]?.[0]||"Chile",
+              count: v.count, prom: v.pgs.reduce((a,b)=>a+b,0)/v.pgs.length
+            })).sort((a,b)=>b.count-a.count);
+            const maxCountRegion = Math.max(...regionesPdf.map(r=>r.count),1);
+
+            const rubrosPdf = [...new Set(entradasConPG.map(p=>{
+              const d=ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+              return normalizarRubro(d?.infoGeneral?.rubro);
+            }))];
+
+            const pagGeo = (regionesPdf.length>=2 || rubrosPdf.length>=2) ? `
+            <div class="pg">
+              ${hdr("Distribución Geográfica y por Rubro")}
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;min-height:0;">
+
+                <!-- Distribución geográfica -->
+                <div class="card" style="overflow:auto;">
+                  <div class="lbl">🌎 Distribución geográfica</div>
+                  ${regionesPdf.length<2 ? `<div style="font-size:10px;color:#8A9BB0;">Sin datos suficientes de región.</div>` :
+                    regionesPdf.map(r=>{
+                      const n=getNivel(r.prom), pct=a5to100(r.prom), barW=Math.round((r.count/maxCountRegion)*100);
+                      return `<div style="margin-bottom:10px;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                          <span style="font-size:10px;font-weight:600;">${r.nombre} <span style="color:#8A9BB0;font-weight:400;">· ${r.pais}</span></span>
+                          <span style="font-size:9.5px;"><b>${r.count}</b> prov. · <b style="color:${n.color}">${pct}%</b></span>
+                        </div>
+                        <div style="height:9px;background:#EEF3F8;border-radius:5px;overflow:hidden;">
+                          <div style="width:${barW}%;height:100%;background:${n.color};border-radius:5px;opacity:.85;"></div>
+                        </div>
+                      </div>`;
+                    }).join("")
+                  }
+                </div>
+
+                <!-- Cruce por rubro y dimensión -->
+                <div class="card" style="padding:0;overflow:auto;">
+                  <div class="lbl" style="padding:13px 15px 0 15px;">🔥 Cruce por rubro y dimensión</div>
+                  ${rubrosPdf.length<2 ? `<div style="font-size:10px;color:#8A9BB0;padding:0 15px 13px 15px;">Sin datos suficientes de rubro.</div>` : `
+                  <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+                    <thead><tr style="background:#F5F8FB;">
+                      <th style="padding:6px 10px;text-align:left;font-size:8px;color:#8A9BB0;font-weight:700;">Rubro</th>
+                      ${dims.map(d=>`<th style="padding:6px 4px;text-align:center;font-size:7.5px;color:#8A9BB0;font-weight:700;">${d.nombre.length>10?d.nombre.slice(0,9)+"…":d.nombre}</th>`).join("")}
+                    </tr></thead>
+                    <tbody>
+                      ${rubrosPdf.map(rubro=>{
+                        const provRubro = entradasConPG.filter(p=>{
+                          const d=ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                          return normalizarRubro(d?.infoGeneral?.rubro)===rubro;
+                        });
+                        return `<tr style="border-top:1px solid #F0F4F8;">
+                          <td style="padding:6px 10px;font-size:9px;font-weight:600;">${rubro}<div style="font-size:7.5px;color:#8A9BB0;font-weight:400;">${provRubro.length} prov.</div></td>
+                          ${dims.map(d=>{
+                            const vals = provRubro.map(p=>{
+                              const diag=ds.find(x=>x.tipo==="entrada"&&x.infoGeneral?.empresa===p.empresa);
+                              return pdim(d,diag?.datosEntrada||{});
+                            }).filter(v=>v!==null);
+                            const prom = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+                            const n = prom!==null?getNivel(prom):null; const pct=prom!==null?a5to100(prom):null;
+                            return `<td style="padding:6px 4px;text-align:center;">${n?`<span style="font-size:9px;font-weight:800;color:${n.color};background:${n.color}18;padding:2px 5px;border-radius:4px;">${pct}%</span>`:`<span style="color:#DDE6EF;">—</span>`}</td>`;
+                          }).join("")}
+                        </tr>`;
+                      }).join("")}
+                    </tbody>
+                  </table>`}
+                </div>
+              </div>
+            </div>` : "";
+
+            // ══════════════════════════════════════════════════════════════════
             // PÁGINA 3: ANÁLISIS DETALLADO + TABLA
             // ══════════════════════════════════════════════════════════════════
             const pag3 = `
@@ -1170,7 +1373,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
               <title>Informe – ${programa.nombre}</title>
               <style>${CSS}</style>
-            </head><body>${pag1}${pag2}${pag3}</body></html>`;
+            </head><body>${pag1}${pag2}${pagEstado}${pagGeo}${pag3}</body></html>`;
 
             try {
               await descargarFichaPDF(html, { tipo:"dashboard", empresa: programa.nombre, programaId: programa.id, programaNombre: programa.nombre, pageSelector:".pg", orientacion:"landscape" });
@@ -2106,7 +2309,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
                     let contenido = mentorArea.innerHTML;
                     if(lp && programa?.logoUrl && !programa.logoUrl.startsWith("data:")) contenido = contenido.replaceAll(programa.logoUrl, lp);
                     if(le && infoGeneral?.logoEmpresa && !infoGeneral.logoEmpresa.startsWith("data:")) contenido = contenido.replaceAll(infoGeneral.logoEmpresa, le);
-                    const css = "@page{size:A4 portrait;margin:11mm 13mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}[contenteditable]{outline:none!important}";
+                    const css = "@page{size:A4 portrait;margin:10mm 12mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}[contenteditable]{outline:none!important}";
                     const html = "<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'/><title>Ficha Mentoría</title><style>" + css + "</style></head><body style='padding:0;margin:0'>" + contenido + "</body></html>";
                     setShowMentorModal(false);
                     try {
@@ -2545,7 +2748,7 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   const notaInterna = notaCustom || (infoGeneral.obsEnMentor ? (infoGeneral.notaMentor || infoGeneral.observaciones || "") : (infoGeneral.observaciones || ""));
 
   const CSS = `
-    @page{size:A4 portrait;margin:11mm 13mm}
+    @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;margin:0;padding:0}
     html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}
     @media screen{body{max-width:210mm;margin:0 auto;padding:8mm;box-shadow:0 0 24px rgba(0,0,0,0.12)}}
@@ -2850,57 +3053,149 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
 }
 
 function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, programa) {
+  const logoCidere = CIDERE_LOGO_B64;
+  const logoEmpresaPrograma = programa?.logoUrl||"";
   const pColor = programa?.color || "#2B7BBF";
-  const pColorLight = pColor + "22";
   const pgE = pglobal(dims, datosE||{}); const pgS = pglobal(dims, datosS||{});
   const nivelE = pgE!==null?getNivel(pgE):null; const nivelS = pgS!==null?getNivel(pgS):null;
   const deltaPct = (pgE!==null&&pgS!==null) ? a5to100(pgS)-a5to100(pgE) : null;
   const brechaG = calcBrecha(pgE,pgS);
   const conclusion = generarConclusion(dims, datosE, datosS, infoGeneral.empresa);
   const fecha = new Date().toLocaleDateString("es-CL",{day:"2-digit",month:"long",year:"numeric"});
-  const filas = dims.map(d=>{
+
+  const CSS = `
+    @page{size:A4 portrait;margin:10mm 12mm}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
+    html,body{width:186mm;margin:0 auto;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff;height:100%}
+    h1,h2,h3,p{margin:0}
+    table{width:100%;border-collapse:collapse}
+    @media screen{body{width:210mm;max-width:210mm;padding:10mm;box-shadow:0 0 30px rgba(0,0,0,0.12)}}
+    @media print{button,.no-print{display:none!important}body{padding:0;box-shadow:none}}
+  `;
+
+  const dimBarras = dims.map(d => {
+    const pe = pdim(d,datosE||{}); const ps = pdim(d,datosS||{});
+    const pctE = pe!==null?a5to100(pe):0; const pctS = ps!==null?a5to100(ps):null;
+    const n = ps!==null?getNivel(ps):(pe!==null?getNivel(pe):null);
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+        <span style="font-size:10.5px;color:rgba(255,255,255,0.9);">${d.nombre}</span>
+        <span style="font-size:10px;font-weight:700;color:#fff;">${pctE}%${pctS!==null?` → ${pctS}%`:""}</span>
+      </div>
+      <div style="position:relative;height:7px;background:rgba(255,255,255,0.15);border-radius:4px;">
+        <div style="position:absolute;left:0;top:0;height:100%;width:${pctE}%;background:rgba(255,255,255,0.45);border-radius:4px;"></div>
+        ${pctS!==null?`<div style="position:absolute;left:0;top:0;height:100%;width:${pctS}%;background:${n?n.color:"#fff"};border-radius:4px;opacity:0.9;"></div>`:""}
+      </div>
+    </div>`;
+  }).join("");
+
+  const tablaFilas = dims.map(d => {
     const pe=pdim(d,datosE||{}); const ps=pdim(d,datosS||{});
     const delta = (pe!==null&&ps!==null)?a5to100(ps)-a5to100(pe):null;
-    return `<tr><td style="padding:6px 10px;border-bottom:1px solid #DDE6EF;font-size:11px">${d.nombre}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;color:${pColor};font-weight:bold">${pe!==null?a5to100(pe)+"%":"—"}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;color:#3BAD8A;font-weight:bold">${ps!==null?a5to100(ps)+"%":"—"}</td><td style="padding:9px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-weight:bold;color:${delta>=0?"#16A085":"#E74C3C"}">${delta!==null?(delta>=0?"+":"")+delta+" pts":"—"}</td></tr>`;
+    const nE = pe!==null?getNivel(pe):null; const nS = ps!==null?getNivel(ps):null;
+    return `<tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;font-size:11px;font-weight:600;">${d.nombre}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:11px;font-weight:700;color:${nE?nE.color:"#999"};">${pe!==null?a5to100(pe)+"%":"—"}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:11px;font-weight:700;color:${nS?nS.color:"#999"};">${ps!==null?a5to100(ps)+"%":"—"}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;">${delta!==null?`<span style="background:${delta>=0?"#EAF7F2":"#FFF0F0"};color:${delta>=0?"#16A085":"#E74C3C"};font-weight:700;padding:3px 11px;border-radius:4px;font-size:10.5px;">${delta>=0?"+":""}${delta} pts</span>`:"—"}</td>
+    </tr>`;
   }).join("");
-  const indicadores = dims.map(d=>`<tr><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;font-size:12px">${d.indicadorObjetivo.label}</td><td style="padding:8px 14px;border-bottom:1px solid #DDE6EF;text-align:center;font-size:12px"><strong style="color:${pColor}">${indE?.[d.id]||"—"}</strong> → <strong style="color:#3BAD8A">${indS?.[d.id]||"—"}</strong></td></tr>`).join("");
 
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/><title>Informe Comparativo – ${infoGeneral.empresa||"Sin nombre"}</title><style>@page{size:A4 portrait;margin:12mm 14mm}
-html,body{width:210mm;margin:0 auto;font-family:Arial,sans-serif;color:#1C2B3A;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
-h1,h2{margin:0}
-ul{margin:4px 0;padding-left:16px}
-li{font-size:11px;margin-bottom:2px}
-table{width:100%;border-collapse:collapse}
-.page-break{page-break-before:always;break-before:always}
-@media screen{body{max-width:210mm;padding:10mm;box-shadow:0 0 20px rgba(0,0,0,0.15)}}
-@media print{
-  html,body{width:auto;max-width:none;padding:0;box-shadow:none}
-  button,.no-print{display:none!important}
-  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-}</style></head><body>
-<div style="background:linear-gradient(135deg,#1A2E45,${pColor});color:#fff;padding:24px 28px;border-radius:8px;margin-bottom:18px">
-  <div style="font-size:10px;letter-spacing:3px;color:#90C8F0;text-transform:uppercase;margin-bottom:4px">${programa?.nombre||"Programa"} · Informe Comparativo</div>
-  <h1 style="font-size:22px;font-weight:bold">${infoGeneral.empresa||"Sin nombre"}</h1>
-  <div style="font-size:12px;color:#90C8F0;margin-top:4px">Generado el ${fecha}</div>
-</div>
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-  <div style="background:${pColorLight};border-radius:8px;padding:16px;text-align:center"><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Puntaje Inicial</div><div style="font-size:28px;font-weight:bold;color:${pColor}">${pgE!==null?a5to100(pgE):"—"}%</div><div style="font-size:11px;color:${nivelE?.color};font-weight:bold">${nivelE?.label||""}</div></div>
-  <div style="background:#EAF7F2;border-radius:8px;padding:16px;text-align:center"><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Puntaje Final</div><div style="font-size:28px;font-weight:bold;color:#3BAD8A">${pgS!==null?a5to100(pgS):"—"}%</div><div style="font-size:11px;color:${nivelS?.color};font-weight:bold">${nivelS?.label||""}</div></div>
-  <div style="background:#F5F0FA;border-radius:8px;padding:16px;text-align:center"><div style="font-size:9px;color:#5A7A9A;text-transform:uppercase">Variación Total</div><div style="font-size:28px;font-weight:bold;color:${deltaPct>=0?"#9B59B6":"#E74C3C"}">${deltaPct>=0?"+":""}${deltaPct} pts</div><div style="font-size:11px;color:#5A7A9A">${brechaG!==null?brechaG.toFixed(0)+"% brecha cerrada":""}</div></div>
-</div>
-<table style="width:100%;border-collapse:collapse;background:#F8FAFC;border-radius:6px;overflow:hidden;margin-bottom:10px">
-<thead><tr style="background:#EEF3F8"><th style="padding:9px 14px;text-align:left;font-size:10px;color:#5A7A9A;text-transform:uppercase">Dimensión</th><th style="padding:9px 14px;text-align:center;font-size:10px;color:#5A7A9A;text-transform:uppercase">Inicial</th><th style="padding:9px 14px;text-align:center;font-size:10px;color:#5A7A9A;text-transform:uppercase">Final</th><th style="padding:9px 14px;text-align:center;font-size:10px;color:#5A7A9A;text-transform:uppercase">Variación</th></tr></thead>
-<tbody>${filas}</tbody></table>
-<div style="background:#F8FAFC;border-radius:6px;overflow:hidden;margin-bottom:10px">
-<div style="padding:9px 14px;background:#EEF3F8;font-size:10px;color:#5A7A9A;text-transform:uppercase">Evolución de Indicadores Cuantitativos</div>
-<table style="width:100%;border-collapse:collapse"><tbody>${indicadores}</tbody></table>
-</div>
-<div style="background:linear-gradient(135deg,#1A2E45,${pColor});border-radius:8px;padding:18px 22px;color:#fff">
-  <div style="font-size:10px;letter-spacing:2px;color:#90C8F0;text-transform:uppercase;margin-bottom:8px">Conclusión Automática</div>
-  <p style="font-size:13px;line-height:1.7;margin:0">${conclusion}</p>
-</div>
-<div style="text-align:center;font-size:8px;color:#5A7A9A;margin-top:8px">Generado por CIDERE Biobío · Sistema de Diagnóstico de Capacidades · ${fecha}</div>
-</body></html>`;
+  const indicadoresFilas = dims.map(d=>`<tr>
+    <td style="padding:9px 12px;border-bottom:1px solid #EEF3F8;font-size:10.5px;">${d.indicadorObjetivo.label}</td>
+    <td style="padding:9px 12px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:10.5px;"><strong style="color:${pColor}">${indE?.[d.id]||"—"}</strong> → <strong style="color:#3BAD8A">${indS?.[d.id]||"—"}</strong></td>
+  </tr>`).join("");
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+  <title>Comparativo · ${infoGeneral.empresa||"Sin nombre"}</title>
+  <style>${CSS}</style>
+  </head><body>
+
+  <!-- ENCABEZADO -->
+  <div style="background:#1A2E45;color:#fff;border-radius:10px;padding:14px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      ${logoCidere?`<img src="${logoCidere}" style="height:38px;object-fit:contain;" alt="CIDERE"/>`:`<span style="font-size:15px;font-weight:800;">CIDERE Biobío</span>`}
+      ${logoEmpresaPrograma?`<div style="width:1px;height:38px;background:rgba(255,255,255,0.25);"></div><img src="${logoEmpresaPrograma}" style="height:38px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:5px;padding:2px 8px;" alt="${programa?.nombre||''}"/>`:""}
+      <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:14px;">
+        <div style="font-size:8.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:3px;">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div>
+        <div style="font-size:17px;font-weight:800;">📈 Comparativo Inicial vs. Final</div>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:8.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;">Fecha</div>
+      <div style="font-size:13px;font-weight:700;">${fecha}</div>
+    </div>
+  </div>
+
+  <!-- EMPRESA -->
+  <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;">
+    ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:44px;object-fit:contain;border-radius:6px;padding:2px 7px;border:1px solid #DDE6EF;" alt="${infoGeneral.empresa}"/>`:""}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex:1;">
+      ${[["Empresa",infoGeneral.empresa||"—"],["Representante",infoGeneral.respondente||"—"],["Cargo",infoGeneral.cargo||"—"],["Rubro",infoGeneral.rubro||"—"]].map(([l,v])=>`
+        <div>
+          <div style="font-size:8.5px;color:#8A9BB0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">${l}</div>
+          <div style="font-size:12px;font-weight:700;color:#1C2B3A;">${v}</div>
+        </div>`).join("")}
+    </div>
+  </div>
+
+  <!-- PUNTAJES + BARRAS -->
+  <div style="background:#1A2E45;border-radius:10px;padding:16px 20px;margin-bottom:12px;display:grid;grid-template-columns:150px 1fr;gap:22px;align-items:center;">
+    <div style="text-align:center;border-right:1px solid rgba(255,255,255,0.15);padding-right:22px;">
+      <div style="font-size:8.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Variación total</div>
+      <div style="font-size:34px;font-weight:800;color:${deltaPct!==null?(deltaPct>=0?"#3BAD8A":"#E74C3C"):"#fff"};line-height:1;">${deltaPct!==null?(deltaPct>=0?"+":"")+deltaPct:"—"}${deltaPct!==null?"":""}</div>
+      ${deltaPct!==null?`<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);margin-top:3px;">puntos</div>`:""}
+      ${brechaG!==null?`<div style="font-size:10.5px;color:#90C8F0;margin-top:8px;">${brechaG.toFixed(0)}% de brecha cerrada</div>`:""}
+    </div>
+    <div>${dimBarras}</div>
+  </div>
+
+  <!-- KPIs INICIAL / FINAL -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-top:4px solid ${pColor};border-radius:10px;padding:14px 16px;text-align:center;">
+      <div style="font-size:8.5px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Puntaje inicial</div>
+      <div style="font-size:26px;font-weight:800;color:${pColor};">${pgE!==null?a5to100(pgE):"—"}%</div>
+      ${nivelE?`<div style="font-size:11px;font-weight:700;color:${nivelE.color};margin-top:2px;">${nivelE.label}</div>`:""}
+    </div>
+    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-top:4px solid #3BAD8A;border-radius:10px;padding:14px 16px;text-align:center;">
+      <div style="font-size:8.5px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Puntaje final</div>
+      <div style="font-size:26px;font-weight:800;color:#3BAD8A;">${pgS!==null?a5to100(pgS):"—"}%</div>
+      ${nivelS?`<div style="font-size:11px;font-weight:700;color:${nivelS.color};margin-top:2px;">${nivelS.label}</div>`:""}
+    </div>
+  </div>
+
+  <!-- TABLA COMPARATIVA -->
+  <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;margin-bottom:12px;">
+    <table>
+      <thead><tr style="background:#EEF3F8;">
+        <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
+        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Inicial</th>
+        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Final</th>
+        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Variación</th>
+      </tr></thead>
+      <tbody>${tablaFilas}</tbody>
+    </table>
+  </div>
+
+  <!-- EVOLUCIÓN INDICADORES CUANTITATIVOS -->
+  <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;margin-bottom:12px;">
+    <div style="padding:10px 14px;background:#F5F8FB;font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;">Evolución de indicadores cuantitativos</div>
+    <table><tbody>${indicadoresFilas}</tbody></table>
+  </div>
+
+  <!-- CONCLUSIÓN -->
+  <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;margin-bottom:12px;">
+    <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Conclusión</div>
+    <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${conclusion}</p>
+  </div>
+
+  <!-- PIE -->
+  <div style="border-top:1px solid #E4EBF2;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:8.5px;color:#A0B0C0;">Generado por CIDERE Biobío · Sistema de Diagnóstico de Capacidades</span>
+    <span style="font-size:8.5px;color:#A0B0C0;">${fecha}</span>
+  </div>
+
+  </body></html>`;
 }
 
 function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mantenimientoActivo, onActividad }) {
