@@ -893,39 +893,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               </svg>`;
             };
 
-            // Barras dimensiones
-            const dimBars = () => {
-              const W=230,H=13,G=21,PL=102;
-              const rows = dimPromedios.map(({dim,prom},i)=>{
-                const pct=prom!==null?a5to100(prom):0, n=prom!==null?getNivel(prom):null;
-                const y=i*(H+G)+4;
-                const lbl=dim.nombre.length>13?dim.nombre.slice(0,12)+"…":dim.nombre;
-                return `<text x="${PL-5}" y="${y+H/2+4}" text-anchor="end" font-size="9" font-weight="600" font-family="Segoe UI,Arial" fill="#2A3A4A">${lbl}</text>
-                  <rect x="${PL}" y="${y}" width="${W}" height="${H}" rx="3" fill="#EEF3F8"/>
-                  <rect x="${PL}" y="${y}" width="${Math.round(pct/100*W)}" height="${H}" rx="3" fill="${n?.color||pColor}"/>
-                  <text x="${PL+Math.round(pct/100*W)+5}" y="${y+H/2+4}" font-size="9" font-weight="700" font-family="Segoe UI,Arial" fill="${n?.color||"#999"}">${pct}%</text>`;
-              }).join("");
-              return `<svg width="${PL+W+55}" height="${dimPromedios.length*(H+G)}" xmlns="http://www.w3.org/2000/svg">${rows}</svg>`;
-            };
-
-            // Barras empresas
-            const empBars = () => {
-              const W=210,H=13,G=19,PL=105;
-              const rows = sorted.map((p,i)=>{
-                const pct=a5to100(p.pg),nv=getNivel(p.pg);
-                const pctF=p.pgS!==null?a5to100(p.pgS):null;
-                const y=i*(H+G)+4;
-                const lbl=p.empresa.length>13?p.empresa.slice(0,12)+"…":p.empresa;
-                return `<text x="13" y="${y+H/2+4}" font-size="8.5" font-weight="700" font-family="Segoe UI,Arial" fill="#8A9BB0">${i+1}</text>
-                  <text x="${PL-5}" y="${y+H/2+4}" text-anchor="end" font-size="9" font-family="Segoe UI,Arial" fill="#2A3A4A">${lbl}</text>
-                  <rect x="${PL}" y="${y}" width="${W}" height="${H}" rx="3" fill="#EEF3F8"/>
-                  <rect x="${PL}" y="${y}" width="${Math.round(pct/100*W)}" height="${H}" rx="3" fill="${pColor}88"/>
-                  ${pctF!==null?`<rect x="${PL}" y="${y}" width="${Math.round(pctF/100*W)}" height="${H}" rx="3" fill="#3BAD8A" opacity="0.82"/>`:""}
-                  <text x="${PL+Math.round(Math.max(pct,pctF||0)/100*W)+5}" y="${y+H/2+4}" font-size="9" font-weight="700" font-family="Segoe UI,Arial" fill="${nv.color}">${pct}%${pctF!==null?` → ${pctF}%`:""}</text>`;
-              }).join("");
-              return `<svg width="${PL+W+75}" height="${sorted.length*(H+G)}" xmlns="http://www.w3.org/2000/svg">${rows}</svg>`;
-            };
-
             // Tabla comparativa
             const tablaRows = sorted.map((p,i)=>{
               const nv=getNivel(p.pg),pgF=p.pgS;
@@ -937,21 +904,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                 <td style="padding:7px 9px;text-align:center;font-size:10px;font-weight:700;color:${delta!==null?(delta>=0?"#16A085":"#E74C3C"):"#ccc"};">${delta!==null?(delta>=0?"+":"")+delta+" pts":"—"}</td>
                 <td style="padding:7px 9px;text-align:center;"><span style="font-size:8.5px;font-weight:700;padding:2px 8px;border-radius:4px;background:${p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0"};color:${p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"};">${p.estado||"Pendiente"}</span></td>
               </tr>`;
-            }).join("");
-
-            // Distribución niveles
-            const distribHTML = NV_CFG.map(nv=>{
-              const cnt=conteoNiv[nv.label]?.count||0; if(!cnt) return "";
-              const pct=Math.round((cnt/(totalProv||1))*100);
-              return `<div style="margin-bottom:8px;">
-                <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                  <span style="font-size:10px;font-weight:600;">${nv.label}</span>
-                  <span style="font-size:10px;font-weight:700;color:${nv.color};">${cnt} · ${pct}%</span>
-                </div>
-                <div style="height:7px;background:#EEF3F8;border-radius:4px;overflow:hidden;">
-                  <div style="width:${pct}%;height:100%;background:${nv.color};border-radius:4px;"></div>
-                </div>
-              </div>`;
             }).join("");
 
             // Header de página (logo sin fondo blanco en el logo del programa)
@@ -1314,59 +1266,23 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             </div>` : "";
 
             // ══════════════════════════════════════════════════════════════════
-            // PÁGINA 3: ANÁLISIS DETALLADO + TABLA
+            // PÁGINA 5: TABLA COMPLETA DE PROVEEDORES
             // ══════════════════════════════════════════════════════════════════
             const pag3 = `
             <div class="pg">
-              ${hdr("Análisis Detallado de Proveedores")}
+              ${hdr("Tabla de Proveedores")}
 
-              <!-- Fila superior: barras dim + barras empresas -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex-shrink:0;">
-
-                <div class="card">
-                  <div class="lbl">Promedio por dimensión</div>
-                  ${dimBars()}
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:7px;border-top:1px solid #F0F4F8;">
-                    ${NV_CFG.map(n=>`<div style="display:flex;align-items:center;gap:3px;"><div style="width:7px;height:7px;border-radius:2px;background:${n.color};"></div><span style="font-size:8px;color:#8A9BB0;">${n.label}</span></div>`).join("")}
-                  </div>
-                </div>
-
-                <div class="card">
-                  <div class="lbl">Ranking de proveedores${conFinal>0?" · Base → Final":""}</div>
-                  ${empBars()}
-                  ${conFinal>0?`<div style="font-size:8px;color:#8A9BB0;margin-top:7px;padding-top:7px;border-top:1px solid #F0F4F8;">Barra azul = diagnóstico base &nbsp;·&nbsp; Barra verde = diagnóstico final</div>`:""}
-                </div>
-              </div>
-
-              <!-- Fila inferior: tabla + distribución + escala -->
-              <div style="display:grid;grid-template-columns:1fr 210px;gap:8px;flex:1;min-height:0;">
-
-                <div class="card" style="padding:0;overflow:hidden;">
-                  <table style="width:100%;border-collapse:collapse;">
-                    <thead><tr style="background:#F5F8FB;">
-                      <th style="padding:9px 11px;text-align:left;font-size:8px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Proveedor</th>
-                      <th style="padding:9px 9px;text-align:center;font-size:8px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Base</th>
-                      <th style="padding:9px 9px;text-align:center;font-size:8px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Final</th>
-                      <th style="padding:9px 9px;text-align:center;font-size:8px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Variación</th>
-                      <th style="padding:9px 9px;text-align:center;font-size:8px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Estado</th>
-                    </tr></thead>
-                    <tbody>${tablaRows}</tbody>
-                  </table>
-                </div>
-
-                <div style="display:flex;flex-direction:column;gap:8px;">
-                  <div class="card" style="flex:1;">
-                    <div class="lbl">Distribución de niveles</div>
-                    ${distribHTML}
-                  </div>
-                  <div class="card">
-                    <div class="lbl">Escala de madurez</div>
-                    ${NV_CFG.map(n=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;">
-                      <div style="width:10px;height:10px;border-radius:3px;background:${n.color};flex-shrink:0;"></div>
-                      <div><div style="font-size:9.5px;font-weight:700;color:#2A3A4A;">${n.label}</div><div style="font-size:8px;color:#8A9BB0;">${n.rango||""}</div></div>
-                    </div>`).join("")}
-                  </div>
-                </div>
+              <div class="card" style="padding:0;overflow:hidden;flex:1;display:flex;flex-direction:column;">
+                <table style="width:100%;border-collapse:collapse;">
+                  <thead><tr style="background:#F5F8FB;">
+                    <th style="padding:12px 14px;text-align:left;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Proveedor</th>
+                    <th style="padding:12px 11px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Base</th>
+                    <th style="padding:12px 11px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Final</th>
+                    <th style="padding:12px 11px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Variación</th>
+                    <th style="padding:12px 11px;text-align:center;font-size:9px;color:#8A9BB0;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Estado</th>
+                  </tr></thead>
+                  <tbody>${tablaRows}</tbody>
+                </table>
               </div>
             </div>`;
 
