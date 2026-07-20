@@ -635,7 +635,7 @@ function MapaLeaflet({ regiones, getNivel, a5to100 }) {
 
   return (
     <div>
-      <div ref={mapRef} style={{ height:320, borderRadius:10, overflow:"hidden", border:"1px solid #DDE6EF" }}/>
+      <div ref={mapRef} id="mapa-leaflet-live" style={{ height:320, borderRadius:10, overflow:"hidden", border:"1px solid #DDE6EF" }}/>
       <div style={{ display:"flex", gap:12, marginTop:10, flexWrap:"wrap" }}>
         {["Bajo (0-40%)", "Medio (41-70%)", "Alto (71-100%)"].map((l,i) => {
           const colors = ["#E74C3C","#D4AC0D","#3BAD8A"];
@@ -830,6 +830,17 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               } catch(e) { return url; }
             };
             const logoPrograma = await urlToB64(programa.logoUrl);
+
+            // Captura estática del mapa Leaflet ya renderizado en pantalla (el PDF no puede tener mapas interactivos)
+            let mapaImgDataUrl = null;
+            try {
+              await cargarLibsDescarga();
+              const mapEl = document.getElementById("mapa-leaflet-live");
+              if (mapEl && window.html2canvas) {
+                const canvasMapa = await window.html2canvas(mapEl, { useCORS:true, scale:2, backgroundColor:"#ffffff", logging:false });
+                mapaImgDataUrl = canvasMapa.toDataURL("image/png");
+              }
+            } catch(e) { /* si falla la captura, el PDF se genera igual sin el mapa */ }
 
             // ── Datos ─────────────────────────────────────────────────────────
             const totalProv = entradasConPG.length;
@@ -1229,6 +1240,25 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       </div>`;
                     }).join("")
                   }
+                  ${mapaImgDataUrl ? `
+                  <div style="margin-top:10px;padding-top:10px;border-top:1px solid #F0F4F8;">
+                    <img src="${mapaImgDataUrl}" style="width:100%;height:auto;border-radius:8px;border:1px solid #DDE6EF;display:block;"/>
+                    <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
+                      ${[["Bajo (0-40%)","#E74C3C"],["Medio (41-70%)","#D4AC0D"],["Alto (71-100%)","#3BAD8A"]].map(([l,c])=>`
+                        <div style="display:flex;align-items:center;gap:4px;">
+                          <div style="width:9px;height:9px;border-radius:50%;background:${c};border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></div>
+                          <span style="font-size:8.5px;color:#637D92;">${l}</span>
+                        </div>`).join("")}
+                      <div style="display:flex;align-items:center;gap:4px;">
+                        <div style="display:flex;gap:2px;align-items:center;">
+                          <div style="width:6px;height:6px;border-radius:50%;background:#8A9BB0;"></div>
+                          <div style="width:10px;height:10px;border-radius:50%;background:#8A9BB0;"></div>
+                          <div style="width:14px;height:14px;border-radius:50%;background:#8A9BB0;"></div>
+                        </div>
+                        <span style="font-size:8.5px;color:#637D92;">= N° de proveedores</span>
+                      </div>
+                    </div>
+                  </div>` : ""}
                 </div>
 
                 <!-- Cruce por rubro y dimensión -->
@@ -2249,7 +2279,7 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
             const interp2=generarInterpretacion(dims,datosE||{});
             // Pre-llenar síntesis y nota del mentor
             setSintesisEditada(generarInterpretacion(dims, datosE||{})?.narrativa || "");
-            setNotaMentorEditada(infoGeneral.obsEnMentor ? (infoGeneral.notaMentor || infoGeneral.observaciones || "") : (infoGeneral.observaciones || ""));
+            setNotaMentorEditada(infoGeneral.obsEnMentor ? (infoGeneral.notaMentor || infoGeneral.observaciones || "") : "");
             setShowMentorModal(true);
           }} style={{ padding:"9px 18px", background:"linear-gradient(135deg,#9B59B6,#8E44AD)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>📋 Ficha Mentor</button>
           <button onClick={onCerrar} style={{ padding:"9px 14px", background:"rgba(255,255,255,0.1)", border:"none", borderRadius:8, color:"#fff", fontSize:13, cursor:"pointer" }}>✕ Cerrar</button>
@@ -2661,19 +2691,19 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   }
 
   const sintesis    = sintesisCustom || (interp?.narrativa || "");
-  const notaInterna = notaCustom || (infoGeneral.obsEnMentor ? (infoGeneral.notaMentor || infoGeneral.observaciones || "") : (infoGeneral.observaciones || ""));
+  const notaInterna = notaCustom || (infoGeneral.obsEnMentor ? (infoGeneral.notaMentor || infoGeneral.observaciones || "") : "");
 
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;margin:0;padding:0}
-    html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}
-    @media screen{body{max-width:210mm;margin:0 auto;padding:8mm;box-shadow:0 0 24px rgba(0,0,0,0.12)}}
+    html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:15px;background:#fff}
+    @media screen{body{max-width:210mm;margin:0 auto;padding:8mm;box-shadow:0 0 34px rgba(0,0,0,0.12)}}
     @media print{button,.no-print{display:none!important}}
     h1,h2,h3,p,ul,li{margin:0;padding:0}
-    ul{padding-left:14px}
-    li{margin-bottom:3px;font-size:10px}
+    ul{padding-left:20px}
+    li{margin-bottom:4px;font-size:14px}
     table{width:100%;border-collapse:collapse}
-    [contenteditable]:focus{outline:2px dashed ${pColor}44;outline-offset:2px;border-radius:3px}
+    [contenteditable]:focus{outline:3px dashed ${pColor}44;outline-offset:3px;border-radius:4px}
     @media print{[contenteditable]{outline:none!important}}
   `;
 
@@ -2681,16 +2711,16 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   const dimBarras = dimRows.map(({ d, prom, n, pct }) => {
     if (prom === null) return "";
     const esDebil = prom < 3.5;
-    return `<div style="margin-bottom:7px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-        <span style="font-size:10px;color:#fff;font-weight:${esDebil?"700":"400"};opacity:${esDebil?"1":"0.8"};">${d.nombre}</span>
-        <div style="display:flex;align-items:center;gap:5px;">
-          ${esDebil ? `<span style="font-size:8px;color:rgba(255,255,255,0.6);">▼</span>` : `<span style="font-size:8px;color:rgba(255,255,255,0.5);">✓</span>`}
-          <span style="font-size:10px;font-weight:700;color:#fff;">${pct}%</span>
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+        <span style="font-size:14px;color:#fff;font-weight:${esDebil?"700":"400"};opacity:${esDebil?"1":"0.8"};">${d.nombre}</span>
+        <div style="display:flex;align-items:center;gap:7px;">
+          ${esDebil ? `<span style="font-size:11px;color:rgba(255,255,255,0.6);">▼</span>` : `<span style="font-size:11px;color:rgba(255,255,255,0.5);">✓</span>`}
+          <span style="font-size:14px;font-weight:700;color:#fff;">${pct}%</span>
         </div>
       </div>
-      <div style="height:5px;background:rgba(255,255,255,0.15);border-radius:3px;">
-        <div style="height:100%;width:${pct}%;background:${n?.color||"#fff"};border-radius:3px;"></div>
+      <div style="height:7px;background:rgba(255,255,255,0.15);border-radius:4px;">
+        <div style="height:100%;width:${pct}%;background:${n?.color||"#fff"};border-radius:4px;"></div>
       </div>
     </div>`;
   }).join("");
@@ -2701,37 +2731,37 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     const esOportunidad = tipoArea === "oportunidad";
     const borderColor = esCrit ? "#E74C3C" : esOportunidad ? oportColor : pColor;
     const badge = esCrit
-      ? `<span style="font-size:8px;background:#E74C3C;color:#fff;padding:1px 5px;border-radius:3px;margin-top:2px;display:inline-block;">Área crítica</span>`
+      ? `<span style="font-size:11px;background:#E74C3C;color:#fff;padding:1px 7px;border-radius:4px;margin-top:3px;display:inline-block;">Área crítica</span>`
       : esOportunidad
-        ? `<span style="font-size:8px;background:${oportColor};color:#fff;padding:1px 5px;border-radius:3px;margin-top:2px;display:inline-block;">Área de oportunidad</span>`
+        ? `<span style="font-size:11px;background:${oportColor};color:#fff;padding:1px 7px;border-radius:4px;margin-top:3px;display:inline-block;">Área de oportunidad</span>`
         : "";
     const malas = respuestas.filter(r => r.valor <= 3).slice(0, 4);
     return `
-    <div style="border:1.5px solid ${borderColor}55;border-radius:8px;overflow:hidden;">
-      <div style="background:${pColor};padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="border:2px solid ${borderColor}55;border-radius:11px;overflow:hidden;">
+      <div style="background:${pColor};padding:11px 17px;display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:11px;font-weight:700;color:#fff;">${d.nombre}</div>
+          <div style="font-size:16px;font-weight:700;color:#fff;">${d.nombre}</div>
           ${badge}
         </div>
         <div style="text-align:right;">
-          <div style="font-size:20px;font-weight:800;color:#fff;">${pct}%</div>
-          <div style="font-size:8px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
+          <div style="font-size:28px;font-weight:800;color:#fff;">${pct}%</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
         </div>
       </div>
-      <div style="padding:9px 12px;background:#fff;">
-        <div style="font-size:8px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Situación detectada</div>
-        ${malas.length ? malas.map(r=>`<div style="font-size:9px;color:#3A5A7A;line-height:1.4;margin-bottom:4px;padding-left:7px;border-left:2px solid ${r.color};">
+      <div style="padding:13px 17px;background:#fff;">
+        <div style="font-size:11px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">Situación detectada</div>
+        ${malas.length ? malas.map(r=>`<div style="font-size:13px;color:#3A5A7A;line-height:1.4;margin-bottom:6px;padding-left:10px;border-left:3px solid ${r.color};">
             <strong style="color:#1C2B3A;">${r.criterio}:</strong> ${r.descripcion}
-          </div>`).join("") : `<div style="font-size:9px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
+          </div>`).join("") : `<div style="font-size:13px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
       </div>
     </div>`;
   }).join("");
 
   // ── FORTALEZAS (sin ícono) ──
   const fortalezasHTML = areasFortaleza.slice(0,4).map(({ d, n, pct }) =>
-    `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:#F0FBF7;border-radius:5px;margin-bottom:4px;">
-      <span style="font-size:10px;font-weight:600;color:#1C2B3A;">${d.nombre}</span>
-      <span style="font-size:10px;font-weight:700;color:#3BAD8A;">${pct}%</span>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 11px;background:#F0FBF7;border-radius:7px;margin-bottom:6px;">
+      <span style="font-size:14px;font-weight:600;color:#1C2B3A;">${d.nombre}</span>
+      <span style="font-size:14px;font-weight:700;color:#3BAD8A;">${pct}%</span>
     </div>`
   ).join("");
 
@@ -2741,86 +2771,86 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   </head><body>
 
   <!-- ══ ENCABEZADO ══ -->
-  <div style="background:${pDark};padding:12px 16px;border-radius:8px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
-    <div style="display:flex;align-items:center;gap:12px;">
-      ${logoCidere ? `<img src="${logoCidere}" style="height:32px;object-fit:contain;" alt="CIDERE"/>` : `<span style="font-size:14px;font-weight:800;color:#fff;">CIDERE Biobío</span>`}
-      ${logoPrograma ? `<div style="width:1px;height:32px;background:rgba(255,255,255,0.2)"></div><img src="${logoPrograma}" style="height:32px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:4px;padding:2px 7px;" alt="${programa?.nombre||""}"/>` : ""}
-      <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:12px;">
-        <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:2px;">Ficha de preparación · Mentoría ${programa?.nombre||""}</div>
-        <div style="font-size:14px;font-weight:800;color:#fff;">Ficha Mentoría</div>
+  <div style="background:${pDark};padding:17px 23px;border-radius:11px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="display:flex;align-items:center;gap:17px;">
+      ${logoCidere ? `<img src="${logoCidere}" style="height:45px;object-fit:contain;" alt="CIDERE"/>` : `<span style="font-size:20px;font-weight:800;color:#fff;">CIDERE Biobío</span>`}
+      ${logoPrograma ? `<div style="width:1px;height:45px;background:rgba(255,255,255,0.2)"></div><img src="${logoPrograma}" style="height:45px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:6px;padding:3px 10px;" alt="${programa?.nombre||""}"/>` : ""}
+      <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:17px;">
+        <div style="font-size:11px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:3px;">Ficha de preparación · Mentoría ${programa?.nombre||""}</div>
+        <div style="font-size:20px;font-weight:800;color:#fff;">Ficha Mentoría</div>
       </div>
     </div>
     <div style="text-align:right;">
-      <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;">Confidencial · ${fecha}</div>
+      <div style="font-size:11px;color:#90C8F0;text-transform:uppercase;">Confidencial · ${fecha}</div>
     </div>
   </div>
 
   <!-- ══ FILA 1: EMPRESA + PUNTAJE ══ -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
 
     <!-- Datos empresa -->
-    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:11px 14px;">
-      <div style="font-size:8px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Empresa</div>
-      <div style="font-size:15px;font-weight:800;color:#1C2B3A;margin-bottom:2px;" contenteditable="true">${infoGeneral.empresa||"—"}</div>
-      <div style="font-size:11px;color:#5A7A9A;margin-bottom:10px;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
+    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:11px;padding:16px 20px;">
+      <div style="font-size:11px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:11px;">Empresa</div>
+      <div style="font-size:21px;font-weight:800;color:#1C2B3A;margin-bottom:3px;" contenteditable="true">${infoGeneral.empresa||"—"}</div>
+      <div style="font-size:16px;color:#5A7A9A;margin-bottom:14px;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         ${[
           ["Rubro",infoGeneral.rubro||"No especificado"],
           ["Tamaño",infoGeneral.tamano||"No especificado"],
           ["Facturación 2025",infoGeneral.facturacionTotal?`MM$ ${infoGeneral.facturacionTotal}`:"No registrada"],
           [`Con ${programa?.nombre||"programa"}`,infoGeneral.facturacionCMPC?`MM$ ${infoGeneral.facturacionCMPC}`:"—"],
-        ].map(([l,v])=>`<div style="background:#fff;border-radius:5px;padding:6px 8px;border:1px solid #E4EBF2;">
-          <div style="font-size:8px;color:#8A9BB0;text-transform:uppercase;margin-bottom:2px;">${l}</div>
-          <div style="font-size:10px;font-weight:600;color:#1C2B3A;" contenteditable="true">${v}</div>
+        ].map(([l,v])=>`<div style="background:#fff;border-radius:7px;padding:9px 11px;border:1px solid #E4EBF2;">
+          <div style="font-size:11px;color:#8A9BB0;text-transform:uppercase;margin-bottom:3px;">${l}</div>
+          <div style="font-size:14px;font-weight:600;color:#1C2B3A;" contenteditable="true">${v}</div>
         </div>`).join("")}
       </div>
     </div>
 
     <!-- Puntaje + barras -->
-    <div style="background:${pDark};border-radius:8px;padding:11px 14px;">
-      <div style="font-size:8px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Madurez general</div>
-      <div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:10px;">
-        <div style="font-size:38px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
-        ${nivel?`<div style="font-size:12px;font-weight:700;color:${nivel.color};margin-bottom:6px;">${nivel.label}</div>`:""}
+    <div style="background:${pDark};border-radius:11px;padding:16px 20px;">
+      <div style="font-size:11px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Madurez general</div>
+      <div style="display:flex;align-items:flex-end;gap:11px;margin-bottom:14px;">
+        <div style="font-size:54px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
+        ${nivel?`<div style="font-size:17px;font-weight:700;color:${nivel.color};margin-bottom:9px;">${nivel.label}</div>`:""}
       </div>
-      <div style="height:3px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;margin-bottom:10px;">
-        <div style="height:100%;width:${pg!==null?a5to100(pg):0}%;background:${nivel?nivel.color:"#fff"};border-radius:2px;"></div>
+      <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;margin-bottom:14px;">
+        <div style="height:100%;width:${pg!==null?a5to100(pg):0}%;background:${nivel?nivel.color:"#fff"};border-radius:3px;"></div>
       </div>
       ${dimBarras}
     </div>
   </div>
 
   <!-- ══ FILA 2: SÍNTESIS DIAGNÓSTICA ══ -->
-  <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:10px 13px;margin-bottom:10px;">
-    <div style="font-size:8px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Síntesis diagnóstica</div>
-    <p style="font-size:10.5px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
+  <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:11px;padding:14px 18px;margin-bottom:14px;">
+    <div style="font-size:11px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;">Síntesis diagnóstica</div>
+    <p style="font-size:15px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
   </div>
 
   <!-- ══ FILA 3: FORTALEZAS + NOTA DEL CONSULTOR ══ -->
   ${(areasFortaleza.length>0 || notaInterna) ? `
-  <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:10px;margin-bottom:10px;">
-    ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:8px;padding:10px 13px;">
-      <div style="font-size:8px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Fortalezas</div>
+  <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:14px;margin-bottom:14px;">
+    ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:11px;padding:14px 18px;">
+      <div style="font-size:11px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;">Fortalezas</div>
       ${fortalezasHTML}
     </div>`:""}
-    ${notaInterna?`<div style="background:#FFFBF0;border-radius:8px;padding:10px 13px;border-left:3px solid #E8A020;">
-      <div style="font-size:8px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Nota del consultor</div>
-      <div style="font-size:10px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
+    ${notaInterna?`<div style="background:#FFFBF0;border-radius:11px;padding:14px 18px;border-left:4px solid #E8A020;">
+      <div style="font-size:11px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:1px;margin-bottom:9px;">Nota del consultor</div>
+      <div style="font-size:14px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
     </div>`:""}
   </div>`:""}
 
   <!-- ══ ÁREAS A TRABAJAR EN LA MENTORÍA (grid flexible: 1, 2 o 3 tarjetas) ══ -->
-  <div style="margin-bottom:10px;">
-    <div style="font-size:8px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px;">Áreas prioritarias a trabajar en la mentoría</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;">
+  <div style="margin-bottom:14px;">
+    <div style="font-size:11px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Áreas prioritarias a trabajar en la mentoría</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(327px,1fr));gap:14px;">
       ${areasHTML}
     </div>
   </div>
 
   <!-- ══ PIE ══ -->
-  <div style="display:flex;justify-content:space-between;border-top:1px solid #E4EBF2;padding-top:6px;margin-top:4px;">
-    <span style="font-size:8px;color:#A0B0C0;">Documento confidencial · CIDERE Biobío · Programa ${programa?.nombre||""}</span>
-    <span style="font-size:8px;color:#A0B0C0;">${fecha}</span>
+  <div style="display:flex;justify-content:space-between;border-top:1px solid #E4EBF2;padding-top:9px;margin-top:6px;">
+    <span style="font-size:11px;color:#A0B0C0;">Documento confidencial · CIDERE Biobío · Programa ${programa?.nombre||""}</span>
+    <span style="font-size:11px;color:#A0B0C0;">${fecha}</span>
   </div>
 
   </body></html>`;
