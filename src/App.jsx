@@ -2635,7 +2635,8 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;margin:0;padding:0}
-    html,body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:24px;background:#fff}
+    html{width:210mm}
+    body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:24px;background:#fff;display:flex;flex-direction:column;min-height:280mm}
     @media screen{body{max-width:210mm;margin:0 auto;padding:8mm;box-shadow:0 0 54px rgba(0,0,0,0.12)}}
     @media print{button,.no-print{display:none!important}}
     h1,h2,h3,p,ul,li{margin:0;padding:0}
@@ -2676,8 +2677,8 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
         : "";
     const malas = respuestas.filter(r => r.valor <= 3).slice(0, 4);
     return `
-    <div style="border:3px solid ${borderColor}55;border-radius:18px;overflow:hidden;">
-      <div style="background:${pColor};padding:18px 27px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="border:3px solid ${borderColor}55;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;height:100%;">
+      <div style="background:${pColor};padding:18px 27px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
         <div>
           <div style="font-size:26px;font-weight:700;color:#fff;">${d.nombre}</div>
           ${badge}
@@ -2687,9 +2688,9 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
           <div style="font-size:18px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
         </div>
       </div>
-      <div style="padding:21px 27px;background:#fff;">
-        <div style="font-size:18px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:2px;margin-bottom:11px;">Situación detectada</div>
-        ${malas.length ? malas.map(r=>`<div style="font-size:21px;color:#3A5A7A;line-height:1.4;margin-bottom:10px;padding-left:16px;border-left:5px solid ${r.color};">
+      <div style="padding:26px 27px;background:#fff;flex:1;display:flex;flex-direction:column;justify-content:center;">
+        <div style="font-size:18px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Situación detectada</div>
+        ${malas.length ? malas.map(r=>`<div style="font-size:22px;color:#3A5A7A;line-height:1.5;margin-bottom:14px;padding-left:16px;border-left:5px solid ${r.color};">
             <strong style="color:#1C2B3A;">${r.criterio}:</strong> ${r.descripcion}
           </div>`).join("") : `<div style="font-size:21px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
       </div>
@@ -2779,15 +2780,15 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   </div>`:""}
 
   <!-- ══ ÁREAS A TRABAJAR EN LA MENTORÍA (grid flexible: 1, 2 o 3 tarjetas) ══ -->
-  <div style="margin-bottom:22px;">
-    <div style="font-size:18px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">Áreas Prioritarias a Trabajar en la Mentoría</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(523px,1fr));gap:22px;">
+  <div style="margin-bottom:22px;flex:1;display:flex;flex-direction:column;min-height:0;">
+    <div style="font-size:18px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;flex-shrink:0;">Áreas Prioritarias a Trabajar en la Mentoría</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(523px,1fr));grid-auto-rows:1fr;gap:22px;flex:1;">
       ${areasHTML}
     </div>
   </div>
 
   <!-- ══ PIE ══ -->
-  <div style="display:flex;justify-content:space-between;border-top:2px solid #E4EBF2;padding-top:14px;margin-top:10px;">
+  <div style="display:flex;justify-content:space-between;border-top:2px solid #E4EBF2;padding-top:14px;margin-top:10px;flex-shrink:0;">
     <span style="font-size:18px;color:#A0B0C0;">Documento confidencial · CIDERE Biobío · Programa ${programa?.nombre||""}</span>
     <span style="font-size:18px;color:#A0B0C0;">${fecha}</span>
   </div>
