@@ -556,6 +556,22 @@ const REGIONES_COORDS = {
 const RUBRO_OPCIONES = ["Transporte", "Servicios Industriales", "Maestranzas", "Repuestos y Maquinaria", "Otros"];
 const TAMANO_OPCIONES = ["Microempresa", "Pequeña", "Mediana", "Grande"];
 
+/* ── Ante duplicados de un mismo tipo (p.ej. varios "entrada" de una empresa), elige el más
+   confiable: no-borrador antes que borrador, más preguntas respondidas, y el más reciente. ── */
+function mejorDiagnostico(lista) {
+  if (!lista || lista.length === 0) return undefined;
+  if (lista.length === 1) return lista[0];
+  return [...lista].sort((a,b) => {
+    if (!!a._borrador !== !!b._borrador) return a._borrador ? 1 : -1;
+    const ra = Object.keys(a.datosEntrada||a.datosSalida||{}).length;
+    const rb = Object.keys(b.datosEntrada||b.datosSalida||{}).length;
+    if (rb !== ra) return rb - ra;
+    const fa = new Date(a.fechaGuardado||a.fechaInicial||0).getTime();
+    const fb = new Date(b.fechaGuardado||b.fechaInicial||0).getTime();
+    return fb - fa;
+  })[0];
+}
+
 function normalizarRubro(rubroRaw) {
   const r = (rubroRaw||"").toLowerCase().trim();
   if (!r) return "Otros";
@@ -1757,17 +1773,17 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             !filtro || e.nombre.toLowerCase().includes(filtro.toLowerCase())
           );
           const fechaEmp = (emp) => {
-            const d = emp.diags.find(d=>d.tipo==="entrada") || emp.diags[0];
+            const d = mejorDiagnostico(emp.diags.filter(x=>x.tipo==="entrada")) || emp.diags[0];
             return d?.fechaGuardado ? new Date(d.fechaGuardado).getTime() : 0;
           };
           const puntajeEmp = (emp) => {
-            const d = emp.diags.find(d=>d.tipo==="entrada");
+            const d = mejorDiagnostico(emp.diags.filter(x=>x.tipo==="entrada"));
             if (!d) return -1;
             const pg = pglobal(dims, d.datosEntrada||{});
             return pg===null ? -1 : pg;
           };
           const estadoEmp = (emp) => {
-            const d = emp.diags.find(d=>d.tipo==="entrada");
+            const d = mejorDiagnostico(emp.diags.filter(x=>x.tipo==="entrada"));
             return d?.infoGeneral?.estado || "Pendiente revisión";
           };
           empresas.sort((a,b) => {
@@ -1800,7 +1816,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                 <button disabled={descargando} onClick={()=>{
                   const seleccionados = empresas
                     .filter(emp => seleccionFichas.has(emp.nombre))
-                    .map(emp => emp.diags.find(d=>d.tipo==="entrada"))
+                    .map(emp => mejorDiagnostico(emp.diags.filter(d=>d.tipo==="entrada")))
                     .filter(Boolean);
                   descargarFichasSeleccionadas(seleccionados);
                 }} style={{ padding:"10px 18px", background: descargando?"#C8CDD4":"linear-gradient(135deg,#9B59B6,#8E44AD)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:descargando?"wait":"pointer", whiteSpace:"nowrap" }}>
@@ -1818,8 +1834,8 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
               <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
                 {empresas.map((emp,ei) => {
                   const entradasEmpresa = emp.diags.filter(d=>d.tipo==="entrada");
-                  const dInicial = entradasEmpresa[0];
-                  const dFinal   = emp.diags.find(d=>d.tipo==="salida");
+                  const dInicial = mejorDiagnostico(entradasEmpresa);
+                  const dFinal   = mejorDiagnostico(emp.diags.filter(d=>d.tipo==="salida"));
                   const tieneDuplicados = entradasEmpresa.length > 1;
                   const duplicadosVisibles = duplicadosAbiertos.has(emp.nombre);
                   const pgI = dInicial?pglobal(dims, dInicial.datosEntrada||{}):null;
@@ -3729,22 +3745,30 @@ export default function App() {
     (async()=>{
       try {
         // Cargar desde Supabase Y localStorage, luego hacer merge
-        const [data, local] = await Promise.all([
+        const [data, local, papeleraRemota] = await Promise.all([
           sbGet("proyectos-v1").catch(() => null),
-          Promise.resolve(localStorage.getItem("proyectos-v1"))
+          Promise.resolve(localStorage.getItem("proyectos-v1")),
+          sbGet("papelera-v1").catch(() => null)
         ]);
         const sbData  = data && Array.isArray(data) ? data : null;
         const lcData  = local ? JSON.parse(local) : null;
 
+        // IDs de diagnósticos eliminados a propósito — no deben "resucitar" aunque aparezcan en un localStorage viejo
+        const papeleraLocal = (() => { try { return JSON.parse(localStorage.getItem("papelera-v1")||"[]"); } catch(e){ return []; } })();
+        const papeleraCombinada = [...(Array.isArray(papeleraRemota)?papeleraRemota:[]), ...papeleraLocal];
+        const idsEliminados = new Set(
+          papeleraCombinada.filter(it=>it.tipo==="diagnostico").map(it=>it.diagnostico?.id).filter(Boolean)
+        );
+
         if (sbData && lcData) {
-          // MERGE: no perder diagnósticos que están solo en localStorage
+          // MERGE: no perder diagnósticos que están solo en localStorage — pero respetando eliminaciones ya hechas
           const sbDiagIds = new Set();
           sbData.forEach(p => (p.diagnosticos||[]).forEach(d => sbDiagIds.add(p.id+"::"+d.id)));
           let huboCambios = false;
           const merged = sbData.map(prog => {
             const lcProg = lcData.find(lp => lp.id === prog.id);
             if (!lcProg) return prog;
-            const soloLocales = (lcProg.diagnosticos||[]).filter(d => !sbDiagIds.has(prog.id+"::"+d.id));
+            const soloLocales = (lcProg.diagnosticos||[]).filter(d => !sbDiagIds.has(prog.id+"::"+d.id) && !idsEliminados.has(d.id));
             if (soloLocales.length > 0) {
               huboCambios = true;
               return {...prog, diagnosticos:[...(prog.diagnosticos||[]), ...soloLocales]};
@@ -3763,6 +3787,20 @@ export default function App() {
         } else if (lcData) {
           setProyectos(lcData);
           sbSet("proyectos-v1", lcData).catch(console.error);
+        }
+
+        // Sincronizar papelera local con la remota (unión, sin duplicar por id de diagnóstico)
+        if (papeleraCombinada.length > 0) {
+          const vistos = new Set();
+          const papeleraUnificada = papeleraCombinada.filter(it=>{
+            const key = it.tipo==="diagnostico" ? "d:"+it.diagnostico?.id : "p:"+it.programa?.id;
+            if (vistos.has(key)) return false;
+            vistos.add(key);
+            return true;
+          }).slice(0,100);
+          setPapelera(papeleraUnificada);
+          try { localStorage.setItem("papelera-v1", JSON.stringify(papeleraUnificada)); } catch(e){}
+          sbSet("papelera-v1", papeleraUnificada).catch(()=>{});
         }
       } catch(_) {
         try {
@@ -3866,6 +3904,7 @@ export default function App() {
     const nueva = [entrada, ...papelera].slice(0, 100); // máximo 100 ítems
     setPapelera(nueva);
     try { localStorage.setItem("papelera-v1", JSON.stringify(nueva)); } catch(e) {}
+    sbSet("papelera-v1", nueva).catch(()=>{}); // sincronizar para que la eliminación "pegue" en todos los dispositivos
   };
 
   const crearPrograma = (p) => saveProyectos([...proyectos,{...p,diagnosticos:[]}]);
@@ -3959,6 +3998,7 @@ export default function App() {
     const nueva = papelera.filter((_,i)=>i!==idx);
     setPapelera(nueva);
     try { localStorage.setItem("papelera-v1", JSON.stringify(nueva)); } catch(e) {}
+    sbSet("papelera-v1", nueva).catch(()=>{});
     alert("✓ Restaurado correctamente.");
   };
 
@@ -3966,6 +4006,7 @@ export default function App() {
     if (!window.confirm("¿Vaciar la papelera permanentemente? Esta acción no se puede deshacer.")) return;
     setPapelera([]);
     try { localStorage.removeItem("papelera-v1"); } catch(e) {}
+    sbSet("papelera-v1", []).catch(()=>{});
   };
 
   // ── Centro de Descargas: volver a generar y descargar un documento del historial ───
@@ -3988,7 +4029,7 @@ export default function App() {
 
       const ds = prog.diagnosticos||[];
       const diagEntrada = ds.find(d => d.id===entry.diagId && d.tipo==="entrada")
-        || ds.find(d => d.infoGeneral?.empresa===entry.empresa && d.tipo==="entrada");
+        || mejorDiagnostico(ds.filter(d => d.infoGeneral?.empresa===entry.empresa && d.tipo==="entrada"));
       if (!diagEntrada && entry.tipo!=="final") { alert(`El diagnóstico de "${entry.empresa}" ya no existe (pudo haber sido eliminado).`); return; }
 
       let html, tipo = entry.tipo;
@@ -3998,13 +4039,13 @@ export default function App() {
         html = buildFichaIndividualHTML(dims, diagEntrada.infoGeneral||{}, diagEntrada.datosEntrada||{}, diagEntrada.indicadoresEntrada||{}, prog, false);
       } else if (tipo === "final") {
         const diagFinal = ds.find(d => d.id===entry.diagId && d.tipo==="salida")
-          || ds.find(d => d.infoGeneral?.empresa===entry.empresa && d.tipo==="salida");
+          || mejorDiagnostico(ds.filter(d => d.infoGeneral?.empresa===entry.empresa && d.tipo==="salida"));
         if (!diagFinal) { alert(`El diagnóstico final de "${entry.empresa}" ya no existe.`); return; }
         const datosF = Object.keys(diagFinal.datosSalida||{}).length>0 ? diagFinal.datosSalida : (diagFinal.datosEntrada||{});
         const indsF  = Object.keys(diagFinal.indicadoresSalida||{}).length>0 ? diagFinal.indicadoresSalida : (diagFinal.indicadoresEntrada||{});
         html = buildFichaIndividualHTML(dims, diagFinal.infoGeneral||{}, datosF, indsF, prog, true);
       } else if (tipo === "comparativo") {
-        const diagFinal = ds.find(d => d.infoGeneral?.empresa===entry.empresa && d.tipo==="salida");
+        const diagFinal = mejorDiagnostico(ds.filter(d => d.infoGeneral?.empresa===entry.empresa && d.tipo==="salida"));
         if (!diagFinal) { alert(`Ya no existe un diagnóstico final de "${entry.empresa}" para generar el comparativo.`); return; }
         html = buildComparativoHTML(dims, diagEntrada.infoGeneral||{}, diagEntrada.datosEntrada||{}, diagFinal.datosSalida||diagFinal.datosEntrada||{}, diagEntrada.indicadoresEntrada||{}, diagFinal.indicadoresSalida||diagFinal.indicadoresEntrada||{}, prog);
       } else {
