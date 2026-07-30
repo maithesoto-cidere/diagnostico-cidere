@@ -30,6 +30,139 @@ async function sbSet(key, value) {
   } catch(e) { console.error("sbSet error", e); }
 }
 
+/* ── Carga de dimensiones/preguntas configurables (tablas "dimensiones" y "preguntas") ──
+   Transforma los datos de Supabase a EXACTAMENTE la misma forma que DIMS_BASE, para que
+   el resto de la app (formulario, radar, ficha, dashboard, editor, PDFs) no necesite cambios.
+   Si algo falla (sin red, tablas vacías, etc.) devuelve null y quien llama debe usar DIMS_BASE
+   como respaldo — así la app nunca se queda sin dimensiones para mostrar. */
+async function sbGetDimsPrograma(programaId) {
+  try {
+    const [rDim, rPreg] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/dimensiones?programa_id=eq.${encodeURIComponent(programaId)}&activo=eq.true&select=*&order=orden`, { headers: sbHeaders }),
+      fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=*&order=orden`, { headers: sbHeaders }),
+    ]);
+    if (!rDim.ok || !rPreg.ok) return null;
+    const dimsRaw = await rDim.json();
+    const pregsRaw = await rPreg.json();
+    if (!Array.isArray(dimsRaw) || dimsRaw.length === 0) return null;
+
+    const dims = dimsRaw.map(d => ({
+      id: d.orden,
+      nombre: d.nombre,
+      icono: d.icono,
+      acento: d.color,
+      objetivo: d.objetivo,
+      indicadorObjetivo: { label: d.indicador_label, tipo: d.indicador_tipo, placeholder: d.indicador_placeholder },
+      preguntas: pregsRaw
+        .filter(p => p.dimension_id === d.id)
+        .map(p => ({
+          id: p.codigo,
+          obligatoria: p.obligatoria,
+          texto: p.texto,
+          criterio: p.criterio,
+          evidencia: p.evidencia,
+          niveles: p.niveles,
+        })),
+    }));
+
+    // Verificación de integridad mínima: cada dimensión debe tener al menos 1 pregunta
+    if (dims.some(d => d.preguntas.length === 0)) return null;
+
+    return dims;
+  } catch(e) { console.error("sbGetDimsPrograma error", e); return null; }
+}
+
+/* ── Calcula qué preguntas se eliminarían si se guardan "dimsEditados" tal como están ──
+   Se usa SOLO para mostrarle al usuario un diálogo de confirmación antes de guardar.
+   No escribe nada en Supabase. */
+async function sbCalcularPreguntasAEliminar(programaId, dimsEditados) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=codigo,texto`, { headers: sbHeaders });
+    if (!r.ok) return [];
+    const existentes = await r.json();
+    const codigosEditados = new Set(dimsEditados.flatMap(d => d.preguntas.map(p => p.id)));
+    return existentes.filter(p => !codigosEditados.has(p.codigo));
+  } catch(e) { return []; }
+}
+
+/* ── Guarda de verdad los cambios del Editor de Contenido en las tablas "dimensiones"/"preguntas" ──
+   Estrategia "sincronización completa": vuelve a traer el estado real desde Supabase (por si algo
+   cambió mientras se editaba), y para cada dimensión: actualiza sus campos, actualiza las preguntas
+   que ya existían (emparejadas por "codigo"), inserta las nuevas con un código legacy nuevo
+   (ej. si existen 1a,1b,1c inserta 1d), y elimina las que ya no están en "dimsEditados".
+   Devuelve { ok:true } o { ok:false, error }. Nunca lanza excepción hacia quien la llama. */
+async function sbGuardarContenidoDims(programaId, dimsEditados) {
+  try {
+    const [rDim, rPreg] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/dimensiones?programa_id=eq.${encodeURIComponent(programaId)}&select=id,orden`, { headers: sbHeaders }),
+      fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=id,codigo,dimension_id,orden`, { headers: sbHeaders }),
+    ]);
+    if (!rDim.ok || !rPreg.ok) return { ok:false, error:"No se pudo leer el estado actual desde Supabase." };
+    const dimsFrescas = await rDim.json();
+    const pregsFrescas = await rPreg.json();
+
+    for (let i = 0; i < dimsEditados.length; i++) {
+      const dEditada = dimsEditados[i];
+      const dFresca = dimsFrescas.find(x => x.orden === dEditada.id);
+      if (!dFresca) continue; // no debería pasar; por seguridad, se salta en vez de romper el resto
+
+      // 1) Actualizar campos de la dimensión
+      const rUpd = await fetch(`${SB_URL}/rest/v1/dimensiones?id=eq.${dFresca.id}`, {
+        method: "PATCH", headers: sbHeaders,
+        body: JSON.stringify({
+          nombre: dEditada.nombre, icono: dEditada.icono, color: dEditada.acento,
+          objetivo: dEditada.objetivo, indicador_label: dEditada.indicadorObjetivo?.label || "",
+        })
+      });
+      if (!rUpd.ok) return { ok:false, error:`No se pudo actualizar la dimensión "${dEditada.nombre}".` };
+
+      // 2) Preguntas existentes de esta dimensión (según lo recién leído de Supabase)
+      const pregsDeEstaDim = pregsFrescas.filter(p => p.dimension_id === dFresca.id);
+      const codigosExistentes = new Set(pregsDeEstaDim.map(p => p.codigo));
+      const codigosEditados = new Set(dEditada.preguntas.map(p => p.id));
+
+      // 3) Actualizar / insertar preguntas
+      for (let pi = 0; pi < dEditada.preguntas.length; pi++) {
+        const p = dEditada.preguntas[pi];
+        const yaExiste = codigosExistentes.has(p.id);
+        const body = {
+          texto: p.texto, criterio: p.criterio, evidencia: p.evidencia,
+          niveles: p.niveles, obligatoria: p.obligatoria !== false, orden: pi + 1,
+        };
+        if (yaExiste) {
+          const rU = await fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&codigo=eq.${encodeURIComponent(p.id)}`, {
+            method: "PATCH", headers: sbHeaders, body: JSON.stringify(body)
+          });
+          if (!rU.ok) return { ok:false, error:`No se pudo actualizar la pregunta "${p.id}".` };
+        } else {
+          // Pregunta nueva agregada desde el editor: se le asigna un código legacy limpio (ej. 1d, 1e...)
+          let letra = 97; // 'a'
+          const letrasUsadas = new Set([...codigosExistentes].filter(c => c.startsWith(String(dEditada.id))).map(c => c.slice(String(dEditada.id).length)));
+          while (letrasUsadas.has(String.fromCharCode(letra)) && letra < 123) letra++;
+          const nuevoCodigo = letra < 123 ? `${dEditada.id}${String.fromCharCode(letra)}` : `${dEditada.id}n${Date.now()}`;
+          codigosExistentes.add(nuevoCodigo);
+          const rI = await fetch(`${SB_URL}/rest/v1/preguntas`, {
+            method: "POST", headers: sbHeaders,
+            body: JSON.stringify({ ...body, codigo: nuevoCodigo, programa_id: programaId, dimension_id: dFresca.id, tipo: "escala_1_5", cuenta_para_puntaje: true })
+          });
+          if (!rI.ok) return { ok:false, error:`No se pudo crear la pregunta nueva "${p.texto?.slice(0,30)}...".` };
+        }
+      }
+
+      // 4) Eliminar preguntas que ya no están (el usuario ya confirmó esto antes de llegar aquí)
+      const codigosAEliminar = [...codigosExistentes].filter(c => !codigosEditados.has(c) && pregsDeEstaDim.some(p=>p.codigo===c));
+      for (const codigo of codigosAEliminar) {
+        const rD = await fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&codigo=eq.${encodeURIComponent(codigo)}`, {
+          method: "DELETE", headers: sbHeaders
+        });
+        if (!rD.ok) return { ok:false, error:`No se pudo eliminar la pregunta "${codigo}".` };
+      }
+    }
+
+    return { ok:true };
+  } catch(e) { return { ok:false, error: e?.message || "Error desconocido." }; }
+}
+
 /* ── Presencia (reutiliza la misma tabla "proyectos" que ya existe — sin librerías ni tablas nuevas) ──
    Se guarda un registro con id="presencia-v1" cuyo "data" es un array [{id,nombre,actividad,last_seen}, ...].
    Cada usuario activo actualiza su entrada cada 15s; se descartan entradas de más de 45s sin actividad. */
@@ -2029,9 +2162,12 @@ function ModalGuardar({ infoGeneral, tieneInicial, esActualizacion, onGuardar, o
    EDITOR DE CONTENIDO (con contraseña)
 ═══════════════════════════════════════════ */
 function EditorContenido({ dims, onSave, onClose }) {
+  const PROGRAMA_ID = "cmpc"; // único programa configurable por ahora
   const [data, setData] = useState(JSON.parse(JSON.stringify(dims)));
   const [dimSel, setDimSel] = useState(0);
   const [pregSel, setPregSel] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState("");
   const d = data[dimSel];
   const upd  = (di,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,[f]:v}));
   const updP = (di,pi,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,[f]:v})}));
@@ -2039,17 +2175,46 @@ function EditorContenido({ dims, onSave, onClose }) {
   const addP = (di) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:[...x.preguntas,{id:`${x.id}x${Date.now()}`,obligatoria:true,texto:"Nueva pregunta",criterio:"Criterio",evidencia:"",niveles:["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"]}]}));
   const delP = (di,pi) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.filter((_,j)=>j!==pi)}));
   const si = { padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:7, color:C.oscuro, fontSize:13, outline:"none", width:"100%", boxSizing:"border-box", fontFamily:"inherit" };
+
+  const handleGuardar = async () => {
+    setErrorGuardado("");
+    setGuardando(true);
+    try {
+      const aEliminar = await sbCalcularPreguntasAEliminar(PROGRAMA_ID, data);
+      if (aEliminar.length > 0) {
+        const lista = aEliminar.map(p => `• [${p.codigo}] ${p.texto}`).join("\n");
+        const confirmado = window.confirm(
+          `Vas a eliminar ${aEliminar.length} pregunta(s) que ya existían:\n\n${lista}\n\n` +
+          `Las respuestas ya guardadas en diagnósticos anteriores NO se borran de la base de datos, ` +
+          `pero estas preguntas dejarán de mostrarse y de contar en el puntaje de las próximas evaluaciones.\n\n` +
+          `¿Confirmas que quieres eliminarlas?`
+        );
+        if (!confirmado) { setGuardando(false); return; }
+      }
+      const res = await sbGuardarContenidoDims(PROGRAMA_ID, data);
+      if (res.ok) {
+        await onSave(data);
+      } else {
+        setErrorGuardado(res.error || "Ocurrió un error al guardar. No se aplicó ningún cambio.");
+      }
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(10,20,30,0.7)", zIndex:600, display:"flex", flexDirection:"column" }}>
       <div style={{ background:C.blanco, borderBottom:`1px solid ${C.borde}`, padding:"13px 24px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div><div style={{ fontSize:11, color:C.gris, letterSpacing:1, textTransform:"uppercase" }}>Editor de Contenido</div><div style={{ fontSize:16, fontWeight:700, color:C.oscuro }}>Personaliza dimensiones y preguntas</div></div>
-        <div style={{ display:"flex", gap:8 }}>
-          <button onClick={onClose} style={{ padding:"9px 16px", borderRadius:8, border:`1px solid ${C.borde}`, background:"transparent", color:C.gris, cursor:"pointer", fontSize:13 }}>Cancelar</button>
-          <button onClick={()=>onSave(data)} style={{ padding:"9px 18px", borderRadius:8, border:"none", background:`linear-gradient(135deg,${C.verde},${C.azul})`, color:"#fff", fontWeight:700, cursor:"pointer", fontSize:13 }}>✓ Guardar cambios</button>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {errorGuardado && <span style={{ fontSize:12, color:"#E74C3C", maxWidth:280 }}>{errorGuardado}</span>}
+          <button onClick={onClose} disabled={guardando} style={{ padding:"9px 16px", borderRadius:8, border:`1px solid ${C.borde}`, background:"transparent", color:C.gris, cursor:guardando?"not-allowed":"pointer", fontSize:13 }}>Cancelar</button>
+          <button onClick={handleGuardar} disabled={guardando} style={{ padding:"9px 18px", borderRadius:8, border:"none", background:guardando?C.grisCl:`linear-gradient(135deg,${C.verde},${C.azul})`, color:"#fff", fontWeight:700, cursor:guardando?"not-allowed":"pointer", fontSize:13 }}>{guardando?"Guardando...":"✓ Guardar cambios"}</button>
         </div>
       </div>
       <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
         <div style={{ width:185, background:C.fondo, borderRight:`1px solid ${C.borde}`, overflowY:"auto" }}>
+
           {data.map((dd,di)=>(
             <div key={di} onClick={()=>{setDimSel(di);setPregSel(null);}} style={{ padding:"11px 16px", cursor:"pointer", borderLeft:`3px solid ${dimSel===di&&pregSel===null?dd.acento:"transparent"}`, background:dimSel===di&&pregSel===null?`${dd.acento}10`:"transparent" }}>
               <div style={{ fontSize:13 }}><span style={{ fontSize:11, fontWeight:600, color:dimSel===di?dd.acento:C.gris }}>{dd.nombre}</span></div>
@@ -3100,7 +3265,7 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   </body></html>`;
 }
 
-function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mantenimientoActivo, onActividad }) {
+function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mantenimientoActivo, onActividad, onDimsGuardados }) {
   const scrollRef = useRef(null);
   const esSalidaNueva = diagActual?.tipo === "salida_nueva" || (diagActual?.id||"").endsWith("_final_new");
   const verComparativo = !!diagActual?._verComparativo;
@@ -3248,7 +3413,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
         indE={esSalidaNueva ? {} : indE}
         indS={esSalidaNueva ? indE : indS}
         programa={programa} modo={esSalidaNueva?"salida":"entrada"} diagActual={diagActual} onCerrar={()=>setShowFicha(false)}/>}
-      {showEditor && <EditorContenido dims={dims} onSave={d=>{showT("✓ Cambios guardados");}} onClose={()=>setShowEditor(false)}/>}
+      {showEditor && <EditorContenido dims={dims} onSave={async ()=>{ setShowEditor(false); showT("✓ Cambios guardados"); await onDimsGuardados?.(); }} onClose={()=>setShowEditor(false)}/>}
 
       {/* SIDEBAR */}
       <div style={{ width:205, background:C.blanco, borderRight:`1px solid ${C.borde}`, display:"flex", flexDirection:"column", flexShrink:0, overflowY:"auto" }}>
@@ -3678,7 +3843,7 @@ export default function App() {
   const [cargando, setCargando] = useState(true);
   const [proyectoActivo, setProyectoActivo] = useState(null);
   const [diagActivo, setDiagActivo] = useState(null); // {diag, esNuevo}
-  const [dims, setDims] = useState(DIMS_BASE);
+  const [dims, setDims] = useState(DIMS_BASE); // arranca con el respaldo hardcodeado; se reemplaza abajo si Supabase responde bien
   const [showBackup, setShowBackup] = useState(false);
   const [importError, setImportError] = useState("");
   const [syncStatus, setSyncStatus] = useState("ok"); // "ok" | "saving" | "error"
@@ -3811,6 +3976,20 @@ export default function App() {
       setCargando(false);
     })();
   },[]);
+
+  // ── Cargar dimensiones/preguntas configurables desde Supabase (programa CMPC) ──
+  // No bloquea el resto de la app: mientras se resuelve, "dims" sigue usando DIMS_BASE.
+  // Si la carga falla o los datos vienen incompletos, se queda con DIMS_BASE sin avisar
+  // con error visible al usuario (comportamiento idéntico al de antes de esta migración).
+  const recargarDims = async () => {
+    const dimsRemotas = await sbGetDimsPrograma("cmpc");
+    if (dimsRemotas) {
+      setDims(dimsRemotas);
+    } else {
+      console.warn("No se pudieron cargar dimensiones/preguntas desde Supabase; usando DIMS_BASE de respaldo.");
+    }
+  };
+  useEffect(() => { recargarDims(); }, []);
 
   // Migración: limpiar _borrador:true de diagnósticos que sí tienen fechaGuardado
   useEffect(() => {
@@ -4317,7 +4496,7 @@ export default function App() {
           <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={()=>{setProyectoActivo(null);setDiagActivo(null);}}/>
         )}
         {proyectoActivo && diagActivo && (
-          <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad}/>
+          <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims}/>
         )}
       </div>
     </div>
