@@ -806,7 +806,7 @@ function MapaLeaflet({ regiones, getNivel, a5to100 }) {
   );
 }
 
-function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver }) {
+function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver, esAdmin, onDimsGuardados }) {
   const [filtro, setFiltro] = useState("");
   const [ordenDiag, setOrdenDiag] = useState("reciente"); // reciente | antiguo | az | za | puntajeDesc | puntajeAsc | estado
   const [vistaTab, setVistaTab] = useState("dashboard");
@@ -815,6 +815,9 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
   const [seleccionFichas, setSeleccionFichas] = useState(() => new Set());
   const [duplicadosAbiertos, setDuplicadosAbiertos] = useState(() => new Set());
   const [descargando, setDescargando] = useState(false);
+  const [showEditorContenido, setShowEditorContenido] = useState(false);
+  const [toastPrograma, setToastPrograma] = useState(null);
+  const showTPrograma = (msg,c=C.verde) => { setToastPrograma({msg,c}); setTimeout(()=>setToastPrograma(null),3000); };
   const pColor = programa.color || C.azul;
   const diags = (programa.diagnosticos||[]).filter(d=>!filtro||(d.infoGeneral?.empresa||"").toLowerCase().includes(filtro.toLowerCase()));
 
@@ -868,8 +871,11 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             <h2 style={{ fontSize:26, fontWeight:800, color:C.oscuro, margin:0 }}>{programa.nombre}</h2>
             {programa.descripcion && <div style={{ fontSize:13, color:C.gris, marginTop:2 }}>{programa.descripcion}</div>}
           </div>
-          <button onClick={onNuevoDiag} style={{ marginLeft:"auto", padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Nueva empresa</button>
+          {esAdmin && <button onClick={()=>setShowEditorContenido(true)} title="Editar dimensiones y preguntas del programa" style={{ marginLeft:"auto", marginRight:10, padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, color:C.gris, fontSize:13, fontWeight:700, cursor:"pointer" }}>⚙️ Editor de Contenido</button>}
+          <button onClick={onNuevoDiag} style={{ marginLeft:esAdmin?0:"auto", padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Nueva empresa</button>
         </div>
+        {toastPrograma && <div style={{ position:"fixed", bottom:24, right:24, background:toastPrograma.c, color:"#fff", padding:"12px 20px", borderRadius:8, fontSize:13, fontWeight:700, zIndex:700, boxShadow:"0 4px 20px rgba(0,0,0,0.2)" }}>{toastPrograma.msg}</div>}
+        {showEditorContenido && <EditorContenido dims={dims} onSave={async ()=>{ setShowEditorContenido(false); showTPrograma("✓ Cambios guardados"); await onDimsGuardados?.(); }} onClose={()=>setShowEditorContenido(false)}/>}
         {/* Stats */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
           {(() => {
@@ -4493,7 +4499,7 @@ export default function App() {
           <PantallaProyectos proyectos={proyectos} onSeleccionar={p=>{setProyectoActivo(p);setDiagActivo(null);}} onCrear={crearPrograma} onEditar={editarPrograma} onEliminar={eliminarPrograma}/>
         )}
         {proyectoActivo && !diagActivo && (
-          <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={()=>{setProyectoActivo(null);setDiagActivo(null);}}/>
+          <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={()=>{setProyectoActivo(null);setDiagActivo(null);}} esAdmin={esAdmin} onDimsGuardados={recargarDims}/>
         )}
         {proyectoActivo && diagActivo && (
           <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims}/>
