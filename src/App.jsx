@@ -41,10 +41,10 @@ async function sbGetDimsPrograma(programaId) {
       fetch(`${SB_URL}/rest/v1/dimensiones?programa_id=eq.${encodeURIComponent(programaId)}&activo=eq.true&select=*&order=orden`, { headers: sbHeaders }),
       fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=*&order=orden`, { headers: sbHeaders }),
     ]);
-    if (!rDim.ok || !rPreg.ok) return null;
+    if (!rDim.ok || !rPreg.ok) return null; // error de red/servidor: quien llama debe usar su respaldo
     const dimsRaw = await rDim.json();
     const pregsRaw = await rPreg.json();
-    if (!Array.isArray(dimsRaw) || dimsRaw.length === 0) return null;
+    if (!Array.isArray(dimsRaw) || dimsRaw.length === 0) return []; // programa válido, simplemente aún sin dimensiones configuradas
 
     const dims = dimsRaw.map(d => ({
       id: d.orden,
@@ -66,7 +66,9 @@ async function sbGetDimsPrograma(programaId) {
         })),
     }));
 
-    // Verificación de integridad mínima: cada dimensión debe tener al menos 1 pregunta
+    // Verificación de integridad mínima: si hay dimensiones creadas pero alguna quedó sin preguntas
+    // (estado intermedio anómalo, no debería pasar con el flujo normal del Editor), se trata como error
+    // de carga en vez de mostrar datos a medio configurar.
     if (dims.some(d => d.preguntas.length === 0)) return null;
 
     return dims;
@@ -927,10 +929,20 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             {programa.descripcion && <div style={{ fontSize:13, color:C.gris, marginTop:2 }}>{programa.descripcion}</div>}
           </div>
           {esAdmin && <button onClick={()=>setShowEditorContenido(true)} title="Editar dimensiones y preguntas del programa" style={{ marginLeft:"auto", marginRight:10, padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, color:C.gris, fontSize:13, fontWeight:700, cursor:"pointer" }}>⚙️ Editor de Contenido</button>}
-          <button onClick={onNuevoDiag} style={{ marginLeft:esAdmin?0:"auto", padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Nueva empresa</button>
+          <button onClick={onNuevoDiag} disabled={dims.length===0} title={dims.length===0?"Este programa aún no tiene dimensiones configuradas":""} style={{ marginLeft:esAdmin?0:"auto", padding:"10px 20px", background:dims.length===0?C.grisCl:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:dims.length===0?"not-allowed":"pointer" }}>+ Nueva empresa</button>
         </div>
+        {dims.length===0 && (
+          <div style={{ background:"#FFF8EC", border:"1.5px solid #E8A020", borderRadius:12, padding:"16px 20px", marginBottom:24, display:"flex", alignItems:"center", gap:14 }}>
+            <span style={{ fontSize:22 }}>⚙️</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:"#7A5C00" }}>Este programa todavía no tiene dimensiones configuradas</div>
+              <div style={{ fontSize:12.5, color:"#A07820", marginTop:2 }}>{esAdmin ? "Usa el Editor de Contenido para crear las dimensiones y preguntas antes de poder evaluar empresas." : "Contacta a un administrador para configurar este programa."}</div>
+            </div>
+            {esAdmin && <button onClick={()=>setShowEditorContenido(true)} style={{ padding:"9px 16px", background:"#E0A020", border:"none", borderRadius:8, color:"#fff", fontSize:12.5, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>Configurar ahora</button>}
+          </div>
+        )}
         {toastPrograma && <div style={{ position:"fixed", bottom:24, right:24, background:toastPrograma.c, color:"#fff", padding:"12px 20px", borderRadius:8, fontSize:13, fontWeight:700, zIndex:700, boxShadow:"0 4px 20px rgba(0,0,0,0.2)" }}>{toastPrograma.msg}</div>}
-        {showEditorContenido && <EditorContenido dims={dims} onSave={async ()=>{ setShowEditorContenido(false); showTPrograma("✓ Cambios guardados"); await onDimsGuardados?.(); }} onClose={()=>setShowEditorContenido(false)}/>}
+        {showEditorContenido && <EditorContenido dims={dims} programaId={programa.configId || programa.id} onSave={async ()=>{ setShowEditorContenido(false); showTPrograma("✓ Cambios guardados"); await onDimsGuardados?.(); }} onClose={()=>setShowEditorContenido(false)}/>}
         {/* Stats */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
           {(() => {
@@ -2222,8 +2234,8 @@ function ModalGuardar({ infoGeneral, tieneInicial, esActualizacion, onGuardar, o
 /* ═══════════════════════════════════════════
    EDITOR DE CONTENIDO (con contraseña)
 ═══════════════════════════════════════════ */
-function EditorContenido({ dims, onSave, onClose }) {
-  const PROGRAMA_ID = "cmpc"; // único programa configurable por ahora
+function EditorContenido({ dims, onSave, onClose, programaId }) {
+  const PROGRAMA_ID = programaId;
   const [data, setData] = useState(JSON.parse(JSON.stringify(dims)));
   const [dimSel, setDimSel] = useState(0);
   const [pregSel, setPregSel] = useState(null);
@@ -3015,11 +3027,10 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
       <div style="font-size:18px;font-weight:700;color:#8A9BB0;letter-spacing:2px;margin-bottom:18px;">EMPRESA</div>
       <div style="font-size:27px;font-weight:800;color:#1C2B3A;margin-bottom:6px;line-height:1.2;" contenteditable="true">${infoGeneral.empresa||"—"}</div>
       <div style="font-size:19px;color:#5A7A9A;margin-bottom:22px;line-height:1.3;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         ${[
           ["Rubro",infoGeneral.rubro||"No especificado"],
           ["Tamaño",infoGeneral.tamano||"No especificado"],
-          ["Acceso a info. financiera",infoGeneral.accesoFinanciero||"No registrado"],
           ["Facturación 2025",infoGeneral.facturacionTotal?`MM$ ${infoGeneral.facturacionTotal}`:"No registrada"],
           [`Con ${programa?.nombre||"programa"}`,infoGeneral.facturacionCMPC?`MM$ ${infoGeneral.facturacionCMPC}`:"—"],
         ].map(([l,v])=>`<div style="background:#fff;border-radius:11px;padding:14px 18px;border:2px solid #E4EBF2;">
@@ -3073,6 +3084,9 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
       <div style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
     </div>`:""}
   </div>`:""}
+
+  <!-- Espaciador: llena el resto de la hoja para que el pie siempre quede al final de la página A4 -->
+  <div style="flex:1;"></div>
 
   <!-- ══ PIE ══ -->
   <div style="display:flex;justify-content:space-between;border-top:2px solid #E4EBF2;padding-top:14px;margin-top:10px;flex-shrink:0;">
@@ -3497,6 +3511,19 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
 
   const pgE = pglobal(dims,datosE); const pgS = pglobal(dims,datosS);
 
+  if (dims.length === 0) {
+    return (
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:40 }}>
+        <div style={{ textAlign:"center", maxWidth:420 }}>
+          <div style={{ fontSize:40, marginBottom:14 }}>⚙️</div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.oscuro, marginBottom:8 }}>Este programa aún no tiene dimensiones configuradas</div>
+          <p style={{ fontSize:13, color:C.gris, marginBottom:20 }}>Un administrador debe crear las dimensiones y preguntas desde el Editor de Contenido antes de poder evaluar empresas en este programa.</p>
+          <button onClick={onVolver} style={{ padding:"10px 22px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.gris, fontSize:13, fontWeight:700, cursor:"pointer" }}>← Volver</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display:"flex", flex:1, minHeight:0 }}>
       {toast && <div style={{ position:"fixed", bottom:24, right:24, background:toast.c, color:"#fff", padding:"12px 20px", borderRadius:8, fontSize:13, fontWeight:700, zIndex:700, boxShadow:"0 4px 20px rgba(0,0,0,0.2)" }}>{toast.msg}</div>}
@@ -3519,7 +3546,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
         indE={esSalidaNueva ? {} : indE}
         indS={esSalidaNueva ? indE : indS}
         programa={programa} modo={esSalidaNueva?"salida":"entrada"} diagActual={diagActual} onCerrar={()=>setShowFicha(false)}/>}
-      {showEditor && <EditorContenido dims={dims} onSave={async ()=>{ setShowEditor(false); showT("✓ Cambios guardados"); await onDimsGuardados?.(); }} onClose={()=>setShowEditor(false)}/>}
+      {showEditor && <EditorContenido dims={dims} programaId={programa.configId || programa.id} onSave={async ()=>{ setShowEditor(false); showT("✓ Cambios guardados"); await onDimsGuardados?.(); }} onClose={()=>setShowEditor(false)}/>}
 
       {/* SIDEBAR */}
       <div style={{ width:205, background:C.blanco, borderRight:`1px solid ${C.borde}`, display:"flex", flexDirection:"column", flexShrink:0, overflowY:"auto" }}>
@@ -4084,19 +4111,27 @@ export default function App() {
     })();
   },[]);
 
-  // ── Cargar dimensiones/preguntas configurables desde Supabase (programa CMPC) ──
-  // No bloquea el resto de la app: mientras se resuelve, "dims" sigue usando DIMS_BASE.
-  // Si la carga falla o los datos vienen incompletos, se queda con DIMS_BASE sin avisar
-  // con error visible al usuario (comportamiento idéntico al de antes de esta migración).
+  // ── Cargar dimensiones/preguntas configurables desde Supabase, según el programa ABIERTO ──
+  // Cada programa usa su propio "programa_id" en las tablas: si el programa tiene un "configId"
+  // asignado (caso de CMPC, vinculado manualmente) se usa ese; si no, se usa su propio id real
+  // (caso de cualquier programa nuevo creado de aquí en adelante — no hay que inventar nombres).
+  // Un programa nuevo sin ninguna dimensión configurada arranca con dims=[] (vacío), NO con el
+  // respaldo de CMPC — así el usuario ve claramente que debe configurarlo desde el Editor de
+  // Contenido, en vez de ver por error las dimensiones de otro programa.
+  // Solo ante un error real de red/servidor (no ante "simplemente no configurado todavía") se
+  // usa DIMS_BASE como último respaldo, y solo para el programa CMPC.
   const recargarDims = async () => {
-    const dimsRemotas = await sbGetDimsPrograma("cmpc");
-    if (dimsRemotas) {
+    if (!proyectoActivo) return;
+    const programaConfigId = proyectoActivo.configId || proyectoActivo.id;
+    const dimsRemotas = await sbGetDimsPrograma(programaConfigId);
+    if (dimsRemotas !== null) {
       setDims(dimsRemotas);
     } else {
-      console.warn("No se pudieron cargar dimensiones/preguntas desde Supabase; usando DIMS_BASE de respaldo.");
+      console.warn("Error de red/servidor cargando dimensiones para el programa", programaConfigId, "— usando respaldo si corresponde.");
+      setDims(programaConfigId === "cmpc" ? DIMS_BASE : []);
     }
   };
-  useEffect(() => { recargarDims(); }, []);
+  useEffect(() => { recargarDims(); }, [proyectoActivo?.id]);
 
   // Migración: limpiar _borrador:true de diagnósticos que sí tienen fechaGuardado
   useEffect(() => {
