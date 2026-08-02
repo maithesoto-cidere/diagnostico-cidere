@@ -870,6 +870,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
   const [filtroEmpresa, setFiltroEmpresa] = useState("todas");
   const [tooltip, setTooltip] = useState(null); // {x,y,text}
   const [seleccionFichas, setSeleccionFichas] = useState(() => new Set());
+  const [menuDescargaAbierto, setMenuDescargaAbierto] = useState(null); // nombre de empresa con el menú de descarga abierto
   const [duplicadosAbiertos, setDuplicadosAbiertos] = useState(() => new Set());
   const [descargando, setDescargando] = useState(false);
   const [showEditorContenido, setShowEditorContenido] = useState(false);
@@ -906,6 +907,35 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
       setSeleccionFichas(new Set());
     } catch(err) {
       alert("Error al generar las fichas: " + err.message);
+    } finally {
+      setDescargando(false);
+    }
+  };
+
+  /* Descarga cualquiera de los 4 tipos de ficha para una empresa: mentoría, inicial, final o comparativo */
+  const descargarFichaTipo = async (tipo, dInicial, dFinal, nombreEmpresa) => {
+    setMenuDescargaAbierto(null);
+    setDescargando(true);
+    try {
+      await cargarLibsDescarga();
+      const le = dInicial?.infoGeneral?.logoEmpresa || dFinal?.infoGeneral?.logoEmpresa || "";
+      const lp = programa?.logoUrl || "";
+      const prog = { ...(programa||{}), logoUrl: lp };
+      let html;
+      if (tipo === "mentoria") {
+        html = buildFichaMentorHTML(dims, {...dInicial.infoGeneral,logoEmpresa:le}, dInicial.datosEntrada||{}, dInicial.indicadoresEntrada||{}, prog, null, null, null, null);
+      } else if (tipo === "inicial") {
+        html = buildFichaIndividualHTML(dims, {...dInicial.infoGeneral,logoEmpresa:le}, dInicial.datosEntrada||{}, dInicial.indicadoresEntrada||{}, prog, false);
+      } else if (tipo === "final") {
+        const datosF = Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{});
+        const indsF  = Object.keys(dFinal.indicadoresSalida||{}).length>0 ? dFinal.indicadoresSalida : (dFinal.indicadoresEntrada||{});
+        html = buildFichaIndividualHTML(dims, {...dFinal.infoGeneral,logoEmpresa:le}, datosF, indsF, prog, true);
+      } else if (tipo === "comparativo") {
+        html = buildComparativoHTML(dims, {...dInicial.infoGeneral,logoEmpresa:le}, dInicial.datosEntrada||{}, dFinal.datosSalida||dFinal.datosEntrada||{}, dInicial.indicadoresEntrada||{}, dFinal.indicadoresSalida||dFinal.indicadoresEntrada||{}, prog);
+      }
+      await descargarFichaPDF(html, { tipo, empresa: nombreEmpresa, programaId: programa.id, programaNombre: programa.nombre, diagId: (dInicial||dFinal)?.id });
+    } catch(err) {
+      alert("Error al generar la ficha: " + err.message);
     } finally {
       setDescargando(false);
     }
@@ -2077,7 +2107,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           {tieneAmbos && !dFinal?._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.verde, background:`${C.verde}15`, padding:"4px 10px", borderRadius:6 }}>✓ Inicial y Final guardados</span>}
                           {dInicial?._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>📝 Borrador — pendiente guardar</span>}
                           {!dFinal && dInicial && !dInicial._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.azul, background:`${C.azul}15`, padding:"4px 10px", borderRadius:6 }}>✓ Diagnóstico inicial guardado</span>}
-                          {info.estado && <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:info.estado==="Validado"?"#EAF7F2":info.estado==="Descartado"?"#FFF0F0":"#FFFBF0", color:info.estado==="Validado"?"#16A085":info.estado==="Descartado"?"#E74C3C":"#A07820" }}>{info.estado==="Validado"?"🟢":info.estado==="Descartado"?"🔴":"🟡"} {info.estado}</span>}
                           {tieneDuplicados && (
                             <button onClick={()=>setDuplicadosAbiertos(prev=>{const s=new Set(prev); s.has(emp.nombre)?s.delete(emp.nombre):s.add(emp.nombre); return s;})}
                               style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:"#FFF0F0", color:"#E74C3C", border:"1px solid #E74C3C55", cursor:"pointer" }}>
@@ -2085,11 +2114,21 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                             </button>
                           )}
                           {dInicial && (
-                            <button title={`Descargar Ficha Mentoría de ${emp.nombre}`} disabled={descargando}
-                              onClick={()=>descargarFichasSeleccionadas([dInicial])}
-                              style={{ padding:"6px 9px", background:`${pColor}12`, border:`1px solid ${pColor}33`, borderRadius:7, color:pColor, fontSize:14, cursor:descargando?"wait":"pointer", display:"flex", alignItems:"center" }}>
-                              ⬇
-                            </button>
+                            <div style={{ position:"relative" }}>
+                              <button title="Descargar ficha…" disabled={descargando}
+                                onClick={()=>setMenuDescargaAbierto(prev=>prev===emp.nombre?null:emp.nombre)}
+                                style={{ padding:"6px 9px", background:`${pColor}12`, border:`1px solid ${pColor}33`, borderRadius:7, color:pColor, fontSize:14, cursor:descargando?"wait":"pointer", display:"flex", alignItems:"center", gap:4 }}>
+                                ⬇ <span style={{ fontSize:10 }}>▾</span>
+                              </button>
+                              {menuDescargaAbierto===emp.nombre && (
+                                <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, boxShadow:"0 8px 28px rgba(0,0,0,0.18)", minWidth:240, overflow:"hidden", zIndex:50 }}>
+                                  <button onClick={()=>descargarFichaTipo("mentoria", dInicial, dFinal, emp.nombre)} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"transparent", border:"none", borderBottom:`1px solid ${C.borde}`, color:C.oscuro, fontSize:13, cursor:"pointer" }}>🎓 Ficha Mentoría</button>
+                                  <button onClick={()=>descargarFichaTipo("inicial", dInicial, dFinal, emp.nombre)} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"transparent", border:"none", borderBottom:`1px solid ${C.borde}`, color:C.oscuro, fontSize:13, cursor:"pointer" }}>📋 Ficha Diagnóstico Inicial</button>
+                                  {dFinal && <button onClick={()=>descargarFichaTipo("final", dInicial, dFinal, emp.nombre)} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"transparent", border:"none", borderBottom:tieneAmbos?`1px solid ${C.borde}`:"none", color:C.oscuro, fontSize:13, cursor:"pointer" }}>📊 Ficha Diagnóstico Final</button>}
+                                  {tieneAmbos && <button onClick={()=>descargarFichaTipo("comparativo", dInicial, dFinal, emp.nombre)} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"transparent", border:"none", color:C.oscuro, fontSize:13, cursor:"pointer" }}>📈 Ficha Comparativo Inicial vs. Final</button>}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -4503,13 +4542,17 @@ export default function App() {
             <button onClick={desbloquearAdmin} title="Acceso administrador"
               style={{ padding:"7px 9px",background:"transparent",border:"none",color:"rgba(255,255,255,0.25)",fontSize:13,cursor:"pointer" }}>🔧</button>
           )}
-          <button onClick={abrirCentroDescargas} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
-            🗂 Descargas{historialDescargas.length>0?<span style={{position:"absolute",top:-5,right:-5,background:C.azul,color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{historialDescargas.length>9?"9+":historialDescargas.length}</span>:null}
-          </button>
-          <button onClick={()=>setShowPapelera(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
-            🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
-          </button>
-          <button onClick={()=>{setShowBackup(true);setImportError("");}} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>💾 Backup</button>
+          {esAdmin && (
+            <>
+              <button onClick={abrirCentroDescargas} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
+                🗂 Descargas{historialDescargas.length>0?<span style={{position:"absolute",top:-5,right:-5,background:C.azul,color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{historialDescargas.length>9?"9+":historialDescargas.length}</span>:null}
+              </button>
+              <button onClick={()=>setShowPapelera(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
+                🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
+              </button>
+              <button onClick={()=>{setShowBackup(true);setImportError("");}} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>💾 Backup</button>
+            </>
+          )}
           <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff" }}>C</div>
         </div>
         {showCentroDescargas && (
