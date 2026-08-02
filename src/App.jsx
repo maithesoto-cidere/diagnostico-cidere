@@ -3065,28 +3065,29 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     </div>` : ""}
   </div>
 
-  <!-- ══ FILA 2: SÍNTESIS DIAGNÓSTICA ══ -->
-  <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;margin-bottom:22px;">
-    <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Síntesis diagnóstica</div>
-    <p style="font-size:24px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
+  <!-- ══ CONTENIDO RESTANTE — crece con flex:1 (contenido real, no un div vacío) para que el pie siempre quede al final de la hoja A4 ══ -->
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:22px;">
+
+    <!-- FILA 2: SÍNTESIS DIAGNÓSTICA -->
+    <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
+      <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Síntesis diagnóstica</div>
+      <p style="font-size:24px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
+    </div>
+
+    <!-- FILA 3: FORTALEZAS + NOTA PARA EL MENTOR -->
+    ${(areasFortaleza.length>0 || notaInterna) ? `
+    <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:22px;">
+      ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
+        <div style="font-size:18px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Fortalezas</div>
+        ${fortalezasHTML}
+      </div>`:""}
+      ${notaInterna?`<div style="background:#FFFBF0;border-radius:18px;padding:22px 29px;border-left:6px solid #E8A020;">
+        <div style="font-size:18px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Nota para el mentor</div>
+        <div style="font-size:14px;color:#A07820;margin-bottom:14px;">Disposición, expectativas y poder de decisión de quien participa</div>
+        <div style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
+      </div>`:""}
+    </div>`:""}
   </div>
-
-  <!-- ══ FILA 3: FORTALEZAS + NOTA PARA EL MENTOR ══ -->
-  ${(areasFortaleza.length>0 || notaInterna) ? `
-  <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:22px;margin-bottom:22px;">
-    ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
-      <div style="font-size:18px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Fortalezas</div>
-      ${fortalezasHTML}
-    </div>`:""}
-    ${notaInterna?`<div style="background:#FFFBF0;border-radius:18px;padding:22px 29px;border-left:6px solid #E8A020;">
-      <div style="font-size:18px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Nota para el mentor</div>
-      <div style="font-size:14px;color:#A07820;margin-bottom:14px;">Disposición, expectativas y poder de decisión de quien participa</div>
-      <div style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
-    </div>`:""}
-  </div>`:""}
-
-  <!-- Espaciador: llena el resto de la hoja para que el pie siempre quede al final de la página A4 -->
-  <div style="flex:1;"></div>
 
   <!-- ══ PIE ══ -->
   <div style="display:flex;justify-content:space-between;border-top:2px solid #E4EBF2;padding-top:14px;margin-top:10px;flex-shrink:0;">
