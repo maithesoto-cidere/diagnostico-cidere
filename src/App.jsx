@@ -2916,9 +2916,8 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;margin:0;padding:0}
-    html{width:210mm}
-    body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:24px;background:#fff;display:flex;flex-direction:column;min-height:280mm}
-    @media screen{body{max-width:210mm;margin:0 auto;padding:8mm;box-shadow:0 0 54px rgba(0,0,0,0.12)}}
+    html,body{width:100%}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:24px;background:#fff;display:flex;flex-direction:column;padding:20px 26px}
     @media print{button,.no-print{display:none!important}}
     h1,h2,h3,p,ul,li{margin:0;padding:0}
     ul{padding-left:32px}
@@ -3110,11 +3109,11 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
-    html,body{width:186mm;margin:0 auto;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff;height:100%}
+    html,body{width:100%;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}
+    body{padding:10mm;display:flex;flex-direction:column;min-height:100vh}
     h1,h2,h3,p{margin:0}
     table{width:100%;border-collapse:collapse}
-    @media screen{body{width:210mm;max-width:210mm;padding:10mm;box-shadow:0 0 30px rgba(0,0,0,0.12)}}
-    @media print{button,.no-print{display:none!important}body{padding:0;box-shadow:none}}
+    @media print{button,.no-print{display:none!important}body{padding:0}}
   `;
 
   const dimBarras = dims.map(d => {
@@ -3197,39 +3196,43 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
     <div>${dimBarras}</div>
   </div>
 
-  <!-- TABLA DIMENSIONES -->
-  <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;margin-bottom:12px;">
-    <table>
-      <thead><tr style="background:#EEF3F8;">
-        <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Puntaje</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Nivel</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Indicador</th>
-      </tr></thead>
-      <tbody>${tablaFilas}</tbody>
-    </table>
-  </div>
+  <!-- CONTENIDO RESTANTE — crece con flex:1 (contenido real) para llenar la hoja A4 completa -->
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:12px;">
 
-  <!-- SÍNTESIS + FORTALEZAS + BRECHAS + PRIORIDADES -->
-  ${interp?`
-  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
-    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 16px;">
-      <div style="font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Síntesis diagnóstica</div>
-      <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${interp.narrativa}</p>
+    <!-- TABLA DIMENSIONES -->
+    <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;">
+      <table>
+        <thead><tr style="background:#EEF3F8;">
+          <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Puntaje</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Nivel</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Indicador</th>
+        </tr></thead>
+        <tbody>${tablaFilas}</tbody>
+      </table>
     </div>
-    <div style="background:#EAF7F2;border:1px solid #C5EAD8;border-radius:10px;padding:14px 16px;">
-      <div style="font-size:9px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✓ Fortalezas</div>
-      ${fortalezasHTML}
-    </div>
-    <div style="background:#FFF4EC;border:1px solid #F5D5B0;border-radius:10px;padding:14px 16px;">
-      <div style="font-size:9px;font-weight:700;color:#D17A1F;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⚠ Brechas</div>
-      ${brechasHTML}
-    </div>
-    <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;">
-      <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎯 Prioridades</div>
-      ${prioridadesHTML}
-    </div>
-  </div>`:""}
+
+    <!-- SÍNTESIS + FORTALEZAS + BRECHAS + PRIORIDADES -->
+    ${interp?`
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;">
+      <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Síntesis diagnóstica</div>
+        <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${interp.narrativa}</p>
+      </div>
+      <div style="background:#EAF7F2;border:1px solid #C5EAD8;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:9px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✓ Fortalezas</div>
+        ${fortalezasHTML}
+      </div>
+      <div style="background:#FFF4EC;border:1px solid #F5D5B0;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:9px;font-weight:700;color:#D17A1F;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⚠ Brechas</div>
+        ${brechasHTML}
+      </div>
+      <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎯 Prioridades</div>
+        ${prioridadesHTML}
+      </div>
+    </div>`:""}
+  </div>
 
   <!-- PIE -->
   <div style="border-top:1px solid #E4EBF2;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
@@ -3254,11 +3257,11 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
-    html,body{width:186mm;margin:0 auto;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff;height:100%}
+    html,body{width:100%;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}
+    body{padding:10mm;display:flex;flex-direction:column;min-height:100vh}
     h1,h2,h3,p{margin:0}
     table{width:100%;border-collapse:collapse}
-    @media screen{body{width:210mm;max-width:210mm;padding:10mm;box-shadow:0 0 30px rgba(0,0,0,0.12)}}
-    @media print{button,.no-print{display:none!important}body{padding:0;box-shadow:none}}
+    @media print{button,.no-print{display:none!important}body{padding:0}}
   `;
 
   const dimBarras = dims.map(d => {
@@ -3352,29 +3355,33 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
     </div>
   </div>
 
-  <!-- TABLA COMPARATIVA -->
-  <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;margin-bottom:12px;">
-    <table>
-      <thead><tr style="background:#EEF3F8;">
-        <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Inicial</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Final</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Variación</th>
-      </tr></thead>
-      <tbody>${tablaFilas}</tbody>
-    </table>
-  </div>
+  <!-- CONTENIDO RESTANTE — crece con flex:1 (contenido real) para llenar la hoja A4 completa -->
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:12px;">
 
-  <!-- EVOLUCIÓN INDICADORES CUANTITATIVOS -->
-  <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;margin-bottom:12px;">
-    <div style="padding:10px 14px;background:#F5F8FB;font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;">Evolución de indicadores cuantitativos</div>
-    <table><tbody>${indicadoresFilas}</tbody></table>
-  </div>
+    <!-- TABLA COMPARATIVA -->
+    <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;">
+      <table>
+        <thead><tr style="background:#EEF3F8;">
+          <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Inicial</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Final</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Variación</th>
+        </tr></thead>
+        <tbody>${tablaFilas}</tbody>
+      </table>
+    </div>
 
-  <!-- CONCLUSIÓN -->
-  <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;margin-bottom:12px;">
-    <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Conclusión</div>
-    <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${conclusion}</p>
+    <!-- EVOLUCIÓN INDICADORES CUANTITATIVOS -->
+    <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;">
+      <div style="padding:10px 14px;background:#F5F8FB;font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;">Evolución de indicadores cuantitativos</div>
+      <table><tbody>${indicadoresFilas}</tbody></table>
+    </div>
+
+    <!-- CONCLUSIÓN -->
+    <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;">
+      <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Conclusión</div>
+      <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${conclusion}</p>
+    </div>
   </div>
 
   <!-- PIE -->
