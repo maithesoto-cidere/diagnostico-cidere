@@ -48,6 +48,7 @@ async function sbGetDimsPrograma(programaId) {
 
     const dims = dimsRaw.map(d => ({
       id: d.orden,
+      _dimUuid: d.id, // id real en Supabase — invisible para el resto de la app, solo lo usa el Editor de Contenido
       nombre: d.nombre,
       icono: d.icono,
       acento: d.color,
@@ -72,56 +73,108 @@ async function sbGetDimsPrograma(programaId) {
   } catch(e) { console.error("sbGetDimsPrograma error", e); return null; }
 }
 
-/* ── Calcula qué preguntas se eliminarían si se guardan "dimsEditados" tal como están ──
-   Se usa SOLO para mostrarle al usuario un diálogo de confirmación antes de guardar.
+/* ── Calcula qué se eliminaría (dimensiones completas y/o preguntas sueltas) si se guarda
+   "dimsEditados" tal como está. Se usa SOLO para el diálogo de confirmación antes de guardar.
    No escribe nada en Supabase. */
-async function sbCalcularPreguntasAEliminar(programaId, dimsEditados) {
+async function sbCalcularCambiosDestructivos(programaId, dimsEditados) {
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=codigo,texto`, { headers: sbHeaders });
-    if (!r.ok) return [];
-    const existentes = await r.json();
-    const codigosEditados = new Set(dimsEditados.flatMap(d => d.preguntas.map(p => p.id)));
-    return existentes.filter(p => !codigosEditados.has(p.codigo));
-  } catch(e) { return []; }
+    const [rDim, rPreg] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/dimensiones?programa_id=eq.${encodeURIComponent(programaId)}&select=id,nombre`, { headers: sbHeaders }),
+      fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=codigo,texto,dimension_id`, { headers: sbHeaders }),
+    ]);
+    if (!rDim.ok || !rPreg.ok) return { dimensiones: [], preguntas: [] };
+    const dimsFrescas = await rDim.json();
+    const pregsFrescas = await rPreg.json();
+
+    const uuidsEditados = new Set(dimsEditados.map(d => d._dimUuid).filter(Boolean));
+    const dimensiones = dimsFrescas.filter(d => !uuidsEditados.has(d.id));
+    const uuidsDimEliminadas = new Set(dimensiones.map(d => d.id));
+
+    const codigosPorDim = {};
+    dimsEditados.forEach(d => { if (d._dimUuid) codigosPorDim[d._dimUuid] = new Set(d.preguntas.map(p => p.id)); });
+
+    // Preguntas eliminadas dentro de dimensiones que SÍ se conservan
+    // (las de dimensiones eliminadas ya están contempladas arriba, no se listan dos veces)
+    const preguntas = pregsFrescas.filter(p => {
+      if (uuidsDimEliminadas.has(p.dimension_id)) return false;
+      const set = codigosPorDim[p.dimension_id];
+      return set ? !set.has(p.codigo) : false;
+    });
+
+    return { dimensiones, preguntas };
+  } catch(e) { return { dimensiones: [], preguntas: [] }; }
 }
 
 /* ── Guarda de verdad los cambios del Editor de Contenido en las tablas "dimensiones"/"preguntas" ──
-   Estrategia "sincronización completa": vuelve a traer el estado real desde Supabase (por si algo
-   cambió mientras se editaba), y para cada dimensión: actualiza sus campos, actualiza las preguntas
-   que ya existían (emparejadas por "codigo"), inserta las nuevas con un código legacy nuevo
-   (ej. si existen 1a,1b,1c inserta 1d), y elimina las que ya no están en "dimsEditados".
+   Estrategia "sincronización completa" emparejando SIEMPRE por "_dimUuid" (id real de Supabase,
+   estable aunque se reordene o se agreguen/eliminen dimensiones):
+   - Dimensión sin _dimUuid → es nueva → se INSERTA (con el siguiente número de orden disponible).
+   - Dimensión con _dimUuid que ya no aparece en dimsEditados → se ELIMINA (sus preguntas se
+     eliminan en cascada automáticamente, por la relación en la base de datos).
+   - Preguntas: mismo patrón de siempre, emparejadas por "codigo" dentro de cada dimensión.
    Devuelve { ok:true } o { ok:false, error }. Nunca lanza excepción hacia quien la llama. */
 async function sbGuardarContenidoDims(programaId, dimsEditados) {
   try {
     const [rDim, rPreg] = await Promise.all([
       fetch(`${SB_URL}/rest/v1/dimensiones?programa_id=eq.${encodeURIComponent(programaId)}&select=id,orden`, { headers: sbHeaders }),
-      fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=id,codigo,dimension_id,orden`, { headers: sbHeaders }),
+      fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=id,codigo,dimension_id`, { headers: sbHeaders }),
     ]);
     if (!rDim.ok || !rPreg.ok) return { ok:false, error:"No se pudo leer el estado actual desde Supabase." };
     const dimsFrescas = await rDim.json();
     const pregsFrescas = await rPreg.json();
+    let siguienteOrden = dimsFrescas.reduce((m,d)=>Math.max(m,d.orden||0), 0) + 1;
 
-    for (let i = 0; i < dimsEditados.length; i++) {
-      const dEditada = dimsEditados[i];
-      const dFresca = dimsFrescas.find(x => x.orden === dEditada.id);
-      if (!dFresca) continue; // no debería pasar; por seguridad, se salta en vez de romper el resto
+    // 1) Eliminar dimensiones que ya no están en dimsEditados (el usuario ya confirmó esto)
+    const uuidsEditados = new Set(dimsEditados.map(d => d._dimUuid).filter(Boolean));
+    for (const dFresca of dimsFrescas) {
+      if (!uuidsEditados.has(dFresca.id)) {
+        const rDel = await fetch(`${SB_URL}/rest/v1/dimensiones?id=eq.${dFresca.id}`, { method:"DELETE", headers: sbHeaders });
+        if (!rDel.ok) return { ok:false, error:"No se pudo eliminar una dimensión." };
+      }
+    }
 
-      // 1) Actualizar campos de la dimensión
-      const rUpd = await fetch(`${SB_URL}/rest/v1/dimensiones?id=eq.${dFresca.id}`, {
-        method: "PATCH", headers: sbHeaders,
-        body: JSON.stringify({
-          nombre: dEditada.nombre, icono: dEditada.icono, color: dEditada.acento,
-          objetivo: dEditada.objetivo, indicador_label: dEditada.indicadorObjetivo?.label || "",
-        })
-      });
-      if (!rUpd.ok) return { ok:false, error:`No se pudo actualizar la dimensión "${dEditada.nombre}".` };
+    for (const dEditada of dimsEditados) {
+      let dimUuid = dEditada._dimUuid;
+      let ordenDeEstaDim;
 
-      // 2) Preguntas existentes de esta dimensión (según lo recién leído de Supabase)
-      const pregsDeEstaDim = pregsFrescas.filter(p => p.dimension_id === dFresca.id);
+      if (dimUuid) {
+        // Dimensión existente: actualizar campos
+        const rUpd = await fetch(`${SB_URL}/rest/v1/dimensiones?id=eq.${dimUuid}`, {
+          method: "PATCH", headers: sbHeaders,
+          body: JSON.stringify({
+            nombre: dEditada.nombre, icono: dEditada.icono, color: dEditada.acento,
+            objetivo: dEditada.objetivo, indicador_label: dEditada.indicadorObjetivo?.label || "",
+          })
+        });
+        if (!rUpd.ok) return { ok:false, error:`No se pudo actualizar la dimensión "${dEditada.nombre}".` };
+        const dFresca = dimsFrescas.find(x => x.id === dimUuid);
+        ordenDeEstaDim = dFresca?.orden ?? (siguienteOrden++);
+      } else {
+        // Dimensión nueva: insertar con el siguiente número de orden disponible
+        ordenDeEstaDim = siguienteOrden++;
+        const rIns = await fetch(`${SB_URL}/rest/v1/dimensiones`, {
+          method: "POST", headers: sbHeaders,
+          body: JSON.stringify({
+            programa_id: programaId, orden: ordenDeEstaDim,
+            nombre: dEditada.nombre, icono: dEditada.icono, color: dEditada.acento,
+            objetivo: dEditada.objetivo,
+            indicador_label: dEditada.indicadorObjetivo?.label || "",
+            indicador_tipo: dEditada.indicadorObjetivo?.tipo || "numero",
+            indicador_placeholder: dEditada.indicadorObjetivo?.placeholder || "",
+            activo: true,
+          })
+        });
+        if (!rIns.ok) return { ok:false, error:`No se pudo crear la dimensión "${dEditada.nombre}".` };
+        const nuevo = (await rIns.json())[0];
+        dimUuid = nuevo.id;
+      }
+
+      // Preguntas existentes de esta dimensión (según lo recién leído de Supabase)
+      const pregsDeEstaDim = pregsFrescas.filter(p => p.dimension_id === dimUuid);
       const codigosExistentes = new Set(pregsDeEstaDim.map(p => p.codigo));
       const codigosEditados = new Set(dEditada.preguntas.map(p => p.id));
 
-      // 3) Actualizar / insertar preguntas
+      // Actualizar / insertar preguntas
       for (let pi = 0; pi < dEditada.preguntas.length; pi++) {
         const p = dEditada.preguntas[pi];
         const yaExiste = codigosExistentes.has(p.id);
@@ -135,21 +188,21 @@ async function sbGuardarContenidoDims(programaId, dimsEditados) {
           });
           if (!rU.ok) return { ok:false, error:`No se pudo actualizar la pregunta "${p.id}".` };
         } else {
-          // Pregunta nueva agregada desde el editor: se le asigna un código legacy limpio (ej. 1d, 1e...)
+          // Pregunta nueva: se le asigna un código legacy limpio basado en el orden real de su dimensión (ej. 1d, 1e...)
           let letra = 97; // 'a'
-          const letrasUsadas = new Set([...codigosExistentes].filter(c => c.startsWith(String(dEditada.id))).map(c => c.slice(String(dEditada.id).length)));
+          const letrasUsadas = new Set([...codigosExistentes].filter(c => c.startsWith(String(ordenDeEstaDim))).map(c => c.slice(String(ordenDeEstaDim).length)));
           while (letrasUsadas.has(String.fromCharCode(letra)) && letra < 123) letra++;
-          const nuevoCodigo = letra < 123 ? `${dEditada.id}${String.fromCharCode(letra)}` : `${dEditada.id}n${Date.now()}`;
+          const nuevoCodigo = letra < 123 ? `${ordenDeEstaDim}${String.fromCharCode(letra)}` : `${ordenDeEstaDim}n${Date.now()}`;
           codigosExistentes.add(nuevoCodigo);
           const rI = await fetch(`${SB_URL}/rest/v1/preguntas`, {
             method: "POST", headers: sbHeaders,
-            body: JSON.stringify({ ...body, codigo: nuevoCodigo, programa_id: programaId, dimension_id: dFresca.id, tipo: "escala_1_5", cuenta_para_puntaje: true })
+            body: JSON.stringify({ ...body, codigo: nuevoCodigo, programa_id: programaId, dimension_id: dimUuid, tipo: "escala_1_5", cuenta_para_puntaje: true })
           });
           if (!rI.ok) return { ok:false, error:`No se pudo crear la pregunta nueva "${p.texto?.slice(0,30)}...".` };
         }
       }
 
-      // 4) Eliminar preguntas que ya no están (el usuario ya confirmó esto antes de llegar aquí)
+      // Eliminar preguntas que ya no están (el usuario ya confirmó esto antes de llegar aquí)
       const codigosAEliminar = [...codigosExistentes].filter(c => !codigosEditados.has(c) && pregsDeEstaDim.some(p=>p.codigo===c));
       for (const codigo of codigosAEliminar) {
         const rD = await fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&codigo=eq.${encodeURIComponent(codigo)}`, {
@@ -326,13 +379,15 @@ function generarInterpretacion(dims, datos) {
   const nivelGlobal = getNivel(pgGlobal);
   const fList = fortalezas.length ? fortalezas : [ordenado[0]];
   const bList = brechas.length ? brechas : [ordenado[ordenado.length-1]];
-  const narrativa = `La empresa alcanza un nivel de madurez "${nivelGlobal.label}" (${a5to100(pgGlobal)}%), con un desempeño más sólido en ${fList.map(f=>f.d.nombre).join(" y ")}. ${bList.length?`Las mayores oportunidades de mejora se concentran en ${bList.map(f=>f.d.nombre).join(" y ")}, donde se recomienda priorizar acciones de fortalecimiento durante el programa.`:""}`;
+  const peor = ordenado[ordenado.length-1];
+  const otrasBrechas = bList.filter(f => f.d !== peor.d);
+  const narrativa = `La empresa alcanza un nivel de madurez "${nivelGlobal.label}" (${a5to100(pgGlobal)}%). Su desempeño es más sólido en ${fList.map(f=>f.d.nombre).join(" y ")}, lo que constituye una base sobre la cual apoyar el trabajo de mentoría. La principal prioridad de atención es ${peor.d.nombre} (${a5to100(peor.prom)}%)${otrasBrechas.length?`, seguida de ${otrasBrechas.map(f=>f.d.nombre).join(" y ")}`:""}. Al estar las distintas áreas de la empresa interrelacionadas, es probable que estas brechas estén afectando también su desempeño general, por lo que se recomienda abordarlas de forma conjunta durante el programa.`;
   return {
     fortalezas: fList,
     brechas: bList,
     prioritarias,
     mejor: ordenado[0],
-    peor: ordenado[ordenado.length-1],
+    peor,
     narrativa,
     pgGlobal,
     nivelGlobal,
@@ -2180,21 +2235,42 @@ function EditorContenido({ dims, onSave, onClose }) {
   const updN = (di,pi,ni,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,niveles:q.niveles.map((n,k)=>k!==ni?n:v)})}));
   const addP = (di) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:[...x.preguntas,{id:`${x.id}x${Date.now()}`,obligatoria:true,texto:"Nueva pregunta",criterio:"Criterio",evidencia:"",niveles:["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"]}]}));
   const delP = (di,pi) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.filter((_,j)=>j!==pi)}));
+  const addDim = () => {
+    const nuevaDim = { _dimUuid:null, id:data.length+1, nombre:"Nueva dimensión", icono:"◆", acento:"#607D8B", objetivo:"", indicadorObjetivo:{label:"",tipo:"numero",placeholder:""}, preguntas:[] };
+    setData(p => [...p, nuevaDim]);
+    setDimSel(data.length);
+    setPregSel(null);
+  };
+  const delDim = (di) => {
+    setData(p => p.filter((_,i)=>i!==di));
+    setDimSel(0);
+    setPregSel(null);
+  };
   const si = { padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:7, color:C.oscuro, fontSize:13, outline:"none", width:"100%", boxSizing:"border-box", fontFamily:"inherit" };
 
   const handleGuardar = async () => {
     setErrorGuardado("");
+    if (data.some(dd => dd.preguntas.length === 0)) {
+      window.alert("Cada dimensión necesita al menos 1 pregunta. Agrega una pregunta o elimina la dimensión vacía antes de guardar.");
+      return;
+    }
     setGuardando(true);
     try {
-      const aEliminar = await sbCalcularPreguntasAEliminar(PROGRAMA_ID, data);
-      if (aEliminar.length > 0) {
-        const lista = aEliminar.map(p => `• [${p.codigo}] ${p.texto}`).join("\n");
-        const confirmado = window.confirm(
-          `Vas a eliminar ${aEliminar.length} pregunta(s) que ya existían:\n\n${lista}\n\n` +
-          `Las respuestas ya guardadas en diagnósticos anteriores NO se borran de la base de datos, ` +
-          `pero estas preguntas dejarán de mostrarse y de contar en el puntaje de las próximas evaluaciones.\n\n` +
-          `¿Confirmas que quieres eliminarlas?`
-        );
+      const { dimensiones: dimsAEliminar, preguntas: pregsAEliminar } = await sbCalcularCambiosDestructivos(PROGRAMA_ID, data);
+      if (dimsAEliminar.length > 0 || pregsAEliminar.length > 0) {
+        let msg = "";
+        if (dimsAEliminar.length > 0) {
+          msg += `Vas a eliminar ${dimsAEliminar.length} DIMENSIÓN(ES) COMPLETA(S), junto con todas sus preguntas:\n\n`;
+          msg += dimsAEliminar.map(d => `• ${d.nombre}`).join("\n") + "\n\n";
+        }
+        if (pregsAEliminar.length > 0) {
+          msg += `Vas a eliminar ${pregsAEliminar.length} pregunta(s) suelta(s) que ya existían:\n\n`;
+          msg += pregsAEliminar.map(p => `• [${p.codigo}] ${p.texto}`).join("\n") + "\n\n";
+        }
+        msg += `Las respuestas ya guardadas en diagnósticos anteriores NO se borran de la base de datos, ` +
+               `pero todo esto dejará de mostrarse y de contar en el puntaje de las próximas evaluaciones.\n\n` +
+               `¿Confirmas que quieres continuar?`;
+        const confirmado = window.confirm(msg);
         if (!confirmado) { setGuardando(false); return; }
       }
       const res = await sbGuardarContenidoDims(PROGRAMA_ID, data);
@@ -2227,11 +2303,17 @@ function EditorContenido({ dims, onSave, onClose }) {
               <div style={{ fontSize:10, color:C.grisCl, marginTop:2 }}>{dd.preguntas.length} preguntas</div>
             </div>
           ))}
+          <div style={{ padding:"11px 16px" }}>
+            <button onClick={addDim} style={{ width:"100%", padding:"9px", borderRadius:8, border:`1px dashed ${C.gris}`, background:"transparent", color:C.gris, fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar dimensión</button>
+          </div>
         </div>
         <div style={{ flex:1, overflowY:"auto", padding:24, background:C.blanco }}>
           {pregSel===null ? (
             <div style={{ maxWidth:660 }}>
-              <p style={{ fontSize:11, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:16 }}>Dimensión {d.id} — {d.nombre}</p>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                <p style={{ fontSize:11, color:C.gris, textTransform:"uppercase", letterSpacing:1, margin:0 }}>Dimensión {d.id} — {d.nombre}</p>
+                <button onClick={()=>{ if(window.confirm(`¿Eliminar la dimensión "${d.nombre}" y sus ${d.preguntas.length} pregunta(s)? Esto solo se aplica al guardar, todavía puedes cancelar después.`)) delDim(dimSel); }} style={{ padding:"6px 12px", borderRadius:6, border:"1px solid #fcc", background:"#fff5f5", color:"#E74C3C", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>🗑 Eliminar dimensión</button>
+              </div>
               <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:12, marginBottom:12 }}>
                 <div><label style={{ display:"block", fontSize:11, color:C.gris, marginBottom:4, fontWeight:600 }}>NOMBRE</label><input value={d.nombre} onChange={e=>upd(dimSel,"nombre",e.target.value)} style={si}/></div>
                 <div><label style={{ display:"block", fontSize:11, color:C.gris, marginBottom:4, fontWeight:600 }}>ICONO</label><input value={d.icono} onChange={e=>upd(dimSel,"icono",e.target.value)} style={{...si,fontSize:18}}/></div>
@@ -2853,36 +2935,49 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   }).join("");
 
   // ── ÁREAS A TRABAJAR EN LA MENTORÍA (grid flexible, 1 columna ancha por tarjeta, sin acciones sugeridas) ──
-  const areasHTML = areasParaTrabajar.map(({ d, prom, n, pct, respuestas, tipoArea }) => {
+  const renderAreaCard = ({ d, prom, n, pct, respuestas, tipoArea }, esPrincipal) => {
     const esCrit = tipoArea === "critica";
     const esOportunidad = tipoArea === "oportunidad";
     const borderColor = esCrit ? "#E74C3C" : esOportunidad ? oportColor : pColor;
-    const badge = esCrit
-      ? `<span style="font-size:18px;background:#E74C3C;color:#fff;padding:2px 11px;border-radius:6px;margin-top:5px;display:inline-block;">Área crítica</span>`
-      : esOportunidad
-        ? `<span style="font-size:18px;background:${oportColor};color:#fff;padding:2px 11px;border-radius:6px;margin-top:5px;display:inline-block;">Área de oportunidad</span>`
-        : "";
-    const malas = respuestas.filter(r => r.valor <= 3).slice(0, 4);
+    const badge = esPrincipal
+      ? `<span style="font-size:18px;background:#E74C3C;color:#fff;padding:2px 11px;border-radius:6px;margin-top:5px;display:inline-block;">🎯 Dolor principal</span>`
+      : esCrit
+        ? `<span style="font-size:16px;background:#E74C3C;color:#fff;padding:2px 10px;border-radius:6px;margin-top:4px;display:inline-block;">Área crítica</span>`
+        : esOportunidad
+          ? `<span style="font-size:16px;background:${oportColor};color:#fff;padding:2px 10px;border-radius:6px;margin-top:4px;display:inline-block;">Área de oportunidad</span>`
+          : "";
+    const malas = respuestas.filter(r => r.valor <= 3).slice(0, esPrincipal ? 4 : 2);
+    const fTitulo   = esPrincipal ? 30 : 21;
+    const fPct      = esPrincipal ? 45 : 32;
+    const fLabel    = esPrincipal ? "Situación detectada" : "Detalle";
+    const fLabelSz  = esPrincipal ? 18 : 15;
+    const fTextoSz  = esPrincipal ? 22 : 17;
+    const padHeader = esPrincipal ? "18px 27px" : "13px 20px";
+    const padBody   = esPrincipal ? "26px 27px" : "16px 20px";
     return `
     <div style="border:3px solid ${borderColor}55;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;height:100%;">
-      <div style="background:${pColor};padding:18px 27px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+      <div style="background:${pColor};padding:${padHeader};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
         <div>
-          <div style="font-size:26px;font-weight:700;color:#fff;">${d.nombre}</div>
+          <div style="font-size:${fTitulo}px;font-weight:700;color:#fff;">${d.nombre}</div>
           ${badge}
         </div>
         <div style="text-align:right;">
-          <div style="font-size:45px;font-weight:800;color:#fff;">${pct}%</div>
-          <div style="font-size:18px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
+          <div style="font-size:${fPct}px;font-weight:800;color:#fff;">${pct}%</div>
+          <div style="font-size:16px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
         </div>
       </div>
-      <div style="padding:26px 27px;background:#fff;flex:1;display:flex;flex-direction:column;justify-content:center;">
-        <div style="font-size:18px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Situación detectada</div>
-        ${malas.length ? malas.map(r=>`<div style="font-size:22px;color:#3A5A7A;line-height:1.5;margin-bottom:14px;padding-left:16px;border-left:5px solid ${r.color};">
+      <div style="padding:${padBody};background:#fff;flex:1;display:flex;flex-direction:column;justify-content:center;">
+        <div style="font-size:${fLabelSz}px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;">${fLabel}</div>
+        ${malas.length ? malas.map(r=>`<div style="font-size:${fTextoSz}px;color:#3A5A7A;line-height:1.5;margin-bottom:12px;padding-left:16px;border-left:5px solid ${r.color};">
             <strong style="color:#1C2B3A;">${r.criterio}:</strong> ${r.descripcion}
-          </div>`).join("") : `<div style="font-size:21px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
+          </div>`).join("") : `<div style="font-size:${fTextoSz}px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
       </div>
     </div>`;
-  }).join("");
+  };
+  const [areaPrincipal, ...areasSecundarias] = areasParaTrabajar;
+  const areaPrincipalHTML = areaPrincipal ? renderAreaCard(areaPrincipal, true) : "";
+  const areasSecundariasHTML = areasSecundarias.map(a => renderAreaCard(a, false)).join("");
+
 
   // ── FORTALEZAS (sin ícono) ──
   const fortalezasHTML = areasFortaleza.slice(0,4).map(({ d, n, pct }) =>
@@ -2920,10 +3015,11 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
       <div style="font-size:18px;font-weight:700;color:#8A9BB0;letter-spacing:2px;margin-bottom:18px;">EMPRESA</div>
       <div style="font-size:27px;font-weight:800;color:#1C2B3A;margin-bottom:6px;line-height:1.2;" contenteditable="true">${infoGeneral.empresa||"—"}</div>
       <div style="font-size:19px;color:#5A7A9A;margin-bottom:22px;line-height:1.3;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
         ${[
           ["Rubro",infoGeneral.rubro||"No especificado"],
           ["Tamaño",infoGeneral.tamano||"No especificado"],
+          ["Acceso a info. financiera",infoGeneral.accesoFinanciero||"No registrado"],
           ["Facturación 2025",infoGeneral.facturacionTotal?`MM$ ${infoGeneral.facturacionTotal}`:"No registrada"],
           [`Con ${programa?.nombre||"programa"}`,infoGeneral.facturacionCMPC?`MM$ ${infoGeneral.facturacionCMPC}`:"—"],
         ].map(([l,v])=>`<div style="background:#fff;border-radius:11px;padding:14px 18px;border:2px solid #E4EBF2;">
@@ -2947,13 +3043,24 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     </div>
   </div>
 
+  <!-- ══ EL "DOLOR" PRINCIPAL — se muestra primero, apenas después del puntaje ══ -->
+  <div style="margin-bottom:22px;">
+    <div style="font-size:18px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">Área Prioritaria a Trabajar en la Mentoría</div>
+    <div style="margin-bottom:${areasSecundarias.length?"16px":"0"};">${areaPrincipalHTML}</div>
+    ${areasSecundarias.length ? `
+    <div style="font-size:14px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Otras áreas a considerar</div>
+    <div style="display:grid;grid-template-columns:repeat(${areasSecundarias.length===1?1:2},1fr);gap:16px;">
+      ${areasSecundariasHTML}
+    </div>` : ""}
+  </div>
+
   <!-- ══ FILA 2: SÍNTESIS DIAGNÓSTICA ══ -->
   <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;margin-bottom:22px;">
     <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Síntesis diagnóstica</div>
     <p style="font-size:24px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
   </div>
 
-  <!-- ══ FILA 3: FORTALEZAS + NOTA DEL CONSULTOR ══ -->
+  <!-- ══ FILA 3: FORTALEZAS + NOTA PARA EL MENTOR ══ -->
   ${(areasFortaleza.length>0 || notaInterna) ? `
   <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:22px;margin-bottom:22px;">
     ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
@@ -2961,18 +3068,11 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
       ${fortalezasHTML}
     </div>`:""}
     ${notaInterna?`<div style="background:#FFFBF0;border-radius:18px;padding:22px 29px;border-left:6px solid #E8A020;">
-      <div style="font-size:18px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Nota del consultor</div>
+      <div style="font-size:18px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Nota para el mentor</div>
+      <div style="font-size:14px;color:#A07820;margin-bottom:14px;">Disposición, expectativas y poder de decisión de quien participa</div>
       <div style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
     </div>`:""}
   </div>`:""}
-
-  <!-- ══ ÁREAS A TRABAJAR EN LA MENTORÍA (grid flexible: 1, 2 o 3 tarjetas) ══ -->
-  <div style="margin-bottom:22px;flex:1;display:flex;flex-direction:column;min-height:0;">
-    <div style="font-size:18px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;flex-shrink:0;">Áreas Prioritarias a Trabajar en la Mentoría</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(523px,1fr));grid-auto-rows:1fr;gap:22px;flex:1;">
-      ${areasHTML}
-    </div>
-  </div>
 
   <!-- ══ PIE ══ -->
   <div style="display:flex;justify-content:space-between;border-top:2px solid #E4EBF2;padding-top:14px;margin-top:10px;flex-shrink:0;">
@@ -3753,6 +3853,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                 <div>
                   <div style={{ fontSize:10, letterSpacing:1, color:C.gris, textTransform:"uppercase", marginBottom:2 }}>Observaciones del Consultor</div>
                   <div style={{ fontSize:13, fontWeight:700, color:C.oscuro }}>Nota sobre la empresa para el mentor</div>
+                  <div style={{ fontSize:11, color:C.gris, marginTop:3, maxWidth:420 }}>Ideal para anotar: qué espera el emprendedor de la mentoría, su disposición real, y si quien participa tiene poder de decisión en la empresa.</div>
                 </div>
                 <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", userSelect:"none" }}>
                   <div style={{ position:"relative", width:40, height:22, flexShrink:0 }} onClick={()=>setInfoGeneral(p=>({...p, obsEnMentor:!p.obsEnMentor}))}>
@@ -3768,13 +3869,13 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                 <textarea
                   value={infoGeneral.notaMentor||""}
                   onChange={e=>setInfoGeneral(p=>({...p, notaMentor:e.target.value}))}
-                  placeholder="Ej: Empresa con buena disposición pero dueño con resistencia a delegar. Priorizar trabajo en gestión de personas. Contactar antes de la sesión para confirmar asistencia..."
+                  placeholder="Ej: El emprendedor espera principalmente ayuda para ordenar sus finanzas. Buena disposición, aunque asiste por exigencia de la empresa mandante más que por decisión propia. Quien participa (el dueño) SÍ tiene poder de decisión total. Priorizar trabajo en gestión de personas..."
                   rows={4}
                   style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1.5px solid ${infoGeneral.obsEnMentor?C.verde:C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", resize:"vertical", fontFamily:"inherit", boxSizing:"border-box", lineHeight:1.6, transition:"border-color 0.2s" }}
                 />
                 {infoGeneral.obsEnMentor && (
                   <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:8, fontSize:11, color:C.verde }}>
-                    ✓ Esta nota aparecerá en la sección "Nota del consultor" de la ficha del mentor
+                    ✓ Esta nota aparecerá en la sección "Nota para el mentor" de la ficha
                   </div>
                 )}
                 {!infoGeneral.obsEnMentor && infoGeneral.notaMentor && (
