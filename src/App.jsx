@@ -30,6 +30,194 @@ async function sbSet(key, value) {
   } catch(e) { console.error("sbSet error", e); }
 }
 
+/* ── Carga de dimensiones/preguntas configurables (tablas "dimensiones" y "preguntas") ──
+   Transforma los datos de Supabase a EXACTAMENTE la misma forma que DIMS_BASE, para que
+   el resto de la app (formulario, radar, ficha, dashboard, editor, PDFs) no necesite cambios.
+   Si algo falla (sin red, tablas vacías, etc.) devuelve null y quien llama debe usar DIMS_BASE
+   como respaldo — así la app nunca se queda sin dimensiones para mostrar. */
+async function sbGetDimsPrograma(programaId) {
+  try {
+    const [rDim, rPreg] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/dimensiones?programa_id=eq.${encodeURIComponent(programaId)}&activo=eq.true&select=*&order=orden`, { headers: sbHeaders }),
+      fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=*&order=orden`, { headers: sbHeaders }),
+    ]);
+    if (!rDim.ok || !rPreg.ok) return null; // error de red/servidor: quien llama debe usar su respaldo
+    const dimsRaw = await rDim.json();
+    const pregsRaw = await rPreg.json();
+    if (!Array.isArray(dimsRaw) || dimsRaw.length === 0) return []; // programa válido, simplemente aún sin dimensiones configuradas
+
+    const dims = dimsRaw.map(d => ({
+      id: d.orden,
+      _dimUuid: d.id, // id real en Supabase — invisible para el resto de la app, solo lo usa el Editor de Contenido
+      nombre: d.nombre,
+      icono: d.icono,
+      acento: d.color,
+      objetivo: d.objetivo,
+      indicadorObjetivo: { label: d.indicador_label, tipo: d.indicador_tipo, placeholder: d.indicador_placeholder },
+      preguntas: pregsRaw
+        .filter(p => p.dimension_id === d.id)
+        .map(p => ({
+          id: p.codigo,
+          obligatoria: p.obligatoria,
+          texto: p.texto,
+          criterio: p.criterio,
+          evidencia: p.evidencia,
+          niveles: p.niveles,
+        })),
+    }));
+
+    // Verificación de integridad mínima: si hay dimensiones creadas pero alguna quedó sin preguntas
+    // (estado intermedio anómalo, no debería pasar con el flujo normal del Editor), se trata como error
+    // de carga en vez de mostrar datos a medio configurar.
+    if (dims.some(d => d.preguntas.length === 0)) return null;
+
+    return dims;
+  } catch(e) { console.error("sbGetDimsPrograma error", e); return null; }
+}
+
+/* ── Calcula qué se eliminaría (dimensiones completas y/o preguntas sueltas) si se guarda
+   "dimsEditados" tal como está. Se usa SOLO para el diálogo de confirmación antes de guardar.
+   No escribe nada en Supabase. */
+async function sbCalcularCambiosDestructivos(programaId, dimsEditados) {
+  try {
+    const [rDim, rPreg] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/dimensiones?programa_id=eq.${encodeURIComponent(programaId)}&select=id,nombre`, { headers: sbHeaders }),
+      fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=codigo,texto,dimension_id`, { headers: sbHeaders }),
+    ]);
+    if (!rDim.ok || !rPreg.ok) return { dimensiones: [], preguntas: [] };
+    const dimsFrescas = await rDim.json();
+    const pregsFrescas = await rPreg.json();
+
+    const uuidsEditados = new Set(dimsEditados.map(d => d._dimUuid).filter(Boolean));
+    const dimensiones = dimsFrescas.filter(d => !uuidsEditados.has(d.id));
+    const uuidsDimEliminadas = new Set(dimensiones.map(d => d.id));
+
+    const codigosPorDim = {};
+    dimsEditados.forEach(d => { if (d._dimUuid) codigosPorDim[d._dimUuid] = new Set(d.preguntas.map(p => p.id)); });
+
+    // Preguntas eliminadas dentro de dimensiones que SÍ se conservan
+    // (las de dimensiones eliminadas ya están contempladas arriba, no se listan dos veces)
+    const preguntas = pregsFrescas.filter(p => {
+      if (uuidsDimEliminadas.has(p.dimension_id)) return false;
+      const set = codigosPorDim[p.dimension_id];
+      return set ? !set.has(p.codigo) : false;
+    });
+
+    return { dimensiones, preguntas };
+  } catch(e) { return { dimensiones: [], preguntas: [] }; }
+}
+
+/* ── Guarda de verdad los cambios del Editor de Contenido en las tablas "dimensiones"/"preguntas" ──
+   Estrategia "sincronización completa" emparejando SIEMPRE por "_dimUuid" (id real de Supabase,
+   estable aunque se reordene o se agreguen/eliminen dimensiones):
+   - Dimensión sin _dimUuid → es nueva → se INSERTA (con el siguiente número de orden disponible).
+   - Dimensión con _dimUuid que ya no aparece en dimsEditados → se ELIMINA (sus preguntas se
+     eliminan en cascada automáticamente, por la relación en la base de datos).
+   - Preguntas: mismo patrón de siempre, emparejadas por "codigo" dentro de cada dimensión.
+   Devuelve { ok:true } o { ok:false, error }. Nunca lanza excepción hacia quien la llama. */
+async function sbGuardarContenidoDims(programaId, dimsEditados) {
+  try {
+    const [rDim, rPreg] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/dimensiones?programa_id=eq.${encodeURIComponent(programaId)}&select=id,orden`, { headers: sbHeaders }),
+      fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&select=id,codigo,dimension_id`, { headers: sbHeaders }),
+    ]);
+    if (!rDim.ok || !rPreg.ok) return { ok:false, error:"No se pudo leer el estado actual desde Supabase." };
+    const dimsFrescas = await rDim.json();
+    const pregsFrescas = await rPreg.json();
+    let siguienteOrden = dimsFrescas.reduce((m,d)=>Math.max(m,d.orden||0), 0) + 1;
+
+    // 1) Eliminar dimensiones que ya no están en dimsEditados (el usuario ya confirmó esto)
+    const uuidsEditados = new Set(dimsEditados.map(d => d._dimUuid).filter(Boolean));
+    for (const dFresca of dimsFrescas) {
+      if (!uuidsEditados.has(dFresca.id)) {
+        const rDel = await fetch(`${SB_URL}/rest/v1/dimensiones?id=eq.${dFresca.id}`, { method:"DELETE", headers: sbHeaders });
+        if (!rDel.ok) return { ok:false, error:"No se pudo eliminar una dimensión." };
+      }
+    }
+
+    for (const dEditada of dimsEditados) {
+      let dimUuid = dEditada._dimUuid;
+      let ordenDeEstaDim;
+
+      if (dimUuid) {
+        // Dimensión existente: actualizar campos
+        const rUpd = await fetch(`${SB_URL}/rest/v1/dimensiones?id=eq.${dimUuid}`, {
+          method: "PATCH", headers: sbHeaders,
+          body: JSON.stringify({
+            nombre: dEditada.nombre, icono: dEditada.icono, color: dEditada.acento,
+            objetivo: dEditada.objetivo, indicador_label: dEditada.indicadorObjetivo?.label || "",
+          })
+        });
+        if (!rUpd.ok) return { ok:false, error:`No se pudo actualizar la dimensión "${dEditada.nombre}".` };
+        const dFresca = dimsFrescas.find(x => x.id === dimUuid);
+        ordenDeEstaDim = dFresca?.orden ?? (siguienteOrden++);
+      } else {
+        // Dimensión nueva: insertar con el siguiente número de orden disponible
+        ordenDeEstaDim = siguienteOrden++;
+        const rIns = await fetch(`${SB_URL}/rest/v1/dimensiones`, {
+          method: "POST", headers: sbHeaders,
+          body: JSON.stringify({
+            programa_id: programaId, orden: ordenDeEstaDim,
+            nombre: dEditada.nombre, icono: dEditada.icono, color: dEditada.acento,
+            objetivo: dEditada.objetivo,
+            indicador_label: dEditada.indicadorObjetivo?.label || "",
+            indicador_tipo: dEditada.indicadorObjetivo?.tipo || "numero",
+            indicador_placeholder: dEditada.indicadorObjetivo?.placeholder || "",
+            activo: true,
+          })
+        });
+        if (!rIns.ok) return { ok:false, error:`No se pudo crear la dimensión "${dEditada.nombre}".` };
+        const nuevo = (await rIns.json())[0];
+        dimUuid = nuevo.id;
+      }
+
+      // Preguntas existentes de esta dimensión (según lo recién leído de Supabase)
+      const pregsDeEstaDim = pregsFrescas.filter(p => p.dimension_id === dimUuid);
+      const codigosExistentes = new Set(pregsDeEstaDim.map(p => p.codigo));
+      const codigosEditados = new Set(dEditada.preguntas.map(p => p.id));
+
+      // Actualizar / insertar preguntas
+      for (let pi = 0; pi < dEditada.preguntas.length; pi++) {
+        const p = dEditada.preguntas[pi];
+        const yaExiste = codigosExistentes.has(p.id);
+        const body = {
+          texto: p.texto, criterio: p.criterio, evidencia: p.evidencia,
+          niveles: p.niveles, obligatoria: p.obligatoria !== false, orden: pi + 1,
+        };
+        if (yaExiste) {
+          const rU = await fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&codigo=eq.${encodeURIComponent(p.id)}`, {
+            method: "PATCH", headers: sbHeaders, body: JSON.stringify(body)
+          });
+          if (!rU.ok) return { ok:false, error:`No se pudo actualizar la pregunta "${p.id}".` };
+        } else {
+          // Pregunta nueva: se le asigna un código legacy limpio basado en el orden real de su dimensión (ej. 1d, 1e...)
+          let letra = 97; // 'a'
+          const letrasUsadas = new Set([...codigosExistentes].filter(c => c.startsWith(String(ordenDeEstaDim))).map(c => c.slice(String(ordenDeEstaDim).length)));
+          while (letrasUsadas.has(String.fromCharCode(letra)) && letra < 123) letra++;
+          const nuevoCodigo = letra < 123 ? `${ordenDeEstaDim}${String.fromCharCode(letra)}` : `${ordenDeEstaDim}n${Date.now()}`;
+          codigosExistentes.add(nuevoCodigo);
+          const rI = await fetch(`${SB_URL}/rest/v1/preguntas`, {
+            method: "POST", headers: sbHeaders,
+            body: JSON.stringify({ ...body, codigo: nuevoCodigo, programa_id: programaId, dimension_id: dimUuid, tipo: "escala_1_5", cuenta_para_puntaje: true })
+          });
+          if (!rI.ok) return { ok:false, error:`No se pudo crear la pregunta nueva "${p.texto?.slice(0,30)}...".` };
+        }
+      }
+
+      // Eliminar preguntas que ya no están (el usuario ya confirmó esto antes de llegar aquí)
+      const codigosAEliminar = [...codigosExistentes].filter(c => !codigosEditados.has(c) && pregsDeEstaDim.some(p=>p.codigo===c));
+      for (const codigo of codigosAEliminar) {
+        const rD = await fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&codigo=eq.${encodeURIComponent(codigo)}`, {
+          method: "DELETE", headers: sbHeaders
+        });
+        if (!rD.ok) return { ok:false, error:`No se pudo eliminar la pregunta "${codigo}".` };
+      }
+    }
+
+    return { ok:true };
+  } catch(e) { return { ok:false, error: e?.message || "Error desconocido." }; }
+}
+
 /* ── Presencia (reutiliza la misma tabla "proyectos" que ya existe — sin librerías ni tablas nuevas) ──
    Se guarda un registro con id="presencia-v1" cuyo "data" es un array [{id,nombre,actividad,last_seen}, ...].
    Cada usuario activo actualiza su entrada cada 15s; se descartan entradas de más de 45s sin actividad. */
@@ -193,13 +381,15 @@ function generarInterpretacion(dims, datos) {
   const nivelGlobal = getNivel(pgGlobal);
   const fList = fortalezas.length ? fortalezas : [ordenado[0]];
   const bList = brechas.length ? brechas : [ordenado[ordenado.length-1]];
-  const narrativa = `La empresa alcanza un nivel de madurez "${nivelGlobal.label}" (${a5to100(pgGlobal)}%), con un desempeño más sólido en ${fList.map(f=>f.d.nombre).join(" y ")}. ${bList.length?`Las mayores oportunidades de mejora se concentran en ${bList.map(f=>f.d.nombre).join(" y ")}, donde se recomienda priorizar acciones de fortalecimiento durante el programa.`:""}`;
+  const peor = ordenado[ordenado.length-1];
+  const otrasBrechas = bList.filter(f => f.d !== peor.d);
+  const narrativa = `La empresa alcanza un nivel de madurez "${nivelGlobal.label}" (${a5to100(pgGlobal)}%). Su desempeño es más sólido en ${fList.map(f=>f.d.nombre).join(" y ")}, lo que constituye una base sobre la cual apoyar el trabajo de mentoría. La principal prioridad de atención es ${peor.d.nombre} (${a5to100(peor.prom)}%)${otrasBrechas.length?`, seguida de ${otrasBrechas.map(f=>f.d.nombre).join(" y ")}`:""}. Al estar las distintas áreas de la empresa interrelacionadas, es probable que estas brechas estén afectando también su desempeño general, por lo que se recomienda abordarlas de forma conjunta durante el programa.`;
   return {
     fortalezas: fList,
     brechas: bList,
     prioritarias,
     mejor: ordenado[0],
-    peor: ordenado[ordenado.length-1],
+    peor,
     narrativa,
     pgGlobal,
     nivelGlobal,
@@ -673,15 +863,19 @@ function MapaLeaflet({ regiones, getNivel, a5to100 }) {
   );
 }
 
-function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver }) {
+function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver, esAdmin, onDimsGuardados }) {
   const [filtro, setFiltro] = useState("");
   const [ordenDiag, setOrdenDiag] = useState("reciente"); // reciente | antiguo | az | za | puntajeDesc | puntajeAsc | estado
   const [vistaTab, setVistaTab] = useState("dashboard");
   const [filtroEmpresa, setFiltroEmpresa] = useState("todas");
   const [tooltip, setTooltip] = useState(null); // {x,y,text}
   const [seleccionFichas, setSeleccionFichas] = useState(() => new Set());
+  const [menuDescargaAbierto, setMenuDescargaAbierto] = useState(null); // nombre de empresa con el menú de descarga abierto
   const [duplicadosAbiertos, setDuplicadosAbiertos] = useState(() => new Set());
   const [descargando, setDescargando] = useState(false);
+  const [showEditorContenido, setShowEditorContenido] = useState(false);
+  const [toastPrograma, setToastPrograma] = useState(null);
+  const showTPrograma = (msg,c=C.verde) => { setToastPrograma({msg,c}); setTimeout(()=>setToastPrograma(null),3000); };
   const pColor = programa.color || C.azul;
   const diags = (programa.diagnosticos||[]).filter(d=>!filtro||(d.infoGeneral?.empresa||"").toLowerCase().includes(filtro.toLowerCase()));
 
@@ -718,6 +912,35 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
     }
   };
 
+  /* Descarga cualquiera de los 4 tipos de ficha para una empresa: mentoría, inicial, final o comparativo */
+  const descargarFichaTipo = async (tipo, dInicial, dFinal, nombreEmpresa) => {
+    setMenuDescargaAbierto(null);
+    setDescargando(true);
+    try {
+      await cargarLibsDescarga();
+      const le = dInicial?.infoGeneral?.logoEmpresa || dFinal?.infoGeneral?.logoEmpresa || "";
+      const lp = programa?.logoUrl || "";
+      const prog = { ...(programa||{}), logoUrl: lp };
+      let html;
+      if (tipo === "mentoria") {
+        html = buildFichaMentorHTML(dims, {...dInicial.infoGeneral,logoEmpresa:le}, dInicial.datosEntrada||{}, dInicial.indicadoresEntrada||{}, prog, null, null, null, null);
+      } else if (tipo === "inicial") {
+        html = buildFichaIndividualHTML(dims, {...dInicial.infoGeneral,logoEmpresa:le}, dInicial.datosEntrada||{}, dInicial.indicadoresEntrada||{}, prog, false);
+      } else if (tipo === "final") {
+        const datosF = Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{});
+        const indsF  = Object.keys(dFinal.indicadoresSalida||{}).length>0 ? dFinal.indicadoresSalida : (dFinal.indicadoresEntrada||{});
+        html = buildFichaIndividualHTML(dims, {...dFinal.infoGeneral,logoEmpresa:le}, datosF, indsF, prog, true);
+      } else if (tipo === "comparativo") {
+        html = buildComparativoHTML(dims, {...dInicial.infoGeneral,logoEmpresa:le}, dInicial.datosEntrada||{}, dFinal.datosSalida||dFinal.datosEntrada||{}, dInicial.indicadoresEntrada||{}, dFinal.indicadoresSalida||dFinal.indicadoresEntrada||{}, prog);
+      }
+      await descargarFichaPDF(html, { tipo, empresa: nombreEmpresa, programaId: programa.id, programaNombre: programa.nombre, diagId: (dInicial||dFinal)?.id });
+    } catch(err) {
+      alert("Error al generar la ficha: " + err.message);
+    } finally {
+      setDescargando(false);
+    }
+  };
+
   return (
     <div style={{ flex:1, padding:"28px 36px", overflowY:"auto" }}>
       <div style={{ maxWidth:960, margin:"0 auto" }}>
@@ -735,8 +958,21 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             <h2 style={{ fontSize:26, fontWeight:800, color:C.oscuro, margin:0 }}>{programa.nombre}</h2>
             {programa.descripcion && <div style={{ fontSize:13, color:C.gris, marginTop:2 }}>{programa.descripcion}</div>}
           </div>
-          <button onClick={onNuevoDiag} style={{ marginLeft:"auto", padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Nueva empresa</button>
+          {esAdmin && <button onClick={()=>setShowEditorContenido(true)} title="Editar dimensiones y preguntas del programa" style={{ marginLeft:"auto", marginRight:10, padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, color:C.gris, fontSize:13, fontWeight:700, cursor:"pointer" }}>⚙️ Editor de Contenido</button>}
+          <button onClick={onNuevoDiag} disabled={dims.length===0} title={dims.length===0?"Este programa aún no tiene dimensiones configuradas":""} style={{ marginLeft:esAdmin?0:"auto", padding:"10px 20px", background:dims.length===0?C.grisCl:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:dims.length===0?"not-allowed":"pointer" }}>+ Nueva empresa</button>
         </div>
+        {dims.length===0 && (
+          <div style={{ background:"#FFF8EC", border:"1.5px solid #E8A020", borderRadius:12, padding:"16px 20px", marginBottom:24, display:"flex", alignItems:"center", gap:14 }}>
+            <span style={{ fontSize:22 }}>⚙️</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:"#7A5C00" }}>Este programa todavía no tiene dimensiones configuradas</div>
+              <div style={{ fontSize:12.5, color:"#A07820", marginTop:2 }}>{esAdmin ? "Usa el Editor de Contenido para crear las dimensiones y preguntas antes de poder evaluar empresas." : "Contacta a un administrador para configurar este programa."}</div>
+            </div>
+            {esAdmin && <button onClick={()=>setShowEditorContenido(true)} style={{ padding:"9px 16px", background:"#E0A020", border:"none", borderRadius:8, color:"#fff", fontSize:12.5, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>Configurar ahora</button>}
+          </div>
+        )}
+        {toastPrograma && <div style={{ position:"fixed", bottom:24, right:24, background:toastPrograma.c, color:"#fff", padding:"12px 20px", borderRadius:8, fontSize:13, fontWeight:700, zIndex:700, boxShadow:"0 4px 20px rgba(0,0,0,0.2)" }}>{toastPrograma.msg}</div>}
+        {showEditorContenido && <EditorContenido dims={dims} programaId={programa.configId || programa.id} onSave={async ()=>{ setShowEditorContenido(false); showTPrograma("✓ Cambios guardados"); await onDimsGuardados?.(); }} onClose={()=>setShowEditorContenido(false)}/>}
         {/* Stats */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
           {(() => {
@@ -1871,7 +2107,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                           {tieneAmbos && !dFinal?._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.verde, background:`${C.verde}15`, padding:"4px 10px", borderRadius:6 }}>✓ Inicial y Final guardados</span>}
                           {dInicial?._borrador && <span style={{ fontSize:11, fontWeight:700, color:"#E8A020", background:"#E8A02015", padding:"4px 10px", borderRadius:6 }}>📝 Borrador — pendiente guardar</span>}
                           {!dFinal && dInicial && !dInicial._borrador && <span style={{ fontSize:11, fontWeight:700, color:C.azul, background:`${C.azul}15`, padding:"4px 10px", borderRadius:6 }}>✓ Diagnóstico inicial guardado</span>}
-                          {info.estado && <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:info.estado==="Validado"?"#EAF7F2":info.estado==="Descartado"?"#FFF0F0":"#FFFBF0", color:info.estado==="Validado"?"#16A085":info.estado==="Descartado"?"#E74C3C":"#A07820" }}>{info.estado==="Validado"?"🟢":info.estado==="Descartado"?"🔴":"🟡"} {info.estado}</span>}
                           {tieneDuplicados && (
                             <button onClick={()=>setDuplicadosAbiertos(prev=>{const s=new Set(prev); s.has(emp.nombre)?s.delete(emp.nombre):s.add(emp.nombre); return s;})}
                               style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:4, background:"#FFF0F0", color:"#E74C3C", border:"1px solid #E74C3C55", cursor:"pointer" }}>
@@ -1879,11 +2114,21 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                             </button>
                           )}
                           {dInicial && (
-                            <button title={`Descargar Ficha Mentoría de ${emp.nombre}`} disabled={descargando}
-                              onClick={()=>descargarFichasSeleccionadas([dInicial])}
-                              style={{ padding:"6px 9px", background:`${pColor}12`, border:`1px solid ${pColor}33`, borderRadius:7, color:pColor, fontSize:14, cursor:descargando?"wait":"pointer", display:"flex", alignItems:"center" }}>
-                              ⬇
-                            </button>
+                            <div style={{ position:"relative" }}>
+                              <button title="Descargar ficha…" disabled={descargando}
+                                onClick={()=>setMenuDescargaAbierto(prev=>prev===emp.nombre?null:emp.nombre)}
+                                style={{ padding:"6px 9px", background:`${pColor}12`, border:`1px solid ${pColor}33`, borderRadius:7, color:pColor, fontSize:14, cursor:descargando?"wait":"pointer", display:"flex", alignItems:"center", gap:4 }}>
+                                ⬇ <span style={{ fontSize:10 }}>▾</span>
+                              </button>
+                              {menuDescargaAbierto===emp.nombre && (
+                                <div style={{ position:"absolute", top:"calc(100% + 6px)", right:0, background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, boxShadow:"0 8px 28px rgba(0,0,0,0.18)", minWidth:240, overflow:"hidden", zIndex:50 }}>
+                                  <button onClick={()=>descargarFichaTipo("mentoria", dInicial, dFinal, emp.nombre)} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"transparent", border:"none", borderBottom:`1px solid ${C.borde}`, color:C.oscuro, fontSize:13, cursor:"pointer" }}>🎓 Ficha Mentoría</button>
+                                  <button onClick={()=>descargarFichaTipo("inicial", dInicial, dFinal, emp.nombre)} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"transparent", border:"none", borderBottom:`1px solid ${C.borde}`, color:C.oscuro, fontSize:13, cursor:"pointer" }}>📋 Ficha Diagnóstico Inicial</button>
+                                  {dFinal && <button onClick={()=>descargarFichaTipo("final", dInicial, dFinal, emp.nombre)} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"transparent", border:"none", borderBottom:tieneAmbos?`1px solid ${C.borde}`:"none", color:C.oscuro, fontSize:13, cursor:"pointer" }}>📊 Ficha Diagnóstico Final</button>}
+                                  {tieneAmbos && <button onClick={()=>descargarFichaTipo("comparativo", dInicial, dFinal, emp.nombre)} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"transparent", border:"none", color:C.oscuro, fontSize:13, cursor:"pointer" }}>📈 Ficha Comparativo Inicial vs. Final</button>}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -2028,39 +2273,98 @@ function ModalGuardar({ infoGeneral, tieneInicial, esActualizacion, onGuardar, o
 /* ═══════════════════════════════════════════
    EDITOR DE CONTENIDO (con contraseña)
 ═══════════════════════════════════════════ */
-function EditorContenido({ dims, onSave, onClose }) {
+function EditorContenido({ dims, onSave, onClose, programaId }) {
+  const PROGRAMA_ID = programaId;
   const [data, setData] = useState(JSON.parse(JSON.stringify(dims)));
   const [dimSel, setDimSel] = useState(0);
   const [pregSel, setPregSel] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState("");
   const d = data[dimSel];
   const upd  = (di,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,[f]:v}));
   const updP = (di,pi,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,[f]:v})}));
   const updN = (di,pi,ni,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,niveles:q.niveles.map((n,k)=>k!==ni?n:v)})}));
   const addP = (di) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:[...x.preguntas,{id:`${x.id}x${Date.now()}`,obligatoria:true,texto:"Nueva pregunta",criterio:"Criterio",evidencia:"",niveles:["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"]}]}));
   const delP = (di,pi) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.filter((_,j)=>j!==pi)}));
+  const addDim = () => {
+    const nuevaDim = { _dimUuid:null, id:data.length+1, nombre:"Nueva dimensión", icono:"◆", acento:"#607D8B", objetivo:"", indicadorObjetivo:{label:"",tipo:"numero",placeholder:""}, preguntas:[] };
+    setData(p => [...p, nuevaDim]);
+    setDimSel(data.length);
+    setPregSel(null);
+  };
+  const delDim = (di) => {
+    setData(p => p.filter((_,i)=>i!==di));
+    setDimSel(0);
+    setPregSel(null);
+  };
   const si = { padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:7, color:C.oscuro, fontSize:13, outline:"none", width:"100%", boxSizing:"border-box", fontFamily:"inherit" };
+
+  const handleGuardar = async () => {
+    setErrorGuardado("");
+    if (data.some(dd => dd.preguntas.length === 0)) {
+      window.alert("Cada dimensión necesita al menos 1 pregunta. Agrega una pregunta o elimina la dimensión vacía antes de guardar.");
+      return;
+    }
+    setGuardando(true);
+    try {
+      const { dimensiones: dimsAEliminar, preguntas: pregsAEliminar } = await sbCalcularCambiosDestructivos(PROGRAMA_ID, data);
+      if (dimsAEliminar.length > 0 || pregsAEliminar.length > 0) {
+        let msg = "";
+        if (dimsAEliminar.length > 0) {
+          msg += `Vas a eliminar ${dimsAEliminar.length} DIMENSIÓN(ES) COMPLETA(S), junto con todas sus preguntas:\n\n`;
+          msg += dimsAEliminar.map(d => `• ${d.nombre}`).join("\n") + "\n\n";
+        }
+        if (pregsAEliminar.length > 0) {
+          msg += `Vas a eliminar ${pregsAEliminar.length} pregunta(s) suelta(s) que ya existían:\n\n`;
+          msg += pregsAEliminar.map(p => `• [${p.codigo}] ${p.texto}`).join("\n") + "\n\n";
+        }
+        msg += `Las respuestas ya guardadas en diagnósticos anteriores NO se borran de la base de datos, ` +
+               `pero todo esto dejará de mostrarse y de contar en el puntaje de las próximas evaluaciones.\n\n` +
+               `¿Confirmas que quieres continuar?`;
+        const confirmado = window.confirm(msg);
+        if (!confirmado) { setGuardando(false); return; }
+      }
+      const res = await sbGuardarContenidoDims(PROGRAMA_ID, data);
+      if (res.ok) {
+        await onSave(data);
+      } else {
+        setErrorGuardado(res.error || "Ocurrió un error al guardar. No se aplicó ningún cambio.");
+      }
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(10,20,30,0.7)", zIndex:600, display:"flex", flexDirection:"column" }}>
       <div style={{ background:C.blanco, borderBottom:`1px solid ${C.borde}`, padding:"13px 24px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <div><div style={{ fontSize:11, color:C.gris, letterSpacing:1, textTransform:"uppercase" }}>Editor de Contenido</div><div style={{ fontSize:16, fontWeight:700, color:C.oscuro }}>Personaliza dimensiones y preguntas</div></div>
-        <div style={{ display:"flex", gap:8 }}>
-          <button onClick={onClose} style={{ padding:"9px 16px", borderRadius:8, border:`1px solid ${C.borde}`, background:"transparent", color:C.gris, cursor:"pointer", fontSize:13 }}>Cancelar</button>
-          <button onClick={()=>onSave(data)} style={{ padding:"9px 18px", borderRadius:8, border:"none", background:`linear-gradient(135deg,${C.verde},${C.azul})`, color:"#fff", fontWeight:700, cursor:"pointer", fontSize:13 }}>✓ Guardar cambios</button>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {errorGuardado && <span style={{ fontSize:12, color:"#E74C3C", maxWidth:280 }}>{errorGuardado}</span>}
+          <button onClick={onClose} disabled={guardando} style={{ padding:"9px 16px", borderRadius:8, border:`1px solid ${C.borde}`, background:"transparent", color:C.gris, cursor:guardando?"not-allowed":"pointer", fontSize:13 }}>Cancelar</button>
+          <button onClick={handleGuardar} disabled={guardando} style={{ padding:"9px 18px", borderRadius:8, border:"none", background:guardando?C.grisCl:`linear-gradient(135deg,${C.verde},${C.azul})`, color:"#fff", fontWeight:700, cursor:guardando?"not-allowed":"pointer", fontSize:13 }}>{guardando?"Guardando...":"✓ Guardar cambios"}</button>
         </div>
       </div>
       <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
         <div style={{ width:185, background:C.fondo, borderRight:`1px solid ${C.borde}`, overflowY:"auto" }}>
+
           {data.map((dd,di)=>(
             <div key={di} onClick={()=>{setDimSel(di);setPregSel(null);}} style={{ padding:"11px 16px", cursor:"pointer", borderLeft:`3px solid ${dimSel===di&&pregSel===null?dd.acento:"transparent"}`, background:dimSel===di&&pregSel===null?`${dd.acento}10`:"transparent" }}>
               <div style={{ fontSize:13 }}><span style={{ fontSize:11, fontWeight:600, color:dimSel===di?dd.acento:C.gris }}>{dd.nombre}</span></div>
               <div style={{ fontSize:10, color:C.grisCl, marginTop:2 }}>{dd.preguntas.length} preguntas</div>
             </div>
           ))}
+          <div style={{ padding:"11px 16px" }}>
+            <button onClick={addDim} style={{ width:"100%", padding:"9px", borderRadius:8, border:`1px dashed ${C.gris}`, background:"transparent", color:C.gris, fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar dimensión</button>
+          </div>
         </div>
         <div style={{ flex:1, overflowY:"auto", padding:24, background:C.blanco }}>
           {pregSel===null ? (
             <div style={{ maxWidth:660 }}>
-              <p style={{ fontSize:11, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:16 }}>Dimensión {d.id} — {d.nombre}</p>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                <p style={{ fontSize:11, color:C.gris, textTransform:"uppercase", letterSpacing:1, margin:0 }}>Dimensión {d.id} — {d.nombre}</p>
+                <button onClick={()=>{ if(window.confirm(`¿Eliminar la dimensión "${d.nombre}" y sus ${d.preguntas.length} pregunta(s)? Esto solo se aplica al guardar, todavía puedes cancelar después.`)) delDim(dimSel); }} style={{ padding:"6px 12px", borderRadius:6, border:"1px solid #fcc", background:"#fff5f5", color:"#E74C3C", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>🗑 Eliminar dimensión</button>
+              </div>
               <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:12, marginBottom:12 }}>
                 <div><label style={{ display:"block", fontSize:11, color:C.gris, marginBottom:4, fontWeight:600 }}>NOMBRE</label><input value={d.nombre} onChange={e=>upd(dimSel,"nombre",e.target.value)} style={si}/></div>
                 <div><label style={{ display:"block", fontSize:11, color:C.gris, marginBottom:4, fontWeight:600 }}>ICONO</label><input value={d.icono} onChange={e=>upd(dimSel,"icono",e.target.value)} style={{...si,fontSize:18}}/></div>
@@ -2651,9 +2955,8 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;margin:0;padding:0}
-    html{width:210mm}
-    body{width:210mm;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:24px;background:#fff;display:flex;flex-direction:column;min-height:280mm}
-    @media screen{body{max-width:210mm;margin:0 auto;padding:8mm;box-shadow:0 0 54px rgba(0,0,0,0.12)}}
+    html,body{width:100%}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:24px;background:#fff;display:flex;flex-direction:column;padding:20px 26px}
     @media print{button,.no-print{display:none!important}}
     h1,h2,h3,p,ul,li{margin:0;padding:0}
     ul{padding-left:32px}
@@ -2682,36 +2985,49 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   }).join("");
 
   // ── ÁREAS A TRABAJAR EN LA MENTORÍA (grid flexible, 1 columna ancha por tarjeta, sin acciones sugeridas) ──
-  const areasHTML = areasParaTrabajar.map(({ d, prom, n, pct, respuestas, tipoArea }) => {
+  const renderAreaCard = ({ d, prom, n, pct, respuestas, tipoArea }, esPrincipal) => {
     const esCrit = tipoArea === "critica";
     const esOportunidad = tipoArea === "oportunidad";
     const borderColor = esCrit ? "#E74C3C" : esOportunidad ? oportColor : pColor;
-    const badge = esCrit
-      ? `<span style="font-size:18px;background:#E74C3C;color:#fff;padding:2px 11px;border-radius:6px;margin-top:5px;display:inline-block;">Área crítica</span>`
-      : esOportunidad
-        ? `<span style="font-size:18px;background:${oportColor};color:#fff;padding:2px 11px;border-radius:6px;margin-top:5px;display:inline-block;">Área de oportunidad</span>`
-        : "";
-    const malas = respuestas.filter(r => r.valor <= 3).slice(0, 4);
+    const badge = esPrincipal
+      ? `<span style="font-size:18px;background:#E74C3C;color:#fff;padding:2px 11px;border-radius:6px;margin-top:5px;display:inline-block;">🎯 Dolor principal</span>`
+      : esCrit
+        ? `<span style="font-size:16px;background:#E74C3C;color:#fff;padding:2px 10px;border-radius:6px;margin-top:4px;display:inline-block;">Área crítica</span>`
+        : esOportunidad
+          ? `<span style="font-size:16px;background:${oportColor};color:#fff;padding:2px 10px;border-radius:6px;margin-top:4px;display:inline-block;">Área de oportunidad</span>`
+          : "";
+    const malas = respuestas.filter(r => r.valor <= 3).slice(0, esPrincipal ? 4 : 2);
+    const fTitulo   = esPrincipal ? 30 : 21;
+    const fPct      = esPrincipal ? 45 : 32;
+    const fLabel    = esPrincipal ? "Situación detectada" : "Detalle";
+    const fLabelSz  = esPrincipal ? 18 : 15;
+    const fTextoSz  = esPrincipal ? 22 : 17;
+    const padHeader = esPrincipal ? "18px 27px" : "13px 20px";
+    const padBody   = esPrincipal ? "26px 27px" : "16px 20px";
     return `
     <div style="border:3px solid ${borderColor}55;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;height:100%;">
-      <div style="background:${pColor};padding:18px 27px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+      <div style="background:${pColor};padding:${padHeader};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
         <div>
-          <div style="font-size:26px;font-weight:700;color:#fff;">${d.nombre}</div>
+          <div style="font-size:${fTitulo}px;font-weight:700;color:#fff;">${d.nombre}</div>
           ${badge}
         </div>
         <div style="text-align:right;">
-          <div style="font-size:45px;font-weight:800;color:#fff;">${pct}%</div>
-          <div style="font-size:18px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
+          <div style="font-size:${fPct}px;font-weight:800;color:#fff;">${pct}%</div>
+          <div style="font-size:16px;color:rgba(255,255,255,0.75);">${n?.label||""}</div>
         </div>
       </div>
-      <div style="padding:26px 27px;background:#fff;flex:1;display:flex;flex-direction:column;justify-content:center;">
-        <div style="font-size:18px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Situación detectada</div>
-        ${malas.length ? malas.map(r=>`<div style="font-size:22px;color:#3A5A7A;line-height:1.5;margin-bottom:14px;padding-left:16px;border-left:5px solid ${r.color};">
+      <div style="padding:${padBody};background:#fff;flex:1;display:flex;flex-direction:column;justify-content:center;">
+        <div style="font-size:${fLabelSz}px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;">${fLabel}</div>
+        ${malas.length ? malas.map(r=>`<div style="font-size:${fTextoSz}px;color:#3A5A7A;line-height:1.5;margin-bottom:12px;padding-left:16px;border-left:5px solid ${r.color};">
             <strong style="color:#1C2B3A;">${r.criterio}:</strong> ${r.descripcion}
-          </div>`).join("") : `<div style="font-size:21px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
+          </div>`).join("") : `<div style="font-size:${fTextoSz}px;color:#8A9BB0;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
       </div>
     </div>`;
-  }).join("");
+  };
+  const [areaPrincipal, ...areasSecundarias] = areasParaTrabajar;
+  const areaPrincipalHTML = areaPrincipal ? renderAreaCard(areaPrincipal, true) : "";
+  const areasSecundariasHTML = areasSecundarias.map(a => renderAreaCard(a, false)).join("");
+
 
   // ── FORTALEZAS (sin ícono) ──
   const fortalezasHTML = areasFortaleza.slice(0,4).map(({ d, n, pct }) =>
@@ -2776,31 +3092,39 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     </div>
   </div>
 
-  <!-- ══ FILA 2: SÍNTESIS DIAGNÓSTICA ══ -->
-  <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;margin-bottom:22px;">
-    <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Síntesis diagnóstica</div>
-    <p style="font-size:24px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
+  <!-- ══ EL "DOLOR" PRINCIPAL — se muestra primero, apenas después del puntaje ══ -->
+  <div style="margin-bottom:22px;">
+    <div style="font-size:18px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">Área Prioritaria a Trabajar en la Mentoría</div>
+    <div style="margin-bottom:${areasSecundarias.length?"16px":"0"};">${areaPrincipalHTML}</div>
+    ${areasSecundarias.length ? `
+    <div style="font-size:14px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Otras áreas a considerar</div>
+    <div style="display:grid;grid-template-columns:repeat(${areasSecundarias.length===1?1:2},1fr);gap:16px;">
+      ${areasSecundariasHTML}
+    </div>` : ""}
   </div>
 
-  <!-- ══ FILA 3: FORTALEZAS + NOTA DEL CONSULTOR ══ -->
-  ${(areasFortaleza.length>0 || notaInterna) ? `
-  <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:22px;margin-bottom:22px;">
-    ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
-      <div style="font-size:18px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Fortalezas</div>
-      ${fortalezasHTML}
-    </div>`:""}
-    ${notaInterna?`<div style="background:#FFFBF0;border-radius:18px;padding:22px 29px;border-left:6px solid #E8A020;">
-      <div style="font-size:18px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Nota del consultor</div>
-      <div style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
-    </div>`:""}
-  </div>`:""}
+  <!-- ══ CONTENIDO RESTANTE — crece con flex:1 (contenido real, no un div vacío) para que el pie siempre quede al final de la hoja A4 ══ -->
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start;gap:22px;">
 
-  <!-- ══ ÁREAS A TRABAJAR EN LA MENTORÍA (grid flexible: 1, 2 o 3 tarjetas) ══ -->
-  <div style="margin-bottom:22px;flex:1;display:flex;flex-direction:column;min-height:0;">
-    <div style="font-size:18px;font-weight:700;color:#5A7A9A;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;flex-shrink:0;">Áreas Prioritarias a Trabajar en la Mentoría</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(523px,1fr));grid-auto-rows:1fr;gap:22px;flex:1;">
-      ${areasHTML}
+    <!-- FILA 2: SÍNTESIS DIAGNÓSTICA -->
+    <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
+      <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Síntesis diagnóstica</div>
+      <p style="font-size:24px;color:#1C2B3A;line-height:1.6;" contenteditable="true">${sintesis}</p>
     </div>
+
+    <!-- FILA 3: FORTALEZAS + NOTA PARA EL MENTOR -->
+    ${(areasFortaleza.length>0 || notaInterna) ? `
+    <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:22px;">
+      ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
+        <div style="font-size:18px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Fortalezas</div>
+        ${fortalezasHTML}
+      </div>`:""}
+      ${notaInterna?`<div style="background:#FFFBF0;border-radius:18px;padding:22px 29px;border-left:6px solid #E8A020;">
+        <div style="font-size:18px;font-weight:700;color:#A07820;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Nota para el mentor</div>
+        <div style="font-size:14px;color:#A07820;margin-bottom:14px;">Disposición, expectativas y poder de decisión de quien participa</div>
+        <div style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
+      </div>`:""}
+    </div>`:""}
   </div>
 
   <!-- ══ PIE ══ -->
@@ -2824,11 +3148,11 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
-    html,body{width:186mm;margin:0 auto;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff;height:100%}
+    html,body{width:100%;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}
+    body{padding:10mm;display:flex;flex-direction:column;min-height:100vh}
     h1,h2,h3,p{margin:0}
     table{width:100%;border-collapse:collapse}
-    @media screen{body{width:210mm;max-width:210mm;padding:10mm;box-shadow:0 0 30px rgba(0,0,0,0.12)}}
-    @media print{button,.no-print{display:none!important}body{padding:0;box-shadow:none}}
+    @media print{button,.no-print{display:none!important}body{padding:0}}
   `;
 
   const dimBarras = dims.map(d => {
@@ -2911,39 +3235,43 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
     <div>${dimBarras}</div>
   </div>
 
-  <!-- TABLA DIMENSIONES -->
-  <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;margin-bottom:12px;">
-    <table>
-      <thead><tr style="background:#EEF3F8;">
-        <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Puntaje</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Nivel</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Indicador</th>
-      </tr></thead>
-      <tbody>${tablaFilas}</tbody>
-    </table>
-  </div>
+  <!-- CONTENIDO RESTANTE — crece con flex:1 (contenido real) para llenar la hoja A4 completa -->
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start;gap:12px;">
 
-  <!-- SÍNTESIS + FORTALEZAS + BRECHAS + PRIORIDADES -->
-  ${interp?`
-  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
-    <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 16px;">
-      <div style="font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Síntesis diagnóstica</div>
-      <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${interp.narrativa}</p>
+    <!-- TABLA DIMENSIONES -->
+    <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;">
+      <table>
+        <thead><tr style="background:#EEF3F8;">
+          <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Puntaje</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Nivel</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Indicador</th>
+        </tr></thead>
+        <tbody>${tablaFilas}</tbody>
+      </table>
     </div>
-    <div style="background:#EAF7F2;border:1px solid #C5EAD8;border-radius:10px;padding:14px 16px;">
-      <div style="font-size:9px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✓ Fortalezas</div>
-      ${fortalezasHTML}
-    </div>
-    <div style="background:#FFF4EC;border:1px solid #F5D5B0;border-radius:10px;padding:14px 16px;">
-      <div style="font-size:9px;font-weight:700;color:#D17A1F;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⚠ Brechas</div>
-      ${brechasHTML}
-    </div>
-    <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;">
-      <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎯 Prioridades</div>
-      ${prioridadesHTML}
-    </div>
-  </div>`:""}
+
+    <!-- SÍNTESIS + FORTALEZAS + BRECHAS + PRIORIDADES -->
+    ${interp?`
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;">
+      <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Síntesis diagnóstica</div>
+        <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${interp.narrativa}</p>
+      </div>
+      <div style="background:#EAF7F2;border:1px solid #C5EAD8;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:9px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✓ Fortalezas</div>
+        ${fortalezasHTML}
+      </div>
+      <div style="background:#FFF4EC;border:1px solid #F5D5B0;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:9px;font-weight:700;color:#D17A1F;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⚠ Brechas</div>
+        ${brechasHTML}
+      </div>
+      <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎯 Prioridades</div>
+        ${prioridadesHTML}
+      </div>
+    </div>`:""}
+  </div>
 
   <!-- PIE -->
   <div style="border-top:1px solid #E4EBF2;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
@@ -2968,11 +3296,11 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
-    html,body{width:186mm;margin:0 auto;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff;height:100%}
+    html,body{width:100%;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}
+    body{padding:10mm;display:flex;flex-direction:column;min-height:100vh}
     h1,h2,h3,p{margin:0}
     table{width:100%;border-collapse:collapse}
-    @media screen{body{width:210mm;max-width:210mm;padding:10mm;box-shadow:0 0 30px rgba(0,0,0,0.12)}}
-    @media print{button,.no-print{display:none!important}body{padding:0;box-shadow:none}}
+    @media print{button,.no-print{display:none!important}body{padding:0}}
   `;
 
   const dimBarras = dims.map(d => {
@@ -3066,29 +3394,33 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
     </div>
   </div>
 
-  <!-- TABLA COMPARATIVA -->
-  <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;margin-bottom:12px;">
-    <table>
-      <thead><tr style="background:#EEF3F8;">
-        <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Inicial</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Final</th>
-        <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Variación</th>
-      </tr></thead>
-      <tbody>${tablaFilas}</tbody>
-    </table>
-  </div>
+  <!-- CONTENIDO RESTANTE — crece con flex:1 (contenido real) para llenar la hoja A4 completa -->
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start;gap:12px;">
 
-  <!-- EVOLUCIÓN INDICADORES CUANTITATIVOS -->
-  <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;margin-bottom:12px;">
-    <div style="padding:10px 14px;background:#F5F8FB;font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;">Evolución de indicadores cuantitativos</div>
-    <table><tbody>${indicadoresFilas}</tbody></table>
-  </div>
+    <!-- TABLA COMPARATIVA -->
+    <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;">
+      <table>
+        <thead><tr style="background:#EEF3F8;">
+          <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Inicial</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Final</th>
+          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Variación</th>
+        </tr></thead>
+        <tbody>${tablaFilas}</tbody>
+      </table>
+    </div>
 
-  <!-- CONCLUSIÓN -->
-  <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;margin-bottom:12px;">
-    <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Conclusión</div>
-    <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${conclusion}</p>
+    <!-- EVOLUCIÓN INDICADORES CUANTITATIVOS -->
+    <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;">
+      <div style="padding:10px 14px;background:#F5F8FB;font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;">Evolución de indicadores cuantitativos</div>
+      <table><tbody>${indicadoresFilas}</tbody></table>
+    </div>
+
+    <!-- CONCLUSIÓN -->
+    <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;">
+      <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Conclusión</div>
+      <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${conclusion}</p>
+    </div>
   </div>
 
   <!-- PIE -->
@@ -3100,7 +3432,7 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   </body></html>`;
 }
 
-function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mantenimientoActivo, onActividad }) {
+function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mantenimientoActivo, onActividad, onDimsGuardados }) {
   const scrollRef = useRef(null);
   const esSalidaNueva = diagActual?.tipo === "salida_nueva" || (diagActual?.id||"").endsWith("_final_new");
   const verComparativo = !!diagActual?._verComparativo;
@@ -3226,6 +3558,19 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
 
   const pgE = pglobal(dims,datosE); const pgS = pglobal(dims,datosS);
 
+  if (dims.length === 0) {
+    return (
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:40 }}>
+        <div style={{ textAlign:"center", maxWidth:420 }}>
+          <div style={{ fontSize:40, marginBottom:14 }}>⚙️</div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.oscuro, marginBottom:8 }}>Este programa aún no tiene dimensiones configuradas</div>
+          <p style={{ fontSize:13, color:C.gris, marginBottom:20 }}>Un administrador debe crear las dimensiones y preguntas desde el Editor de Contenido antes de poder evaluar empresas en este programa.</p>
+          <button onClick={onVolver} style={{ padding:"10px 22px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.gris, fontSize:13, fontWeight:700, cursor:"pointer" }}>← Volver</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display:"flex", flex:1, minHeight:0 }}>
       {toast && <div style={{ position:"fixed", bottom:24, right:24, background:toast.c, color:"#fff", padding:"12px 20px", borderRadius:8, fontSize:13, fontWeight:700, zIndex:700, boxShadow:"0 4px 20px rgba(0,0,0,0.2)" }}>{toast.msg}</div>}
@@ -3248,7 +3593,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
         indE={esSalidaNueva ? {} : indE}
         indS={esSalidaNueva ? indE : indS}
         programa={programa} modo={esSalidaNueva?"salida":"entrada"} diagActual={diagActual} onCerrar={()=>setShowFicha(false)}/>}
-      {showEditor && <EditorContenido dims={dims} onSave={d=>{showT("✓ Cambios guardados");}} onClose={()=>setShowEditor(false)}/>}
+      {showEditor && <EditorContenido dims={dims} programaId={programa.configId || programa.id} onSave={async ()=>{ setShowEditor(false); showT("✓ Cambios guardados"); await onDimsGuardados?.(); }} onClose={()=>setShowEditor(false)}/>}
 
       {/* SIDEBAR */}
       <div style={{ width:205, background:C.blanco, borderRight:`1px solid ${C.borde}`, display:"flex", flexDirection:"column", flexShrink:0, overflowY:"auto" }}>
@@ -3582,6 +3927,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                 <div>
                   <div style={{ fontSize:10, letterSpacing:1, color:C.gris, textTransform:"uppercase", marginBottom:2 }}>Observaciones del Consultor</div>
                   <div style={{ fontSize:13, fontWeight:700, color:C.oscuro }}>Nota sobre la empresa para el mentor</div>
+                  <div style={{ fontSize:11, color:C.gris, marginTop:3, maxWidth:420 }}>Ideal para anotar: qué espera el emprendedor de la mentoría, su disposición real, y si quien participa tiene poder de decisión en la empresa.</div>
                 </div>
                 <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", userSelect:"none" }}>
                   <div style={{ position:"relative", width:40, height:22, flexShrink:0 }} onClick={()=>setInfoGeneral(p=>({...p, obsEnMentor:!p.obsEnMentor}))}>
@@ -3597,13 +3943,13 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                 <textarea
                   value={infoGeneral.notaMentor||""}
                   onChange={e=>setInfoGeneral(p=>({...p, notaMentor:e.target.value}))}
-                  placeholder="Ej: Empresa con buena disposición pero dueño con resistencia a delegar. Priorizar trabajo en gestión de personas. Contactar antes de la sesión para confirmar asistencia..."
+                  placeholder="Ej: El emprendedor espera principalmente ayuda para ordenar sus finanzas. Buena disposición, aunque asiste por exigencia de la empresa mandante más que por decisión propia. Quien participa (el dueño) SÍ tiene poder de decisión total. Priorizar trabajo en gestión de personas..."
                   rows={4}
                   style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1.5px solid ${infoGeneral.obsEnMentor?C.verde:C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", resize:"vertical", fontFamily:"inherit", boxSizing:"border-box", lineHeight:1.6, transition:"border-color 0.2s" }}
                 />
                 {infoGeneral.obsEnMentor && (
                   <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:8, fontSize:11, color:C.verde }}>
-                    ✓ Esta nota aparecerá en la sección "Nota del consultor" de la ficha del mentor
+                    ✓ Esta nota aparecerá en la sección "Nota para el mentor" de la ficha
                   </div>
                 )}
                 {!infoGeneral.obsEnMentor && infoGeneral.notaMentor && (
@@ -3678,7 +4024,7 @@ export default function App() {
   const [cargando, setCargando] = useState(true);
   const [proyectoActivo, setProyectoActivo] = useState(null);
   const [diagActivo, setDiagActivo] = useState(null); // {diag, esNuevo}
-  const [dims, setDims] = useState(DIMS_BASE);
+  const [dims, setDims] = useState(DIMS_BASE); // arranca con el respaldo hardcodeado; se reemplaza abajo si Supabase responde bien
   const [showBackup, setShowBackup] = useState(false);
   const [importError, setImportError] = useState("");
   const [syncStatus, setSyncStatus] = useState("ok"); // "ok" | "saving" | "error"
@@ -3811,6 +4157,28 @@ export default function App() {
       setCargando(false);
     })();
   },[]);
+
+  // ── Cargar dimensiones/preguntas configurables desde Supabase, según el programa ABIERTO ──
+  // Cada programa usa su propio "programa_id" en las tablas: si el programa tiene un "configId"
+  // asignado (caso de CMPC, vinculado manualmente) se usa ese; si no, se usa su propio id real
+  // (caso de cualquier programa nuevo creado de aquí en adelante — no hay que inventar nombres).
+  // Un programa nuevo sin ninguna dimensión configurada arranca con dims=[] (vacío), NO con el
+  // respaldo de CMPC — así el usuario ve claramente que debe configurarlo desde el Editor de
+  // Contenido, en vez de ver por error las dimensiones de otro programa.
+  // Solo ante un error real de red/servidor (no ante "simplemente no configurado todavía") se
+  // usa DIMS_BASE como último respaldo, y solo para el programa CMPC.
+  const recargarDims = async () => {
+    if (!proyectoActivo) return;
+    const programaConfigId = proyectoActivo.configId || proyectoActivo.id;
+    const dimsRemotas = await sbGetDimsPrograma(programaConfigId);
+    if (dimsRemotas !== null) {
+      setDims(dimsRemotas);
+    } else {
+      console.warn("Error de red/servidor cargando dimensiones para el programa", programaConfigId, "— usando respaldo si corresponde.");
+      setDims(programaConfigId === "cmpc" ? DIMS_BASE : []);
+    }
+  };
+  useEffect(() => { recargarDims(); }, [proyectoActivo?.id]);
 
   // Migración: limpiar _borrador:true de diagnósticos que sí tienen fechaGuardado
   useEffect(() => {
@@ -4174,13 +4542,17 @@ export default function App() {
             <button onClick={desbloquearAdmin} title="Acceso administrador"
               style={{ padding:"7px 9px",background:"transparent",border:"none",color:"rgba(255,255,255,0.25)",fontSize:13,cursor:"pointer" }}>🔧</button>
           )}
-          <button onClick={abrirCentroDescargas} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
-            🗂 Descargas{historialDescargas.length>0?<span style={{position:"absolute",top:-5,right:-5,background:C.azul,color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{historialDescargas.length>9?"9+":historialDescargas.length}</span>:null}
-          </button>
-          <button onClick={()=>setShowPapelera(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
-            🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
-          </button>
-          <button onClick={()=>{setShowBackup(true);setImportError("");}} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>💾 Backup</button>
+          {esAdmin && (
+            <>
+              <button onClick={abrirCentroDescargas} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
+                🗂 Descargas{historialDescargas.length>0?<span style={{position:"absolute",top:-5,right:-5,background:C.azul,color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{historialDescargas.length>9?"9+":historialDescargas.length}</span>:null}
+              </button>
+              <button onClick={()=>setShowPapelera(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600,position:"relative" }}>
+                🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
+              </button>
+              <button onClick={()=>{setShowBackup(true);setImportError("");}} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>💾 Backup</button>
+            </>
+          )}
           <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff" }}>C</div>
         </div>
         {showCentroDescargas && (
@@ -4314,10 +4686,10 @@ export default function App() {
           <PantallaProyectos proyectos={proyectos} onSeleccionar={p=>{setProyectoActivo(p);setDiagActivo(null);}} onCrear={crearPrograma} onEditar={editarPrograma} onEliminar={eliminarPrograma}/>
         )}
         {proyectoActivo && !diagActivo && (
-          <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={()=>{setProyectoActivo(null);setDiagActivo(null);}}/>
+          <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={()=>{setProyectoActivo(null);setDiagActivo(null);}} esAdmin={esAdmin} onDimsGuardados={recargarDims}/>
         )}
         {proyectoActivo && diagActivo && (
-          <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad}/>
+          <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims}/>
         )}
       </div>
     </div>
