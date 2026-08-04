@@ -35,6 +35,80 @@ async function sbSet(key, value) {
    el resto de la app (formulario, radar, ficha, dashboard, editor, PDFs) no necesite cambios.
    Si algo falla (sin red, tablas vacías, etc.) devuelve null y quien llama debe usar DIMS_BASE
    como respaldo — así la app nunca se queda sin dimensiones para mostrar. */
+/* ── Base de Empresas (tabla "empresas", global — compartida entre todos los programas) ── */
+
+const normalizarRut = (rut) => (rut||"").toString().trim().toUpperCase().replace(/\.+/g,"").replace(/\s+/g,"");
+
+async function sbGetEmpresaPorRut(rut) {
+  if (!rut) return null;
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/empresas?rut=eq.${encodeURIComponent(normalizarRut(rut))}&select=*`, { headers: sbHeaders });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return rows[0] || null;
+  } catch(e) { return null; }
+}
+
+async function sbGetEmpresas() {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/empresas?select=*&order=nombre`, { headers: sbHeaders });
+    if (!r.ok) return [];
+    return await r.json();
+  } catch(e) { return []; }
+}
+
+async function sbGuardarEmpresa(empresa) {
+  try {
+    const body = { ...empresa, rut: normalizarRut(empresa.rut), updated_at: new Date().toISOString() };
+    const r = await fetch(`${SB_URL}/rest/v1/empresas`, {
+      method: "POST",
+      headers: { ...sbHeaders, "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) return { ok:false, error: await r.text() };
+    return { ok:true };
+  } catch(e) { return { ok:false, error: e?.message || "Error desconocido" }; }
+}
+
+async function sbEliminarEmpresa(rut) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/empresas?rut=eq.${encodeURIComponent(normalizarRut(rut))}`, { method:"DELETE", headers: sbHeaders });
+    return { ok: r.ok };
+  } catch(e) { return { ok:false, error: e?.message }; }
+}
+
+/* Importa una lista de empresas de una sola vez (upsert masivo por RUT). Filas sin RUT se descartan. */
+async function sbImportarEmpresas(lista) {
+  const validas = lista.filter(e => e.rut && normalizarRut(e.rut));
+  if (validas.length === 0) return { ok:false, error:"No hay filas con RUT válido para importar." };
+  try {
+    const body = validas.map(e => ({ ...e, rut: normalizarRut(e.rut), updated_at: new Date().toISOString() }));
+    const r = await fetch(`${SB_URL}/rest/v1/empresas`, {
+      method: "POST",
+      headers: { ...sbHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) return { ok:false, error: await r.text() };
+    return { ok:true, total: validas.length };
+  } catch(e) { return { ok:false, error: e?.message || "Error desconocido" }; }
+}
+
+/* Carga SheetJS (xlsx) desde CDN bajo demanda, para leer archivos .xlsx/.csv en el navegador */
+let _xlsxLibPromise = null;
+function cargarLibExcel() {
+  if (_xlsxLibPromise) return _xlsxLibPromise;
+  _xlsxLibPromise = new Promise((resolve, reject) => {
+    if (window.XLSX) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("No se pudo cargar la librería para leer Excel."));
+    document.head.appendChild(s);
+  });
+  return _xlsxLibPromise;
+}
+
 async function sbGetDimsPrograma(programaId) {
   try {
     const [rDim, rPreg] = await Promise.all([
@@ -518,6 +592,210 @@ function Modal({ onClose, children, width=480 }) {
       <div style={{ background:C.blanco, borderRadius:18, padding:32, width:"100%", maxWidth:width, boxShadow:"0 24px 72px rgba(0,0,0,0.35)" }} onClick={e=>e.stopPropagation()}>
         {children}
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   BASE DE EMPRESAS (tabla global, todos los programas)
+═══════════════════════════════════════════ */
+function PantallaBaseEmpresas({ onVolver }) {
+  const [empresas, setEmpresas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [busqueda, setBusqueda] = useState("");
+  const [editando, setEditando] = useState(null); // objeto empresa o {} para nueva
+  const [guardando, setGuardando] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [resultadoImport, setResultadoImport] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const recargar = async () => { setCargando(true); setEmpresas(await sbGetEmpresas()); setCargando(false); };
+  useEffect(() => { recargar(); }, []);
+
+  const filtradas = empresas.filter(e => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return true;
+    return (e.nombre||"").toLowerCase().includes(q) || (e.rut||"").toLowerCase().includes(q);
+  });
+
+  const abrirNueva = () => setEditando({ rut:"", nombre:"", pais:"Chile", comuna:"", rubro:"", tamano:"", representante:"", facturacion_total:"", accidentes_laborales:"" });
+
+  const guardar = async () => {
+    if (!editando.rut?.trim()) { window.alert("El RUT es obligatorio."); return; }
+    if (!editando.nombre?.trim()) { window.alert("El nombre es obligatorio."); return; }
+    setGuardando(true);
+    const res = await sbGuardarEmpresa(editando);
+    setGuardando(false);
+    if (res.ok) { setEditando(null); recargar(); }
+    else window.alert("Error al guardar: " + (res.error||"desconocido"));
+  };
+
+  const eliminar = async (rut, nombre) => {
+    if (!window.confirm(`¿Eliminar "${nombre}" (${rut}) de la base de empresas? Esto no afecta diagnósticos ya guardados.`)) return;
+    const res = await sbEliminarEmpresa(rut);
+    if (res.ok) recargar();
+    else window.alert("Error al eliminar.");
+  };
+
+  const manejarArchivo = async (file) => {
+    if (!file) return;
+    setImportando(true);
+    setResultadoImport(null);
+    try {
+      await cargarLibExcel();
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      const hoja = wb.Sheets[wb.SheetNames[0]];
+      const filas = window.XLSX.utils.sheet_to_json(hoja, { defval: "" });
+
+      const normKey = (k) => k.toString().trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"");
+      const mapaCampos = {
+        rut: ["rut","identificaciontributaria","identificaciontributariarutcnpjrfcruc"],
+        nombre: ["nombre","empresa","nombredelaempresa","razonsocial"],
+        pais: ["pais"],
+        comuna: ["comuna"],
+        rubro: ["rubro","girocomercial"],
+        tamano: ["tamano","tamanodelaempresa","tamanodelaempresasegunfacturacion"],
+        representante: ["representante","nombrecompletoparticipante1","participante1"],
+        facturacion_total: ["facturaciontotal","facturacion"],
+        accidentes_laborales: ["accidenteslaborales","naccidenteslaboralesultimoano","accidenteslaboralesultimoano"],
+      };
+      const empresasImport = filas.map(fila => {
+        const filaNorm = {};
+        Object.keys(fila).forEach(k => { filaNorm[normKey(k)] = fila[k]; });
+        const obj = {};
+        Object.entries(mapaCampos).forEach(([campo, alias]) => {
+          const key = alias.find(a => filaNorm[a] !== undefined && filaNorm[a] !== "");
+          obj[campo] = key ? String(filaNorm[key]).trim() : "";
+        });
+        return obj;
+      }).filter(e => e.rut);
+
+      if (empresasImport.length === 0) {
+        setResultadoImport({ ok:false, msg:"No se encontraron filas con una columna de RUT reconocible. Revisa que el archivo tenga una columna llamada RUT (o 'Identificación Tributaria')." });
+        setImportando(false);
+        return;
+      }
+
+      const res = await sbImportarEmpresas(empresasImport);
+      if (res.ok) {
+        setResultadoImport({ ok:true, msg:`✓ Se importaron/actualizaron ${res.total} empresas.` });
+        recargar();
+      } else {
+        setResultadoImport({ ok:false, msg:"Error al importar: " + (res.error||"desconocido") });
+      }
+    } catch(e) {
+      setResultadoImport({ ok:false, msg:"Error al leer el archivo: " + (e?.message||"desconocido") });
+    } finally {
+      setImportando(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const campo = (label, key, placeholder="") => (
+    <div>
+      <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{label}</label>
+      <input value={editando[key]||""} onChange={e=>setEditando(p=>({...p,[key]:e.target.value}))} placeholder={placeholder}
+        style={{ width:"100%", padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", boxSizing:"border-box" }} />
+    </div>
+  );
+
+  return (
+    <div style={{ flex:1, padding:"36px 40px", overflowY:"auto" }}>
+      <div style={{ maxWidth:1100, margin:"0 auto" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+          <button onClick={onVolver} style={{ padding:"7px 9px", background:"transparent", border:"none", color:C.gris, fontSize:14, cursor:"pointer" }}>← Volver</button>
+        </div>
+        <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom:24, flexWrap:"wrap", gap:12 }}>
+          <div>
+            <div style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Base compartida entre todos los programas</div>
+            <h1 style={{ fontSize:26, fontWeight:800, color:C.oscuro, margin:0 }}>Base de Empresas</h1>
+            <p style={{ fontSize:13, color:C.gris, margin:"6px 0 0 0" }}>{empresas.length} empresa{empresas.length!==1?"s":""} registrada{empresas.length!==1?"s":""}. Se usa para autocompletar el RUT en los diagnósticos.</p>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display:"none" }} onChange={e=>manejarArchivo(e.target.files?.[0])} />
+            <button onClick={()=>fileInputRef.current?.click()} disabled={importando} style={{ padding:"10px 18px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, color:C.gris, fontSize:13, fontWeight:700, cursor:importando?"wait":"pointer" }}>{importando?"Importando…":"📥 Importar Excel"}</button>
+            <button onClick={abrirNueva} style={{ padding:"10px 22px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>+ Agregar empresa</button>
+          </div>
+        </div>
+
+        {resultadoImport && (
+          <div style={{ background:resultadoImport.ok?"#EAF7F2":"#FFF0F0", border:`1px solid ${resultadoImport.ok?"#C5EAD8":"#fcc"}`, borderRadius:10, padding:"12px 16px", marginBottom:16, fontSize:13, color:resultadoImport.ok?"#16A085":"#E74C3C" }}>
+            {resultadoImport.msg}
+          </div>
+        )}
+
+        <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar por RUT o nombre..."
+          style={{ width:"100%", padding:"11px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box", marginBottom:18 }} />
+
+        {cargando ? (
+          <div style={{ textAlign:"center", padding:60, color:C.gris }}>Cargando…</div>
+        ) : filtradas.length === 0 ? (
+          <div style={{ background:C.blanco, border:`2px dashed ${C.borde}`, borderRadius:16, padding:48, textAlign:"center" }}>
+            <div style={{ fontSize:36, marginBottom:8 }}>🏢</div>
+            <div style={{ color:C.gris, fontSize:14 }}>{empresas.length===0 ? "Sin empresas registradas todavía." : "Sin resultados para tu búsqueda."}</div>
+          </div>
+        ) : (
+          <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:12, overflow:"hidden", overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+              <thead>
+                <tr style={{ background:C.fondo }}>
+                  {["RUT","Empresa","Comuna","Rubro","Tamaño","Facturación total","Accidentes",""].map(h=>(
+                    <th key={h} style={{ textAlign:"left", padding:"10px 14px", color:C.gris, fontWeight:700, fontSize:11, textTransform:"uppercase", whiteSpace:"nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtradas.map(e => (
+                  <tr key={e.rut} style={{ borderTop:`1px solid ${C.borde}` }}>
+                    <td style={{ padding:"10px 14px", fontFamily:"monospace", whiteSpace:"nowrap" }}>{e.rut}</td>
+                    <td style={{ padding:"10px 14px", fontWeight:600, whiteSpace:"nowrap" }}>{e.nombre}</td>
+                    <td style={{ padding:"10px 14px", color:C.gris, whiteSpace:"nowrap" }}>{e.comuna||"—"}</td>
+                    <td style={{ padding:"10px 14px", color:C.gris, whiteSpace:"nowrap" }}>{e.rubro||"—"}</td>
+                    <td style={{ padding:"10px 14px", whiteSpace:"nowrap" }}>{e.tamano||"—"}</td>
+                    <td style={{ padding:"10px 14px", textAlign:"right", color:C.grisCl, whiteSpace:"nowrap" }}>{e.facturacion_total||"—"}</td>
+                    <td style={{ padding:"10px 14px", textAlign:"right", color:C.grisCl, whiteSpace:"nowrap" }}>{e.accidentes_laborales||"—"}</td>
+                    <td style={{ padding:"10px 14px", textAlign:"right", whiteSpace:"nowrap" }}>
+                      <button onClick={()=>setEditando(e)} title="Editar" style={{ padding:"5px 8px", background:"transparent", border:"none", color:C.gris, cursor:"pointer", fontSize:14 }}>✏️</button>
+                      <button onClick={()=>eliminar(e.rut, e.nombre)} title="Eliminar" style={{ padding:"5px 8px", background:"transparent", border:"none", color:"#CCC", cursor:"pointer", fontSize:14 }}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {editando && (
+        <Modal onClose={()=>setEditando(null)} width={520}>
+          <h2 style={{ fontSize:20, fontWeight:800, color:C.oscuro, margin:"0 0 4px 0" }}>{editando.rut && empresas.some(e=>e.rut===editando.rut) ? "Editar empresa" : "Agregar empresa"}</h2>
+          <p style={{ fontSize:13, color:C.gris, margin:"0 0 22px 0" }}>El RUT es la clave usada para autocompletar en los diagnósticos.</p>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {campo("RUT *","rut","Ej: 76.543.210-K")}
+              {campo("Nombre de la empresa *","nombre")}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+              {campo("País","pais")}
+              {campo("Comuna","comuna")}
+              {campo("Rubro","rubro")}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {campo("Tamaño","tamano","Microempresa / Pequeña / Mediana / Grande")}
+              {campo("Representante","representante")}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {campo("Facturación total","facturacion_total")}
+              {campo("Accidentes laborales (últ. año)","accidentes_laborales")}
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:10, marginTop:24 }}>
+            <button onClick={()=>setEditando(null)} style={{ flex:1, padding:"11px", border:`1px solid ${C.borde}`, borderRadius:8, background:"transparent", color:C.gris, cursor:"pointer" }}>Cancelar</button>
+            <button onClick={guardar} disabled={guardando} style={{ flex:2, padding:"11px", background:guardando?C.grisCl:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontWeight:700, cursor:guardando?"wait":"pointer" }}>{guardando?"Guardando…":"Guardar"}</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -3464,6 +3742,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
   const [datosE, setDatosE] = useState(esSalidaNueva ? {} : (diagActual?.datosEntrada||{}));
   const [datosS, setDatosS] = useState(esSalidaNueva ? {} : (dFinalRef?.datosSalida||diagActual?.datosSalida||{}));
   const [indE, setIndE] = useState(esSalidaNueva ? {} : (diagActual?.indicadoresEntrada||{}));
+  const [rutEstado, setRutEstado] = useState(null); // null | "buscando" | "encontrado" | "no_encontrado"
   const [indS, setIndS] = useState(esSalidaNueva ? {} : (dFinalRef?.indicadoresSalida||diagActual?.indicadoresSalida||{}));
   const [evids, setEvids] = useState(diagActual?.evidencias||{});
   const [showModal, setShowModal] = useState(false);
@@ -3702,6 +3981,38 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                   </label>
                   {infoGeneral.logoEmpresa && <button onClick={()=>setInfoGeneral(p=>({...p,logoEmpresa:""}))} style={{ fontSize:11, color:"#E74C3C", background:"none", border:"none", cursor:"pointer" }}>✕ Quitar</button>}
                 </div>
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>RUT de la empresa</label>
+                <input value={infoGeneral.rut||""} onChange={e=>{setInfoGeneral(p=>({...p,rut:e.target.value})); setRutEstado(null);}}
+                  onBlur={async ()=>{
+                    const rut = (infoGeneral.rut||"").trim();
+                    if (!rut) { setRutEstado(null); return; }
+                    setRutEstado("buscando");
+                    const emp = await sbGetEmpresaPorRut(rut);
+                    if (!emp) { setRutEstado("no_encontrado"); return; }
+                    setInfoGeneral(p => ({
+                      ...p,
+                      empresa: p.empresa || emp.nombre || p.empresa,
+                      comuna: p.comuna || emp.comuna || p.comuna,
+                      pais: (p.pais && p.pais!=="Chile") ? p.pais : (emp.pais || p.pais),
+                      rubro: p.rubro || (RUBRO_OPCIONES.find(o=>o.toLowerCase()===String(emp.rubro||"").toLowerCase()) || p.rubro),
+                      tamano: p.tamano || (TAMANO_OPCIONES.find(o=>o.toLowerCase()===String(emp.tamano||"").toLowerCase()) || p.tamano),
+                      respondente: p.respondente || emp.representante || p.respondente,
+                      facturacionTotal: p.facturacionTotal || emp.facturacion_total || p.facturacionTotal,
+                    }));
+                    if (emp.accidentes_laborales) {
+                      const dimSost = dims.find(d => d.nombre.toLowerCase().includes("sostenibilidad"));
+                      if (dimSost) setIndE(prev => ({ ...prev, [dimSost.id]: prev[dimSost.id] || emp.accidentes_laborales }));
+                    }
+                    setRutEstado("encontrado");
+                  }}
+                  placeholder="Ej: 76.543.210-K"
+                  style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }}/>
+                {rutEstado==="buscando" && <div style={{ fontSize:11, color:C.gris, marginTop:4 }}>Buscando en la base de empresas…</div>}
+                {rutEstado==="encontrado" && <div style={{ fontSize:11, color:C.verde, marginTop:4 }}>✓ Datos encontrados y completados automáticamente (revisa y ajusta si es necesario)</div>}
+                {rutEstado==="no_encontrado" && <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>No se encontró este RUT en la base — completa los datos manualmente.</div>}
               </div>
 
               {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"rubro",l:"Rubro / Actividad"},{k:"tamano",l:"Tamaño de la empresa"},{k:"region",l:"Región",ph:"Ej: Biobío, Metropolitana, La Araucanía…"},{k:"comuna",l:"Comuna",ph:"Ej: Concepción, Coronel…"},{k:"pais",l:"País",ph:"Chile"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"},{k:"facturacionCMPC",l:`Facturación con ${programa.nombre} 2025 (MM$)`,ph:"Ej: 45"}].map(f=>(
@@ -4042,6 +4353,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState("ok"); // "ok" | "saving" | "error"
   const [syncError, setSyncError] = useState("");
   const [showPapelera, setShowPapelera] = useState(false);
+  const [showBaseEmpresas, setShowBaseEmpresas] = useState(false);
   const [showCentroDescargas, setShowCentroDescargas] = useState(false);
   const [historialDescargas, setHistorialDescargas] = useState(() => leerHistorialDescargas());
   const [redescargando, setRedescargando] = useState(null); // id de la entrada en proceso
@@ -4615,6 +4927,7 @@ export default function App() {
                 🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
               </button>
               <button onClick={()=>{setShowBackup(true);setImportError("");}} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>💾 Backup</button>
+              <button onClick={()=>setShowBaseEmpresas(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>🏢 Base de Empresas</button>
             </>
           )}
           <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff" }}>C</div>
@@ -4746,6 +5059,9 @@ export default function App() {
 
       {/* BODY */}
       <div style={{ flex:1,display:"flex",minHeight:0,position:"relative" }}>
+        {showBaseEmpresas ? (
+          <PantallaBaseEmpresas onVolver={()=>setShowBaseEmpresas(false)}/>
+        ) : (<>
         {!proyectoActivo && !esExterno && (
           <PantallaProyectos proyectos={proyectos} onSeleccionar={p=>{setProyectoActivo(p);setDiagActivo(null);}} onCrear={crearPrograma} onEditar={editarPrograma} onEliminar={eliminarPrograma}/>
         )}
@@ -4755,6 +5071,7 @@ export default function App() {
         {proyectoActivo && diagActivo && !esExterno && (
           <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims} miNombre={miNombre}/>
         )}
+        </>)}
       </div>
     </div>
   );
