@@ -472,11 +472,12 @@ function RadarChart({ dims, series, size=280 }) {
 /* ═══════════════════════════════════════════
    PANTALLA LOGIN
 ═══════════════════════════════════════════ */
-function PantallaLogin({ onOk, onOkExterno, proyectos }) {
+function PantallaLogin({ onOk, onOkExterno, proyectos, cargando }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState(false);
   const [shake, setShake] = useState(false);
   const check = () => {
+    if (cargando) { setErr(true); return; }
     if (pw === "Cidere123") { onOk(); return; }
     const prog = (proyectos||[]).find(p => p.passwordExterna && p.passwordExterna === pw);
     if (prog) { onOkExterno(prog); return; }
@@ -497,9 +498,9 @@ function PantallaLogin({ onOk, onOkExterno, proyectos }) {
           <p style={{ fontSize:11, color:"rgba(255,255,255,0.35)", margin:"-4px 0 8px 0" }}>Usa tu contraseña de equipo, o la contraseña de acceso externo de tu programa.</p>
           <input type="password" value={pw} onChange={e=>{setPw(e.target.value);setErr(false);}} onKeyDown={e=>e.key==="Enter"&&check()} placeholder="••••••••••"
             style={{ width:"100%", padding:"13px 16px", border:`2px solid ${err?"#E74C3C":"rgba(255,255,255,0.15)"}`, borderRadius:10, fontSize:15, outline:"none", boxSizing:"border-box", background:"rgba(255,255,255,0.08)", color:"#fff", marginBottom:err?8:20 }} />
-          {err && <p style={{ fontSize:12, color:"#E74C3C", margin:"0 0 16px 0" }}>Contraseña incorrecta. Inténtalo de nuevo.</p>}
-          <button onClick={check} style={{ width:"100%", padding:"14px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", letterSpacing:0.5 }}>
-            Ingresar →
+          {err && <p style={{ fontSize:12, color:"#E74C3C", margin:"0 0 16px 0" }}>{cargando ? "Todavía estamos cargando los datos — espera un segundo e inténtalo de nuevo." : "Contraseña incorrecta. Inténtalo de nuevo."}</p>}
+          <button onClick={check} style={{ width:"100%", padding:"14px", background:cargando?"rgba(255,255,255,0.15)":`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:15, fontWeight:700, cursor:"pointer", letterSpacing:0.5 }}>
+            {cargando ? "Cargando…" : "Ingresar →"}
           </button>
         </div>
         <p style={{ color:"rgba(255,255,255,0.2)", fontSize:12, textAlign:"center", marginTop:24 }}>CIDERE Biobío © {new Date().getFullYear()}</p>
@@ -3451,7 +3452,7 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   </body></html>`;
 }
 
-function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mantenimientoActivo, onActividad, onDimsGuardados }) {
+function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mantenimientoActivo, onActividad, onDimsGuardados, miNombre }) {
   const scrollRef = useRef(null);
   const esSalidaNueva = diagActual?.tipo === "salida_nueva" || (diagActual?.id||"").endsWith("_final_new");
   const verComparativo = !!diagActual?._verComparativo;
@@ -3459,7 +3460,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
   const [pagina, setPagina] = useState(verComparativo ? 7 : 0);
   const [modo, setModo] = useState(esSalidaNueva ? "salida" : verComparativo ? "comparacion" : "entrada");
   const [validErr, setValidErr] = useState([]);
-  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",facturacionCMPC:"",consultor:"",modalidad:"",observaciones:"",obsEnMentor:false,notaMentor:"",estado:"Pendiente revisión",region:"",comuna:"",pais:"Chile"});
+  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",facturacionCMPC:"",consultor:miNombre||"",modalidad:"",observaciones:"",obsEnMentor:false,notaMentor:"",estado:"Pendiente revisión",region:"",comuna:"",pais:"Chile"});
   const [datosE, setDatosE] = useState(esSalidaNueva ? {} : (diagActual?.datosEntrada||{}));
   const [datosS, setDatosS] = useState(esSalidaNueva ? {} : (dFinalRef?.datosSalida||diagActual?.datosSalida||{}));
   const [indE, setIndE] = useState(esSalidaNueva ? {} : (diagActual?.indicadoresEntrada||{}));
@@ -3765,16 +3766,8 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                   <div>
                     <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#7A5C00", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Modalidad de aplicación</label>
                     <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                      {["Presencial","Telefónica","Autoadministrada"].map(op=>(
+                      {["Presencial","Videollamada","Autoadministrada"].map(op=>(
                         <button key={op} onClick={()=>setInfoGeneral(p=>({...p,modalidad:op}))} style={{ padding:"8px 16px", borderRadius:7, border:`2px solid ${infoGeneral.modalidad===op?"#E0A020":"#E0C060"}`, background:infoGeneral.modalidad===op?"#FFF0C0":"transparent", color:infoGeneral.modalidad===op?"#7A5C00":"#A07820", cursor:"pointer", fontSize:13, fontWeight:infoGeneral.modalidad===op?700:400 }}>{op}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#7A5C00", textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Estado del diagnóstico</label>
-                    <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                      {[{v:"Pendiente revisión",e:"🟡"},{v:"Validado",e:"🟢"},{v:"Descartado",e:"🔴"}].map(({v,e})=>(
-                        <button key={v} onClick={()=>setInfoGeneral(p=>({...p,estado:v}))} style={{ padding:"8px 14px", borderRadius:7, border:`2px solid ${infoGeneral.estado===v?"#E0A020":"#E0C060"}`, background:infoGeneral.estado===v?"#FFF0C0":"transparent", color:infoGeneral.estado===v?"#7A5C00":"#A07820", cursor:"pointer", fontSize:13, fontWeight:infoGeneral.estado===v?700:400 }}>{e} {v}</button>
                       ))}
                     </div>
                   </div>
@@ -4486,7 +4479,7 @@ export default function App() {
     }
   };
 
-  if(!logueado) return <PantallaLogin proyectos={proyectos} onOk={()=>setLogueado(true)} onOkExterno={(prog)=>{ setEsExterno(prog.id); setProyectoActivo(prog); try{localStorage.setItem("cidere_externo_programa_id",prog.id);}catch(e){}; setLogueado(true); }}/>;
+  if(!logueado) return <PantallaLogin proyectos={proyectos} cargando={cargando} onOk={()=>setLogueado(true)} onOkExterno={(prog)=>{ setEsExterno(prog.id); setProyectoActivo(prog); try{localStorage.setItem("cidere_externo_programa_id",prog.id);}catch(e){}; setLogueado(true); }}/>;
   if(cargando) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.fondo,color:C.gris}}>Cargando…</div>;
 
   return (
@@ -4494,10 +4487,10 @@ export default function App() {
       {showNombrePrompt && (
         <Modal onClose={()=>{ setMiNombre("Anónimo"); try{localStorage.setItem("cidere_user_name","Anónimo");}catch(e){}; setShowNombrePrompt(false); }} width={400}>
           <h2 style={{ fontSize:19, fontWeight:800, color:C.oscuro, margin:"0 0 6px 0" }}>¿Quién eres?</h2>
-          <p style={{ fontSize:13, color:C.gris, margin:"0 0 18px 0" }}>Para que el equipo sepa quién más está activo en la plataforma en este momento.</p>
+          <p style={{ fontSize:13, color:C.gris, margin:"0 0 18px 0" }}>Escribe tu nombre y apellido. Se usará para saber quién más está activo en la plataforma, y para completar automáticamente el campo "Consultor/a" en los diagnósticos que registres.</p>
           <input autoFocus value={miNombre} onChange={e=>setMiNombre(e.target.value)}
             onKeyDown={e=>{ if(e.key==="Enter" && miNombre.trim()){ try{localStorage.setItem("cidere_user_name",miNombre.trim());}catch(err){}; setMiNombre(miNombre.trim()); setShowNombrePrompt(false); } }}
-            placeholder="Ej: Pedro, PM, Camila R…"
+            placeholder="Ej: Maithe Soto, Carola Fredes…"
             style={{ width:"100%", padding:"11px 14px", background:C.fondo, border:`1.5px solid ${C.azul}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box", marginBottom:16 }}/>
           <div style={{ display:"flex", gap:10 }}>
             <button onClick={()=>{ setMiNombre("Anónimo"); try{localStorage.setItem("cidere_user_name","Anónimo");}catch(e){}; setShowNombrePrompt(false); }}
@@ -4760,7 +4753,7 @@ export default function App() {
           <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={esExterno?salirExterno:()=>{setProyectoActivo(null);setDiagActivo(null);}} esAdmin={esAdmin} esExterno={!!esExterno} onDimsGuardados={recargarDims}/>
         )}
         {proyectoActivo && diagActivo && !esExterno && (
-          <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims}/>
+          <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims} miNombre={miNombre}/>
         )}
       </div>
     </div>
