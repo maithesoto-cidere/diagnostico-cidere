@@ -529,6 +529,7 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
   const [descripcion, setDescripcion] = useState("");
   const [color, setColor] = useState("#2B7BBF");
   const [metaProveedores, setMetaProveedores] = useState("100");
+  const [passwordExterna, setPasswordExterna] = useState("");
 
   const abrirEditar = (p) => {
     setEditando(p);
@@ -537,11 +538,12 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
     setDescripcion(p.descripcion||"");
     setColor(p.color||"#2B7BBF");
     setMetaProveedores(p.metaProveedores ? String(p.metaProveedores) : "");
+    setPasswordExterna(p.passwordExterna||"");
   };
   const guardarEdicion = () => {
     if (!nombre.trim()) return;
     if (!metaProveedores || Number(metaProveedores)<=0) { window.alert("Ingresa una meta de proveedores válida (mayor a 0)."); return; }
-    onEditar({...editando, nombre:nombre.trim(), logoUrl, descripcion, color, metaProveedores:Number(metaProveedores)});
+    onEditar({...editando, nombre:nombre.trim(), logoUrl, descripcion, color, metaProveedores:Number(metaProveedores), passwordExterna:passwordExterna.trim()});
     setEditando(null);
   };
 
@@ -550,8 +552,8 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
   const crear = () => {
     if (!nombre.trim()) return;
     if (!metaProveedores || Number(metaProveedores)<=0) { window.alert("Ingresa una meta de proveedores válida (mayor a 0)."); return; }
-    onCrear({ id: Date.now().toString(), nombre: nombre.trim(), logoUrl, descripcion, color, metaProveedores:Number(metaProveedores), diagnosticos: [] });
-    setShowNew(false); setNombre(""); setLogoUrl(""); setDescripcion(""); setColor("#2B7BBF"); setMetaProveedores("100");
+    onCrear({ id: Date.now().toString(), nombre: nombre.trim(), logoUrl, descripcion, color, metaProveedores:Number(metaProveedores), passwordExterna:passwordExterna.trim(), diagnosticos: [] });
+    setShowNew(false); setNombre(""); setLogoUrl(""); setDescripcion(""); setColor("#2B7BBF"); setMetaProveedores("100"); setPasswordExterna("");
   };
 
   return (
@@ -661,6 +663,12 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                 <img src={logoUrl} alt="" style={{ height:28, objectFit:"contain", background:"rgba(255,255,255,0.9)", borderRadius:4, padding:"2px 6px" }}/>
               </div>
             )}
+            <div style={{ borderTop:`1px solid ${C.borde}`, paddingTop:14 }}>
+              <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>🔒 Contraseña de acceso externo (opcional)</label>
+              <input value={passwordExterna} onChange={e=>setPasswordExterna(e.target.value)} placeholder="Ej: cmpc2026"
+                style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }} />
+              <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>Quien la use podrá ver solo el Dashboard y descargar fichas de este programa — sin editar nada. Déjala vacía para desactivar el acceso externo a este programa.</div>
+            </div>
           </div>
           <div style={{ display:"flex", gap:10, marginTop:24 }}>
             <button onClick={()=>setEditando(null)} style={{ flex:1, padding:"11px", border:`1px solid ${C.borde}`, borderRadius:8, background:"transparent", color:C.gris, cursor:"pointer" }}>Cancelar</button>
@@ -711,6 +719,12 @@ function PantallaProyectos({ proyectos, onSeleccionar, onCrear, onEditar, onElim
                 <span style={{ fontSize:11, color:"rgba(255,255,255,0.5)" }}>Así se verá en el header</span>
               </div>
             )}
+            <div style={{ borderTop:`1px solid ${C.borde}`, paddingTop:14 }}>
+              <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>🔒 Contraseña de acceso externo (opcional)</label>
+              <input value={passwordExterna} onChange={e=>setPasswordExterna(e.target.value)} placeholder="Ej: cmpc2026"
+                style={{ width:"100%", padding:"10px 14px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }} />
+              <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>Quien la use podrá ver solo el Dashboard y descargar fichas de este programa — sin editar nada. Puedes dejarla vacía y agregarla después editando el programa.</div>
+            </div>
           </div>
           <div style={{ display:"flex", gap:10, marginTop:24 }}>
             <button onClick={()=>setShowNew(false)} style={{ flex:1, padding:"11px", border:`1px solid ${C.borde}`, borderRadius:8, background:"transparent", color:C.gris, cursor:"pointer", fontSize:13 }}>Cancelar</button>
@@ -863,7 +877,7 @@ function MapaLeaflet({ regiones, getNivel, a5to100 }) {
   );
 }
 
-function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver, esAdmin, onDimsGuardados }) {
+function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver, esAdmin, esExterno, onDimsGuardados }) {
   const [filtro, setFiltro] = useState("");
   const [ordenDiag, setOrdenDiag] = useState("reciente"); // reciente | antiguo | az | za | puntajeDesc | puntajeAsc | estado
   const [vistaTab, setVistaTab] = useState("dashboard");
@@ -959,7 +973,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             {programa.descripcion && <div style={{ fontSize:13, color:C.gris, marginTop:2 }}>{programa.descripcion}</div>}
           </div>
           {esAdmin && <button onClick={()=>setShowEditorContenido(true)} title="Editar dimensiones y preguntas del programa" style={{ marginLeft:"auto", marginRight:10, padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, color:C.gris, fontSize:13, fontWeight:700, cursor:"pointer" }}>⚙️ Editor de Contenido</button>}
-          <button onClick={onNuevoDiag} disabled={dims.length===0} title={dims.length===0?"Este programa aún no tiene dimensiones configuradas":""} style={{ marginLeft:esAdmin?0:"auto", padding:"10px 20px", background:dims.length===0?C.grisCl:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:dims.length===0?"not-allowed":"pointer" }}>+ Nueva empresa</button>
+          {!esExterno && <button onClick={onNuevoDiag} disabled={dims.length===0} title={dims.length===0?"Este programa aún no tiene dimensiones configuradas":""} style={{ marginLeft:esAdmin?0:"auto", padding:"10px 20px", background:dims.length===0?C.grisCl:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:dims.length===0?"not-allowed":"pointer" }}>+ Nueva empresa</button>}
         </div>
         {dims.length===0 && (
           <div style={{ background:"#FFF8EC", border:"1.5px solid #E8A020", borderRadius:12, padding:"16px 20px", marginBottom:24, display:"flex", alignItems:"center", gap:14 }}>
@@ -2059,7 +2073,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   {descargando ? "Generando…" : `⬇ Descargar fichas seleccionadas (${seleccionFichas.size})`}
                 </button>
               )}
-              <button onClick={onNuevoDiag} style={{ padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>+ Nueva empresa</button>
+              {!esExterno && <button onClick={onNuevoDiag} style={{ padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>+ Nueva empresa</button>}
             </div>
             {empresas.length===0 ? (
               <div style={{ background:C.blanco, border:`2px dashed ${C.borde}`, borderRadius:14, padding:48, textAlign:"center" }}>
@@ -2151,8 +2165,10 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                                       {d.infoGeneral?.respondente||"—"}{d.infoGeneral?.cargo?` · ${d.infoGeneral.cargo}`:""} · {respondidas}/{dims.reduce((a,dm)=>a+dm.preguntas.length,0)} preguntas{d._borrador?" · 📝 borrador":""}
                                     </div>
                                   </div>
-                                  <button onClick={()=>onAbrirDiag(d)} style={{ padding:"6px 10px", background:`${C.azul}12`, border:`1px solid ${C.azul}33`, borderRadius:6, color:C.azul, fontSize:11, fontWeight:700, cursor:"pointer" }}>Ver</button>
-                                  <button onClick={()=>{ if(window.confirm(`¿Eliminar este diagnóstico de ${emp.nombre}? Se moverá a la papelera y podrás restaurarlo.`)) onEliminarDiag(d.id); }} style={{ padding:"6px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:6, color:"#E74C3C", fontSize:11, cursor:"pointer" }}>🗑 Eliminar</button>
+                                  {!esExterno && <>
+                                    <button onClick={()=>onAbrirDiag(d)} style={{ padding:"6px 10px", background:`${C.azul}12`, border:`1px solid ${C.azul}33`, borderRadius:6, color:C.azul, fontSize:11, fontWeight:700, cursor:"pointer" }}>Ver</button>
+                                    <button onClick={()=>{ if(window.confirm(`¿Eliminar este diagnóstico de ${emp.nombre}? Se moverá a la papelera y podrás restaurarlo.`)) onEliminarDiag(d.id); }} style={{ padding:"6px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:6, color:"#E74C3C", fontSize:11, cursor:"pointer" }}>🗑 Eliminar</button>
+                                  </>}
                                 </div>
                               );
                             })}
@@ -2170,15 +2186,15 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                               <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dInicial.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
                               {/* Barras rápidas */}
                               {dims.map(dim=>{ const v=pdim(dim,dInicial.datosEntrada||{}); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:pColor}}/></div></div>; })}
-                              <div style={{ display:"flex", gap:6, marginTop:10 }}>
+                              {!esExterno && <div style={{ display:"flex", gap:6, marginTop:10 }}>
                                 <button onClick={()=>onAbrirDiag(dInicial)} style={{ flex:1, padding:"7px 10px", background:`${C.azul}12`, border:`1px solid ${C.azul}33`, borderRadius:7, color:C.azul, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
                                 <button title="Eliminar diagnóstico inicial" onClick={()=>{ if(window.confirm("¿Eliminar el diagnóstico inicial? No se puede deshacer.")) onEliminarDiag(dInicial.id); }} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>🗑</button>
-                              </div>
+                              </div>}
                             </div>
                           ) : (
                             <div>
                               <div style={{ color:C.grisCl, fontSize:13, fontStyle:"italic", marginBottom:10 }}>No completado</div>
-                              <button onClick={onNuevoDiag} style={{ padding:"7px 14px", background:`${C.azul}12`, border:`1px dashed ${C.azul}`, borderRadius:7, color:C.azul, fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Agregar inicial</button>
+                              {!esExterno && <button onClick={onNuevoDiag} style={{ padding:"7px 14px", background:`${C.azul}12`, border:`1px dashed ${C.azul}`, borderRadius:7, color:C.azul, fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Agregar inicial</button>}
                             </div>
                           )}
                         </div>
@@ -2190,16 +2206,16 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                               <div style={{ fontSize:12, color:nvF?.color, fontWeight:700, marginBottom:6 }}>{nvF?.label}</div>
                               <div style={{ fontSize:11, color:C.gris, marginBottom:10 }}>{new Date(dFinal.fechaGuardado).toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"})}</div>
                               {dims.map(dim=>{ const v=pdim(dim, Object.keys(dFinal.datosSalida||{}).length>0 ? dFinal.datosSalida : (dFinal.datosEntrada||{})); const pct=v!==null?a5to100(v):0; return <div key={dim.id} style={{marginBottom:4}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.gris,marginBottom:1}}><span>{dim.nombre}</span><span style={{fontWeight:700}}>{pct}%</span></div><div style={{height:3,background:C.fondo,borderRadius:2,overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:C.verde}}/></div></div>; })}
-                              <div style={{ display:"flex", gap:6, marginTop:10 }}>
+                              {!esExterno && <div style={{ display:"flex", gap:6, marginTop:10 }}>
                                 <button onClick={()=>onAbrirDiag(dFinal)} style={{ flex:1, padding:"7px 10px", background:`${C.verde}12`, border:`1px solid ${C.verde}33`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>Ver / Editar</button>
                                 <button title="Eliminar diagnóstico final" onClick={()=>{ if(window.confirm("¿Eliminar el diagnóstico final? No se puede deshacer.")) onEliminarDiag(dFinal.id); }} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>🗑</button>
-                              </div>
+                              </div>}
                             </div>
                           ) : dInicial ? (
                             <div>
                               <div style={{ color:C.grisCl, fontSize:13, fontStyle:"italic", marginBottom:6 }}>Pendiente al cierre del programa</div>
                               <p style={{ fontSize:11, color:C.grisCl, marginBottom:10 }}>Se completará cuando finalice el programa de acompañamiento.</p>
-                              <button onClick={()=>onAbrirDiag({...dInicial, id:dInicial.id+"_final_new", tipo:"salida_nueva", datosEntrada:{}, indicadoresEntrada:{}})} style={{ padding:"7px 14px", background:`${C.verde}12`, border:`1px dashed ${C.verde}`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Agregar diagnóstico final</button>
+                              {!esExterno && <button onClick={()=>onAbrirDiag({...dInicial, id:dInicial.id+"_final_new", tipo:"salida_nueva", datosEntrada:{}, indicadoresEntrada:{}})} style={{ padding:"7px 14px", background:`${C.verde}12`, border:`1px dashed ${C.verde}`, borderRadius:7, color:C.verde, fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Agregar diagnóstico final</button>}
                             </div>
                           ) : (
                             <div style={{ color:C.grisCl, fontSize:13, fontStyle:"italic" }}>Primero completa el diagnóstico inicial</div>
@@ -2208,10 +2224,10 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       </div>
                       {/* Footer */}
                       <div style={{ padding:"10px 18px", borderTop:`1px solid ${C.borde}`, display:"flex", justifyContent:"space-between", alignItems:"center", background:C.fondo }}>
-                        {tieneAmbos ? (
+                        {tieneAmbos && !esExterno ? (
                           <button onClick={()=>onAbrirDiag({...dInicial, _verComparativo:true, _dFinal:dFinal})} style={{ padding:"7px 16px", background:"#9B59B615", border:"1px solid #9B59B633", borderRadius:7, color:"#9B59B6", fontSize:12, fontWeight:700, cursor:"pointer" }}>📈 Ver informe comparativo</button>
                         ) : <div/>}
-                        <button onClick={()=>{ const pw=window.prompt(`Para eliminar "${emp.nombre}" escribe la contraseña:`); if(pw==="Cidere123") emp.diags.forEach(d=>onEliminarDiag(d.id)); else if(pw!==null) window.alert("Contraseña incorrecta."); }} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>✕ Eliminar</button>
+                        {!esExterno && <button onClick={()=>{ const pw=window.prompt(`Para eliminar "${emp.nombre}" escribe la contraseña:`); if(pw==="Cidere123") emp.diags.forEach(d=>onEliminarDiag(d.id)); else if(pw!==null) window.alert("Contraseña incorrecta."); }} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:7, color:"#E74C3C", fontSize:12, cursor:"pointer" }}>✕ Eliminar</button>}
                       </div>
                     </div>
                   );
@@ -4059,6 +4075,9 @@ export default function App() {
   const [esAdmin, setEsAdmin] = useState(() => {
     try { return localStorage.getItem("cidere_is_admin") === "1"; } catch(e) { return false; }
   });
+  const [esExterno, setEsExterno] = useState(() => {
+    try { return localStorage.getItem("cidere_externo_programa_id") || null; } catch(e) { return null; }
+  });
   const [mantenimiento, setMantenimiento] = useState(null); // {activo, activadoPor, activadoEn, expiraEn}
   const MANTENIMIENTO_DURACION_MIN = 30;
   const mantenimientoActivo = !!(mantenimiento?.activo && new Date(mantenimiento.expiraEn) > new Date());
@@ -4072,6 +4091,36 @@ export default function App() {
       window.alert("Contraseña incorrecta.");
     }
   };
+
+  const desbloquearExterno = () => {
+    const pw = window.prompt("Contraseña de acceso externo:");
+    if (pw === null) return;
+    const prog = proyectos.find(p => p.passwordExterna && p.passwordExterna === pw);
+    if (prog) {
+      setEsExterno(prog.id);
+      setProyectoActivo(prog);
+      try { localStorage.setItem("cidere_externo_programa_id", prog.id); } catch(e) {}
+    } else {
+      window.alert("Contraseña incorrecta.");
+    }
+  };
+
+  const salirExterno = () => {
+    setEsExterno(null);
+    setProyectoActivo(null);
+    setDiagActivo(null);
+    try { localStorage.removeItem("cidere_externo_programa_id"); } catch(e) {}
+  };
+
+  // Si hay una sesión de acceso externo guardada (recarga de página), reengancha proyectoActivo
+  // apenas los proyectos terminen de cargar. Si el programa ya no existe o no tiene esa contraseña
+  // activa, cierra la sesión externa por seguridad.
+  useEffect(() => {
+    if (!esExterno || proyectos.length === 0 || proyectoActivo) return;
+    const prog = proyectos.find(p => p.id === esExterno && p.passwordExterna);
+    if (prog) setProyectoActivo(prog);
+    else salirExterno();
+  }, [esExterno, proyectos, proyectoActivo]);
 
   const toggleMantenimiento = async () => {
     if (mantenimientoActivo) {
@@ -4532,15 +4581,24 @@ export default function App() {
             </div>
           )}
           {/* Modo mantenimiento — solo visible para el administrador */}
-          {esAdmin ? (
+          {esExterno ? (
+            <div style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:8 }}>
+              <span style={{ fontSize:12, color:"rgba(255,255,255,0.8)", fontWeight:600 }}>🔒 Acceso externo</span>
+              <button onClick={salirExterno} style={{ padding:"3px 9px", background:"rgba(255,255,255,0.12)", border:"none", borderRadius:6, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Salir</button>
+            </div>
+          ) : esAdmin ? (
             <button onClick={toggleMantenimiento}
               title={mantenimientoActivo ? `Activado por ${mantenimiento?.activadoPor||"—"} · se apaga solo a las ${new Date(mantenimiento?.expiraEn).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})}` : "Activar modo mantenimiento"}
               style={{ display:"flex",alignItems:"center",gap:6,padding:"7px 12px",background:mantenimientoActivo?"#E8A020":"rgba(255,255,255,0.08)",border:mantenimientoActivo?"none":"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:mantenimientoActivo?"#1C2B3A":"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:700 }}>
               🔧 {mantenimientoActivo ? "Mantenimiento ON" : "Modo mantenimiento"}
             </button>
           ) : (
-            <button onClick={desbloquearAdmin} title="Acceso administrador"
-              style={{ padding:"7px 9px",background:"transparent",border:"none",color:"rgba(255,255,255,0.25)",fontSize:13,cursor:"pointer" }}>🔧</button>
+            <>
+              <button onClick={desbloquearAdmin} title="Acceso administrador"
+                style={{ padding:"7px 9px",background:"transparent",border:"none",color:"rgba(255,255,255,0.25)",fontSize:13,cursor:"pointer" }}>🔧</button>
+              <button onClick={desbloquearExterno} title="Acceso externo (solo lectura)"
+                style={{ padding:"7px 9px",background:"transparent",border:"none",color:"rgba(255,255,255,0.25)",fontSize:13,cursor:"pointer" }}>🔒</button>
+            </>
           )}
           {esAdmin && (
             <>
@@ -4682,13 +4740,13 @@ export default function App() {
 
       {/* BODY */}
       <div style={{ flex:1,display:"flex",minHeight:0,position:"relative" }}>
-        {!proyectoActivo && (
+        {!proyectoActivo && !esExterno && (
           <PantallaProyectos proyectos={proyectos} onSeleccionar={p=>{setProyectoActivo(p);setDiagActivo(null);}} onCrear={crearPrograma} onEditar={editarPrograma} onEliminar={eliminarPrograma}/>
         )}
         {proyectoActivo && !diagActivo && (
-          <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={()=>{setProyectoActivo(null);setDiagActivo(null);}} esAdmin={esAdmin} onDimsGuardados={recargarDims}/>
+          <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={esExterno?salirExterno:()=>{setProyectoActivo(null);setDiagActivo(null);}} esAdmin={esAdmin} esExterno={!!esExterno} onDimsGuardados={recargarDims}/>
         )}
-        {proyectoActivo && diagActivo && (
+        {proyectoActivo && diagActivo && !esExterno && (
           <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims}/>
         )}
       </div>
