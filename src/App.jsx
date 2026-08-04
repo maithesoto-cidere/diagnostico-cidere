@@ -472,13 +472,15 @@ function RadarChart({ dims, series, size=280 }) {
 /* ═══════════════════════════════════════════
    PANTALLA LOGIN
 ═══════════════════════════════════════════ */
-function PantallaLogin({ onOk }) {
+function PantallaLogin({ onOk, onOkExterno, proyectos }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState(false);
   const [shake, setShake] = useState(false);
   const check = () => {
-    if (pw === "Cidere123") { onOk(); }
-    else { setErr(true); setPw(""); setShake(true); setTimeout(()=>setShake(false),500); }
+    if (pw === "Cidere123") { onOk(); return; }
+    const prog = (proyectos||[]).find(p => p.passwordExterna && p.passwordExterna === pw);
+    if (prog) { onOkExterno(prog); return; }
+    setErr(true); setPw(""); setShake(true); setTimeout(()=>setShake(false),500);
   };
   return (
     <div style={{ minHeight:"100vh", background:C.headerBg, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
@@ -492,6 +494,7 @@ function PantallaLogin({ onOk }) {
           <h2 style={{ fontSize:22, fontWeight:800, color:"#fff", margin:"0 0 8px 0", textAlign:"center" }}>Portal de Acceso</h2>
           <p style={{ fontSize:13, color:"rgba(255,255,255,0.5)", textAlign:"center", margin:"0 0 28px 0", lineHeight:1.7 }}>Sistema de Diagnóstico de Capacidades<br/>Programa Proveedores Locales</p>
           <label style={{ display:"block", fontSize:11, fontWeight:700, color:"rgba(255,255,255,0.5)", textTransform:"uppercase", letterSpacing:1, marginBottom:8 }}>Contraseña de acceso</label>
+          <p style={{ fontSize:11, color:"rgba(255,255,255,0.35)", margin:"-4px 0 8px 0" }}>Usa tu contraseña de equipo, o la contraseña de acceso externo de tu programa.</p>
           <input type="password" value={pw} onChange={e=>{setPw(e.target.value);setErr(false);}} onKeyDown={e=>e.key==="Enter"&&check()} placeholder="••••••••••"
             style={{ width:"100%", padding:"13px 16px", border:`2px solid ${err?"#E74C3C":"rgba(255,255,255,0.15)"}`, borderRadius:10, fontSize:15, outline:"none", boxSizing:"border-box", background:"rgba(255,255,255,0.08)", color:"#fff", marginBottom:err?8:20 }} />
           {err && <p style={{ fontSize:12, color:"#E74C3C", margin:"0 0 16px 0" }}>Contraseña incorrecta. Inténtalo de nuevo.</p>}
@@ -4114,6 +4117,7 @@ export default function App() {
     setEsExterno(null);
     setProyectoActivo(null);
     setDiagActivo(null);
+    setLogueado(false);
     try { localStorage.removeItem("cidere_externo_programa_id"); } catch(e) {}
   };
 
@@ -4482,7 +4486,7 @@ export default function App() {
     }
   };
 
-  if(!logueado) return <PantallaLogin onOk={()=>setLogueado(true)}/>;
+  if(!logueado) return <PantallaLogin proyectos={proyectos} onOk={()=>setLogueado(true)} onOkExterno={(prog)=>{ setEsExterno(prog.id); setProyectoActivo(prog); try{localStorage.setItem("cidere_externo_programa_id",prog.id);}catch(e){}; setLogueado(true); }}/>;
   if(cargando) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.fondo,color:C.gris}}>Cargando…</div>;
 
   return (
