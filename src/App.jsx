@@ -4092,6 +4092,11 @@ export default function App() {
     }
   };
 
+  const salirAdmin = () => {
+    setEsAdmin(false);
+    try { localStorage.removeItem("cidere_is_admin"); } catch(e) {}
+  };
+
   const desbloquearExterno = () => {
     const pw = window.prompt("Contraseña de acceso externo:");
     if (pw === null) return;
@@ -4587,11 +4592,15 @@ export default function App() {
               <button onClick={salirExterno} style={{ padding:"3px 9px", background:"rgba(255,255,255,0.12)", border:"none", borderRadius:6, color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>Salir</button>
             </div>
           ) : esAdmin ? (
-            <button onClick={toggleMantenimiento}
-              title={mantenimientoActivo ? `Activado por ${mantenimiento?.activadoPor||"—"} · se apaga solo a las ${new Date(mantenimiento?.expiraEn).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})}` : "Activar modo mantenimiento"}
-              style={{ display:"flex",alignItems:"center",gap:6,padding:"7px 12px",background:mantenimientoActivo?"#E8A020":"rgba(255,255,255,0.08)",border:mantenimientoActivo?"none":"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:mantenimientoActivo?"#1C2B3A":"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:700 }}>
-              🔧 {mantenimientoActivo ? "Mantenimiento ON" : "Modo mantenimiento"}
-            </button>
+            <>
+              <button onClick={toggleMantenimiento}
+                title={mantenimientoActivo ? `Activado por ${mantenimiento?.activadoPor||"—"} · se apaga solo a las ${new Date(mantenimiento?.expiraEn).toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})}` : "Activar modo mantenimiento"}
+                style={{ display:"flex",alignItems:"center",gap:6,padding:"7px 12px",background:mantenimientoActivo?"#E8A020":"rgba(255,255,255,0.08)",border:mantenimientoActivo?"none":"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:mantenimientoActivo?"#1C2B3A":"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:700 }}>
+                🔧 {mantenimientoActivo ? "Mantenimiento ON" : "Modo mantenimiento"}
+              </button>
+              <button onClick={salirAdmin} title="Salir del modo administrador"
+                style={{ padding:"7px 12px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.7)",fontSize:12,cursor:"pointer",fontWeight:600 }}>Salir</button>
+            </>
           ) : (
             <>
               <button onClick={desbloquearAdmin} title="Acceso administrador"
