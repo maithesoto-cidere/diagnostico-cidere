@@ -1039,7 +1039,7 @@ const REGIONES_COORDS = {
 /* ── Normalización de rubros a categorías macro ── */
 // TODO: verificar si conviene guardar rubro_categoria en Supabase; por ahora se deriva del texto libre
 /* ── Opciones fijas para estandarizar Rubro y Tamaño (evita "Pequeña"/"pequeña"/"MEDIANA") ── */
-const RUBRO_OPCIONES = ["Transporte", "Servicios Industriales", "Maestranzas", "Repuestos y Maquinaria", "Otros"];
+const RUBRO_OPCIONES = ["Transporte", "Construcción", "Servicios Industriales", "Servicios Forestales", "Instalaciones/Mantención Eléctrica", "Maestranzas", "Ferretería", "Ingeniería y Servicios Técnicos", "Repuestos y Maquinaria", "Capacitación", "Otros"];
 const TAMANO_OPCIONES = ["Microempresa", "Pequeña", "Mediana", "Grande"];
 
 /* ── Ante duplicados de un mismo tipo (p.ej. varios "entrada" de una empresa), elige el más
@@ -3743,6 +3743,29 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
   const [datosS, setDatosS] = useState(esSalidaNueva ? {} : (dFinalRef?.datosSalida||diagActual?.datosSalida||{}));
   const [indE, setIndE] = useState(esSalidaNueva ? {} : (diagActual?.indicadoresEntrada||{}));
   const [rutEstado, setRutEstado] = useState(null); // null | "buscando" | "encontrado" | "no_encontrado"
+  const [empresaEncontrada, setEmpresaEncontrada] = useState(null);
+
+  const aplicarDatosEmpresa = (emp, forzar) => {
+    if (!emp) return;
+    setInfoGeneral(p => ({
+      ...p,
+      empresa: forzar ? (emp.nombre || p.empresa) : (p.empresa || emp.nombre || p.empresa),
+      comuna: forzar ? (emp.comuna || p.comuna) : (p.comuna || emp.comuna || p.comuna),
+      pais: forzar ? (emp.pais || p.pais) : ((p.pais && p.pais!=="Chile") ? p.pais : (emp.pais || p.pais)),
+      rubro: forzar
+        ? (RUBRO_OPCIONES.find(o=>o.toLowerCase()===String(emp.rubro||"").toLowerCase()) || p.rubro)
+        : (p.rubro || RUBRO_OPCIONES.find(o=>o.toLowerCase()===String(emp.rubro||"").toLowerCase()) || p.rubro),
+      tamano: forzar
+        ? (TAMANO_OPCIONES.find(o=>o.toLowerCase()===String(emp.tamano||"").toLowerCase()) || p.tamano)
+        : (p.tamano || TAMANO_OPCIONES.find(o=>o.toLowerCase()===String(emp.tamano||"").toLowerCase()) || p.tamano),
+      respondente: forzar ? (emp.representante || p.respondente) : (p.respondente || emp.representante || p.respondente),
+      facturacionTotal: forzar ? (emp.facturacion_total || p.facturacionTotal) : (p.facturacionTotal || emp.facturacion_total || p.facturacionTotal),
+    }));
+    if (emp.accidentes_laborales) {
+      const dimSost = dims.find(d => d.nombre.toLowerCase().includes("sostenibilidad"));
+      if (dimSost) setIndE(prev => ({ ...prev, [dimSost.id]: forzar ? emp.accidentes_laborales : (prev[dimSost.id] || emp.accidentes_laborales) }));
+    }
+  };
   const [indS, setIndS] = useState(esSalidaNueva ? {} : (dFinalRef?.indicadoresSalida||diagActual?.indicadoresSalida||{}));
   const [evids, setEvids] = useState(diagActual?.evidencias||{});
   const [showModal, setShowModal] = useState(false);
@@ -3985,33 +4008,26 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
 
               <div>
                 <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>RUT de la empresa</label>
-                <input value={infoGeneral.rut||""} onChange={e=>{setInfoGeneral(p=>({...p,rut:e.target.value})); setRutEstado(null);}}
+                <input value={infoGeneral.rut||""} onChange={e=>{setInfoGeneral(p=>({...p,rut:e.target.value})); setRutEstado(null); setEmpresaEncontrada(null);}}
                   onBlur={async ()=>{
                     const rut = (infoGeneral.rut||"").trim();
                     if (!rut) { setRutEstado(null); return; }
                     setRutEstado("buscando");
                     const emp = await sbGetEmpresaPorRut(rut);
-                    if (!emp) { setRutEstado("no_encontrado"); return; }
-                    setInfoGeneral(p => ({
-                      ...p,
-                      empresa: p.empresa || emp.nombre || p.empresa,
-                      comuna: p.comuna || emp.comuna || p.comuna,
-                      pais: (p.pais && p.pais!=="Chile") ? p.pais : (emp.pais || p.pais),
-                      rubro: p.rubro || (RUBRO_OPCIONES.find(o=>o.toLowerCase()===String(emp.rubro||"").toLowerCase()) || p.rubro),
-                      tamano: p.tamano || (TAMANO_OPCIONES.find(o=>o.toLowerCase()===String(emp.tamano||"").toLowerCase()) || p.tamano),
-                      respondente: p.respondente || emp.representante || p.respondente,
-                      facturacionTotal: p.facturacionTotal || emp.facturacion_total || p.facturacionTotal,
-                    }));
-                    if (emp.accidentes_laborales) {
-                      const dimSost = dims.find(d => d.nombre.toLowerCase().includes("sostenibilidad"));
-                      if (dimSost) setIndE(prev => ({ ...prev, [dimSost.id]: prev[dimSost.id] || emp.accidentes_laborales }));
-                    }
+                    if (!emp) { setRutEstado("no_encontrado"); setEmpresaEncontrada(null); return; }
+                    aplicarDatosEmpresa(emp, false);
+                    setEmpresaEncontrada(emp);
                     setRutEstado("encontrado");
                   }}
                   placeholder="Ej: 76.543.210-K"
                   style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }}/>
                 {rutEstado==="buscando" && <div style={{ fontSize:11, color:C.gris, marginTop:4 }}>Buscando en la base de empresas…</div>}
-                {rutEstado==="encontrado" && <div style={{ fontSize:11, color:C.verde, marginTop:4 }}>✓ Datos encontrados y completados automáticamente (revisa y ajusta si es necesario)</div>}
+                {rutEstado==="encontrado" && (
+                  <div style={{ marginTop:4 }}>
+                    <div style={{ fontSize:11, color:C.verde }}>✓ Empresa encontrada en la base. Se completaron solo los campos que estaban vacíos (no se pisó nada ya escrito).</div>
+                    <button type="button" onClick={()=>aplicarDatosEmpresa(empresaEncontrada, true)} style={{ marginTop:5, padding:"4px 10px", background:"transparent", border:`1px solid ${C.azul}`, borderRadius:6, color:C.azul, fontSize:11, fontWeight:700, cursor:"pointer" }}>🔄 Reemplazar TODOS los campos con los datos de la base</button>
+                  </div>
+                )}
                 {rutEstado==="no_encontrado" && <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>No se encontró este RUT en la base — completa los datos manualmente.</div>}
               </div>
 
