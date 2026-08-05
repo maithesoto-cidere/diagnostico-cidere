@@ -49,6 +49,16 @@ async function sbGetEmpresaPorRut(rut) {
   } catch(e) { return null; }
 }
 
+async function sbBuscarEmpresasPorNombre(nombre) {
+  const q = (nombre||"").trim();
+  if (q.length < 3) return [];
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/empresas?nombre=ilike.*${encodeURIComponent(q)}*&select=*&limit=6`, { headers: sbHeaders });
+    if (!r.ok) return [];
+    return await r.json();
+  } catch(e) { return []; }
+}
+
 async function sbGetEmpresas() {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/empresas?select=*&order=nombre`, { headers: sbHeaders });
@@ -1159,7 +1169,121 @@ function MapaLeaflet({ regiones, getNivel, a5to100 }) {
   );
 }
 
-function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver, esAdmin, esExterno, onDimsGuardados }) {
+/* ═══════════════════════════════════════════
+   ACTUALIZACIÓN MASIVA — vincula diagnósticos existentes con la Base de Empresas
+═══════════════════════════════════════════ */
+const normalizarNombreEmpresa = (s) => (s||"")
+  .toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+  .replace(/\b(spa|ltda|limitada|s\.?a\.?|eirl|e\.i\.r\.l\.?|cia|compania|compañia|y cia|hnos|hermanos)\b/g,"")
+  .replace(/[^a-z0-9]/g,"").trim();
+
+function PanelActualizacionMasiva({ programa, dims, onAplicar, onClose }) {
+  const [cargando, setCargando] = useState(true);
+  const [propuestas, setPropuestas] = useState([]);
+  const [aplicando, setAplicando] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const empresas = await sbGetEmpresas();
+      const props = [];
+      (programa.diagnosticos||[]).forEach(d => {
+        if (d.infoGeneral?.rut?.trim()) return; // ya vinculado, no hace falta
+        const nombreActual = d.infoGeneral?.empresa || "";
+        if (!nombreActual.trim()) return;
+        const norm = normalizarNombreEmpresa(nombreActual);
+        if (!norm) return;
+        let match = empresas.find(e => normalizarNombreEmpresa(e.nombre) === norm);
+        let confianza = match ? "alta" : null;
+        if (!match) {
+          match = empresas.find(e => {
+            const en = normalizarNombreEmpresa(e.nombre);
+            return en.length>3 && (en.includes(norm) || norm.includes(en));
+          });
+          confianza = match ? "media" : null;
+        }
+        if (!match) return;
+        props.push({
+          diagId: d.id,
+          tipo: d.tipo==="entrada" ? "Inicial" : "Final",
+          nombreActual,
+          match,
+          confianza,
+          seleccionado: confianza==="alta",
+        });
+      });
+      setPropuestas(props);
+      setCargando(false);
+    })();
+  }, [programa]);
+
+  const toggle = (diagId) => setPropuestas(p => p.map(x => x.diagId===diagId ? {...x, seleccionado:!x.seleccionado} : x));
+  const seleccionadas = propuestas.filter(p => p.seleccionado);
+
+  const aplicar = () => {
+    setAplicando(true);
+    const dimSost = dims.find(d => d.nombre.toLowerCase().includes("sostenibilidad"));
+    const actualizaciones = seleccionadas.map(p => {
+      const emp = p.match;
+      const infoGeneral = {
+        rut: emp.rut,
+        empresa: emp.nombre || p.nombreActual,
+        comuna: emp.comuna || undefined,
+        pais: emp.pais || undefined,
+        rubro: RUBRO_OPCIONES.find(o=>o.toLowerCase()===String(emp.rubro||"").toLowerCase()) || undefined,
+        tamano: TAMANO_OPCIONES.find(o=>o.toLowerCase()===String(emp.tamano||"").toLowerCase()) || undefined,
+        respondente: emp.representante || undefined,
+        facturacionTotal: emp.facturacion_total || undefined,
+      };
+      Object.keys(infoGeneral).forEach(k => infoGeneral[k]===undefined && delete infoGeneral[k]);
+      const out = { diagId: p.diagId, infoGeneral };
+      if (emp.accidentes_laborales && dimSost) out.indicadoresEntrada = { [dimSost.id]: emp.accidentes_laborales };
+      return out;
+    });
+    onAplicar(actualizaciones);
+    setAplicando(false);
+    onClose();
+  };
+
+  return (
+    <Modal onClose={onClose} width={720}>
+      <h2 style={{ fontSize:20, fontWeight:800, color:C.oscuro, margin:"0 0 4px 0" }}>🔄 Actualizar empresas desde la Base</h2>
+      <p style={{ fontSize:13, color:C.gris, margin:"0 0 20px 0" }}>Busca coincidencias por nombre entre tus diagnósticos (que aún no tienen RUT) y la Base de Empresas. Revisa y elige cuáles aplicar — nada se actualiza sin tu confirmación.</p>
+
+      {cargando ? (
+        <div style={{ textAlign:"center", padding:40, color:C.gris }}>Buscando coincidencias…</div>
+      ) : propuestas.length === 0 ? (
+        <div style={{ textAlign:"center", padding:40, color:C.gris, fontSize:13 }}>No se encontraron coincidencias nuevas. Todos los diagnósticos ya tienen RUT, o ninguno coincide con la Base de Empresas.</div>
+      ) : (
+        <>
+          <div style={{ maxHeight:360, overflowY:"auto", border:`1px solid ${C.borde}`, borderRadius:10 }}>
+            {propuestas.map(p => (
+              <label key={p.diagId} style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"12px 14px", borderBottom:`1px solid ${C.borde}`, cursor:"pointer", background:p.seleccionado?`${C.verde}08`:"transparent" }}>
+                <input type="checkbox" checked={p.seleccionado} onChange={()=>toggle(p.diagId)} style={{ marginTop:3 }}/>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.oscuro }}>{p.nombreActual} <span style={{ fontWeight:400, color:C.grisCl, fontSize:11 }}>({p.tipo})</span></div>
+                  <div style={{ fontSize:12, color:C.gris, marginTop:2 }}>
+                    → <strong>{p.match.nombre}</strong> — RUT {p.match.rut}
+                    <span style={{ marginLeft:8, fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:4, background:p.confianza==="alta"?"#EAF7F2":"#FFF8EC", color:p.confianza==="alta"?"#16A085":"#A07820" }}>
+                      {p.confianza==="alta" ? "✓ coincidencia exacta" : "⚠ posible coincidencia — revisa"}
+                    </span>
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+          <div style={{ display:"flex", gap:10, marginTop:20 }}>
+            <button onClick={onClose} style={{ flex:1, padding:"11px", border:`1px solid ${C.borde}`, borderRadius:8, background:"transparent", color:C.gris, cursor:"pointer" }}>Cancelar</button>
+            <button onClick={aplicar} disabled={seleccionadas.length===0||aplicando} style={{ flex:2, padding:"11px", background:seleccionadas.length===0?C.grisCl:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontWeight:700, cursor:seleccionadas.length===0?"not-allowed":"pointer" }}>
+              {aplicando ? "Aplicando…" : `Aplicar ${seleccionadas.length} seleccionada${seleccionadas.length!==1?"s":""}`}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDiag, onVolver, esAdmin, esExterno, onDimsGuardados, onActualizarMasivo }) {
   const [filtro, setFiltro] = useState("");
   const [ordenDiag, setOrdenDiag] = useState("reciente"); // reciente | antiguo | az | za | puntajeDesc | puntajeAsc | estado
   const [vistaTab, setVistaTab] = useState("dashboard");
@@ -1170,6 +1294,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
   const [duplicadosAbiertos, setDuplicadosAbiertos] = useState(() => new Set());
   const [descargando, setDescargando] = useState(false);
   const [showEditorContenido, setShowEditorContenido] = useState(false);
+  const [showActualizacionMasiva, setShowActualizacionMasiva] = useState(false);
   const [toastPrograma, setToastPrograma] = useState(null);
   const showTPrograma = (msg,c=C.verde) => { setToastPrograma({msg,c}); setTimeout(()=>setToastPrograma(null),3000); };
   const pColor = programa.color || C.azul;
@@ -1255,6 +1380,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             {programa.descripcion && <div style={{ fontSize:13, color:C.gris, marginTop:2 }}>{programa.descripcion}</div>}
           </div>
           {esAdmin && <button onClick={()=>setShowEditorContenido(true)} title="Editar dimensiones y preguntas del programa" style={{ marginLeft:"auto", marginRight:10, padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, color:C.gris, fontSize:13, fontWeight:700, cursor:"pointer" }}>⚙️ Editor de Contenido</button>}
+          {esAdmin && <button onClick={()=>setShowActualizacionMasiva(true)} title="Vincular diagnósticos existentes con la Base de Empresas" style={{ marginRight:10, padding:"10px 16px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, color:C.gris, fontSize:13, fontWeight:700, cursor:"pointer" }}>🔄 Actualizar desde Base</button>}
           {!esExterno && <button onClick={onNuevoDiag} disabled={dims.length===0} title={dims.length===0?"Este programa aún no tiene dimensiones configuradas":""} style={{ marginLeft:esAdmin?0:"auto", padding:"10px 20px", background:dims.length===0?C.grisCl:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:dims.length===0?"not-allowed":"pointer" }}>+ Nueva empresa</button>}
         </div>
         {dims.length===0 && (
@@ -1269,6 +1395,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
         )}
         {toastPrograma && <div style={{ position:"fixed", bottom:24, right:24, background:toastPrograma.c, color:"#fff", padding:"12px 20px", borderRadius:8, fontSize:13, fontWeight:700, zIndex:700, boxShadow:"0 4px 20px rgba(0,0,0,0.2)" }}>{toastPrograma.msg}</div>}
         {showEditorContenido && <EditorContenido dims={dims} programaId={programa.configId || programa.id} onSave={async ()=>{ setShowEditorContenido(false); showTPrograma("✓ Cambios guardados"); await onDimsGuardados?.(); }} onClose={()=>setShowEditorContenido(false)}/>}
+        {showActualizacionMasiva && <PanelActualizacionMasiva programa={programa} dims={dims} onAplicar={(actualizaciones)=>{ onActualizarMasivo?.(actualizaciones); showTPrograma(`✓ ${actualizaciones.length} diagnóstico(s) actualizados`); }} onClose={()=>setShowActualizacionMasiva(false)}/>}
         {/* Stats */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:24 }}>
           {(() => {
@@ -3744,6 +3871,8 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
   const [indE, setIndE] = useState(esSalidaNueva ? {} : (diagActual?.indicadoresEntrada||{}));
   const [rutEstado, setRutEstado] = useState(null); // null | "buscando" | "encontrado" | "no_encontrado"
   const [empresaEncontrada, setEmpresaEncontrada] = useState(null);
+  const [sugerenciasEmpresa, setSugerenciasEmpresa] = useState([]);
+  const [buscandoNombre, setBuscandoNombre] = useState(false);
 
   const aplicarDatosEmpresa = (emp, forzar) => {
     if (!emp) return;
@@ -4040,6 +4169,37 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                       <option value="">Selecciona una opción…</option>
                       {(f.k==="rubro" ? RUBRO_OPCIONES : TAMANO_OPCIONES).map(op=><option key={op} value={op}>{op}</option>)}
                     </select>
+                  ) : f.k==="empresa" ? (
+                    <>
+                      <input value={infoGeneral.empresa||""} onChange={e=>{setInfoGeneral(p=>({...p,empresa:e.target.value})); setSugerenciasEmpresa([]);}}
+                        onBlur={async ()=>{
+                          if (infoGeneral.rut?.trim()) return; // ya tiene RUT vinculado, no hace falta sugerir
+                          const nombre = (infoGeneral.empresa||"").trim();
+                          if (nombre.length < 3) { setSugerenciasEmpresa([]); return; }
+                          setBuscandoNombre(true);
+                          const resultados = await sbBuscarEmpresasPorNombre(nombre);
+                          setBuscandoNombre(false);
+                          setSugerenciasEmpresa(resultados);
+                        }}
+                        placeholder={f.ph}
+                        style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }}/>
+                      {buscandoNombre && <div style={{ fontSize:11, color:C.gris, marginTop:4 }}>Buscando coincidencias por nombre…</div>}
+                      {sugerenciasEmpresa.length > 0 && (
+                        <div style={{ marginTop:6, background:"#F5FAFF", border:`1px solid ${C.azul}55`, borderRadius:8, padding:10 }}>
+                          <div style={{ fontSize:11, color:C.azul, fontWeight:700, marginBottom:6 }}>¿Es alguna de estas empresas de la base?</div>
+                          {sugerenciasEmpresa.map(emp => (
+                            <button key={emp.rut} type="button" onClick={()=>{
+                              setInfoGeneral(p=>({...p, rut:emp.rut}));
+                              aplicarDatosEmpresa(emp, true);
+                              setSugerenciasEmpresa([]);
+                            }} style={{ display:"block", width:"100%", textAlign:"left", padding:"6px 8px", background:"transparent", border:"none", borderTop:`1px solid ${C.azul}22`, color:C.oscuro, fontSize:12.5, cursor:"pointer" }}>
+                              <strong>{emp.nombre}</strong> — RUT {emp.rut}{emp.comuna?` · ${emp.comuna}`:""}
+                            </button>
+                          ))}
+                          <button type="button" onClick={()=>setSugerenciasEmpresa([])} style={{ marginTop:4, padding:"4px 8px", background:"transparent", border:"none", color:C.grisCl, fontSize:11, cursor:"pointer" }}>Ninguna, es una empresa nueva</button>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <input value={infoGeneral[f.k]||""} onChange={e=>setInfoGeneral(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph}
                       style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }}/>
@@ -4686,6 +4846,27 @@ export default function App() {
     setDiagActivo({diag:recFinal,esNuevo:false});
   };
 
+  // Aplica actualizaciones a varios diagnósticos de una sola vez (usado por la actualización masiva
+  // desde la Base de Empresas). actualizaciones: [{ diagId, infoGeneral, indicadoresEntrada, indicadoresSalida }]
+  const actualizarDiagnosticosMasivo = (actualizaciones) => {
+    const updated = proyectos.map(p=>{
+      if(p.id!==proyectoActivo.id) return p;
+      const diags = (p.diagnosticos||[]).map(d=>{
+        const act = actualizaciones.find(a=>a.diagId===d.id);
+        if (!act) return d;
+        return {
+          ...d,
+          infoGeneral: act.infoGeneral ? {...d.infoGeneral, ...act.infoGeneral} : d.infoGeneral,
+          indicadoresEntrada: act.indicadoresEntrada ? {...(d.indicadoresEntrada||{}), ...act.indicadoresEntrada} : d.indicadoresEntrada,
+          indicadoresSalida: act.indicadoresSalida ? {...(d.indicadoresSalida||{}), ...act.indicadoresSalida} : d.indicadoresSalida,
+        };
+      });
+      return {...p, diagnosticos:diags};
+    });
+    saveProyectos(updated);
+    setProyectoActivo(updated.find(p=>p.id===proyectoActivo.id));
+  };
+
   const exportarBackup = () => {
     try {
       const backup = { version:"1.0", fecha:new Date().toISOString(), proyectos };
@@ -5082,7 +5263,7 @@ export default function App() {
           <PantallaProyectos proyectos={proyectos} onSeleccionar={p=>{setProyectoActivo(p);setDiagActivo(null);}} onCrear={crearPrograma} onEditar={editarPrograma} onEliminar={eliminarPrograma}/>
         )}
         {proyectoActivo && !diagActivo && (
-          <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={esExterno?salirExterno:()=>{setProyectoActivo(null);setDiagActivo(null);}} esAdmin={esAdmin} esExterno={!!esExterno} onDimsGuardados={recargarDims}/>
+          <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={esExterno?salirExterno:()=>{setProyectoActivo(null);setDiagActivo(null);}} esAdmin={esAdmin} esExterno={!!esExterno} onDimsGuardados={recargarDims} onActualizarMasivo={actualizarDiagnosticosMasivo}/>
         )}
         {proyectoActivo && diagActivo && !esExterno && (
           <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims} miNombre={miNombre}/>
