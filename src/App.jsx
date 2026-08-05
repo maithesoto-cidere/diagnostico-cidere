@@ -628,7 +628,7 @@ function PantallaBaseEmpresas({ onVolver }) {
     return (e.nombre||"").toLowerCase().includes(q) || (e.rut||"").toLowerCase().includes(q);
   });
 
-  const abrirNueva = () => setEditando({ rut:"", nombre:"", pais:"Chile", comuna:"", rubro:"", tamano:"", representante:"", facturacion_total:"", accidentes_laborales:"" });
+  const abrirNueva = () => setEditando({ rut:"", nombre:"", pais:"Chile", region:"", comuna:"", rubro:"", tamano:"", representante:"", facturacion_total:"", accidentes_laborales:"" });
 
   const guardar = async () => {
     if (!editando.rut?.trim()) { window.alert("El RUT es obligatorio."); return; }
@@ -663,6 +663,7 @@ function PantallaBaseEmpresas({ onVolver }) {
         rut: ["rut","identificaciontributaria","identificaciontributariarutcnpjrfcruc"],
         nombre: ["nombre","empresa","nombredelaempresa","razonsocial"],
         pais: ["pais"],
+        region: ["region"],
         comuna: ["comuna"],
         rubro: ["rubro","girocomercial"],
         tamano: ["tamano","tamanodelaempresa","tamanodelaempresasegunfacturacion"],
@@ -670,6 +671,39 @@ function PantallaBaseEmpresas({ onVolver }) {
         facturacion_total: ["facturaciontotal","facturacion"],
         accidentes_laborales: ["accidenteslaborales","naccidenteslaboralesultimoano","accidenteslaboralesultimoano"],
       };
+
+      // Normaliza el rubro libre del Excel a una de las categorías oficiales por palabras clave;
+      // si no reconoce ninguna, cae automáticamente en "Otros".
+      const normalizarRubro = (texto) => {
+        const t = normKey(texto);
+        if (!t) return "";
+        if (t.includes("transporte")) return "Transporte";
+        if (t.includes("construc")||t.includes("obra")||t.includes("edifici")||t.includes("arquitect")) return "Construcción";
+        if (t.includes("forest")||t.includes("silvicultura")) return "Servicios Forestales";
+        if (t.includes("ferreter")) return "Ferretería";
+        if (t.includes("electric")) return "Instalaciones/Mantención Eléctrica";
+        if (t.includes("maestranza")||t.includes("metalmecan")||t.includes("metalic")) return "Maestranzas";
+        if (t.includes("ingenier")) return "Ingeniería y Servicios Técnicos";
+        if (t.includes("capacitac")||t.includes("otec")) return "Capacitación";
+        if (t.includes("mantenci")||t.includes("mantenimiento")||t.includes("industrial")) return "Servicios Industriales";
+        if (t.includes("arriendo")||t.includes("maquinaria")||t.includes("equipo")||t.includes("repuesto")) return "Repuestos y Maquinaria";
+        return "Otros";
+      };
+      // Normaliza el tamaño libre del Excel contra la lista oficial (ej. "Micro" → "Microempresa")
+      const normalizarTamano = (texto) => {
+        const t = normKey(texto);
+        if (!t) return "";
+        const match = TAMANO_OPCIONES.find(o => normKey(o)===t || normKey(o).startsWith(t) || t.startsWith(normKey(o)));
+        return match || texto;
+      };
+      // Normaliza la región libre del Excel contra la lista oficial de las 16 regiones de Chile
+      const normalizarRegion = (texto) => {
+        const t = normKey(texto);
+        if (!t) return "";
+        const match = REGIONES_CHILE.find(o => normKey(o)===t || normKey(o).includes(t) || t.includes(normKey(o)));
+        return match || texto;
+      };
+
       const empresasImport = filas.map(fila => {
         const filaNorm = {};
         Object.keys(fila).forEach(k => { filaNorm[normKey(k)] = fila[k]; });
@@ -678,6 +712,9 @@ function PantallaBaseEmpresas({ onVolver }) {
           const key = alias.find(a => filaNorm[a] !== undefined && filaNorm[a] !== "");
           obj[campo] = key ? String(filaNorm[key]).trim() : "";
         });
+        if (obj.rubro) obj.rubro = normalizarRubro(obj.rubro);
+        if (obj.tamano) obj.tamano = normalizarTamano(obj.tamano);
+        if (obj.region) obj.region = normalizarRegion(obj.region);
         return obj;
       }).filter(e => e.rut);
 
@@ -707,6 +744,17 @@ function PantallaBaseEmpresas({ onVolver }) {
       <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{label}</label>
       <input value={editando[key]||""} onChange={e=>setEditando(p=>({...p,[key]:e.target.value}))} placeholder={placeholder}
         style={{ width:"100%", padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:13, outline:"none", boxSizing:"border-box" }} />
+    </div>
+  );
+
+  const campoSelect = (label, key, opciones) => (
+    <div>
+      <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{label}</label>
+      <select value={editando[key]||""} onChange={e=>setEditando(p=>({...p,[key]:e.target.value}))}
+        style={{ width:"100%", padding:"9px 12px", background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:8, color:editando[key]?C.oscuro:C.grisCl, fontSize:13, outline:"none", boxSizing:"border-box", cursor:"pointer" }}>
+        <option value="">Selecciona…</option>
+        {opciones.map(op=><option key={op} value={op}>{op}</option>)}
+      </select>
     </div>
   );
 
@@ -750,7 +798,7 @@ function PantallaBaseEmpresas({ onVolver }) {
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
               <thead>
                 <tr style={{ background:C.fondo }}>
-                  {["RUT","Empresa","Comuna","Rubro","Tamaño","Facturación total","Accidentes",""].map(h=>(
+                  {["RUT","Empresa","Región","Comuna","Rubro","Tamaño","Facturación total","Accidentes",""].map(h=>(
                     <th key={h} style={{ textAlign:"left", padding:"10px 14px", color:C.gris, fontWeight:700, fontSize:11, textTransform:"uppercase", whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -760,6 +808,7 @@ function PantallaBaseEmpresas({ onVolver }) {
                   <tr key={e.rut} style={{ borderTop:`1px solid ${C.borde}` }}>
                     <td style={{ padding:"10px 14px", fontFamily:"monospace", whiteSpace:"nowrap" }}>{e.rut}</td>
                     <td style={{ padding:"10px 14px", fontWeight:600, whiteSpace:"nowrap" }}>{e.nombre}</td>
+                    <td style={{ padding:"10px 14px", color:C.gris, whiteSpace:"nowrap" }}>{e.region||"—"}</td>
                     <td style={{ padding:"10px 14px", color:C.gris, whiteSpace:"nowrap" }}>{e.comuna||"—"}</td>
                     <td style={{ padding:"10px 14px", color:C.gris, whiteSpace:"nowrap" }}>{e.rubro||"—"}</td>
                     <td style={{ padding:"10px 14px", whiteSpace:"nowrap" }}>{e.tamano||"—"}</td>
@@ -788,15 +837,18 @@ function PantallaBaseEmpresas({ onVolver }) {
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
               {campo("País","pais")}
+              {campoSelect("Región","region",REGIONES_CHILE)}
               {campo("Comuna","comuna")}
-              {campo("Rubro","rubro")}
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-              {campo("Tamaño","tamano","Microempresa / Pequeña / Mediana / Grande")}
+              {campoSelect("Rubro","rubro",RUBRO_OPCIONES)}
+              {campoSelect("Tamaño","tamano",TAMANO_OPCIONES)}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               {campo("Representante","representante")}
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               {campo("Facturación total","facturacion_total")}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:12 }}>
               {campo("Accidentes laborales (últ. año)","accidentes_laborales")}
             </div>
           </div>
@@ -1051,6 +1103,7 @@ const REGIONES_COORDS = {
 /* ── Opciones fijas para estandarizar Rubro y Tamaño (evita "Pequeña"/"pequeña"/"MEDIANA") ── */
 const RUBRO_OPCIONES = ["Transporte", "Construcción", "Servicios Industriales", "Servicios Forestales", "Instalaciones/Mantención Eléctrica", "Maestranzas", "Ferretería", "Ingeniería y Servicios Técnicos", "Repuestos y Maquinaria", "Capacitación", "Otros"];
 const TAMANO_OPCIONES = ["Microempresa", "Pequeña", "Mediana", "Grande"];
+const REGIONES_CHILE = ["Arica y Parinacota","Tarapacá","Antofagasta","Atacama","Coquimbo","Valparaíso","Metropolitana","O'Higgins","Maule","Ñuble","Biobío","La Araucanía","Los Ríos","Los Lagos","Aysén","Magallanes"];
 
 /* ── Ante duplicados de un mismo tipo (p.ej. varios "entrada" de una empresa), elige el más
    confiable: no-borrador antes que borrador, más preguntas respondidas, y el más reciente. ── */
@@ -1228,6 +1281,7 @@ function PanelActualizacionMasiva({ programa, dims, onAplicar, onClose }) {
         rut: emp.rut,
         empresa: emp.nombre || p.nombreActual,
         comuna: emp.comuna || undefined,
+        region: REGIONES_CHILE.find(o=>o.toLowerCase()===String(emp.region||"").toLowerCase()) || undefined,
         pais: emp.pais || undefined,
         rubro: RUBRO_OPCIONES.find(o=>o.toLowerCase()===String(emp.rubro||"").toLowerCase()) || undefined,
         tamano: TAMANO_OPCIONES.find(o=>o.toLowerCase()===String(emp.tamano||"").toLowerCase()) || undefined,
@@ -3880,6 +3934,9 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
       ...p,
       empresa: forzar ? (emp.nombre || p.empresa) : (p.empresa || emp.nombre || p.empresa),
       comuna: forzar ? (emp.comuna || p.comuna) : (p.comuna || emp.comuna || p.comuna),
+      region: forzar
+        ? (REGIONES_CHILE.find(o=>o.toLowerCase()===String(emp.region||"").toLowerCase()) || p.region)
+        : (p.region || REGIONES_CHILE.find(o=>o.toLowerCase()===String(emp.region||"").toLowerCase()) || p.region),
       pais: forzar ? (emp.pais || p.pais) : ((p.pais && p.pais!=="Chile") ? p.pais : (emp.pais || p.pais)),
       rubro: forzar
         ? (RUBRO_OPCIONES.find(o=>o.toLowerCase()===String(emp.rubro||"").toLowerCase()) || p.rubro)
@@ -4005,6 +4062,26 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
       fechaGuardado: new Date().toISOString()
     };
     onGuardar(rec); setShowModal(false); showT("✓ Diagnóstico guardado");
+
+    // Mantiene la Base de Empresas al día: si el diagnóstico tiene RUT, sincroniza sus datos
+    // (solo los campos con valor — nunca borra algo que ya estuviera en la base).
+    if (infoGeneral.rut?.trim()) {
+      const payload = {
+        rut: infoGeneral.rut,
+        nombre: infoGeneral.empresa || undefined,
+        pais: infoGeneral.pais || undefined,
+        region: infoGeneral.region || undefined,
+        comuna: infoGeneral.comuna || undefined,
+        rubro: infoGeneral.rubro || undefined,
+        tamano: infoGeneral.tamano || undefined,
+        representante: infoGeneral.respondente || undefined,
+        facturacion_total: infoGeneral.facturacionTotal || undefined,
+      };
+      const dimSost = dims.find(d => d.nombre.toLowerCase().includes("sostenibilidad"));
+      if (dimSost && rec.indicadoresEntrada?.[dimSost.id]) payload.accidentes_laborales = rec.indicadoresEntrada[dimSost.id];
+      Object.keys(payload).forEach(k => payload[k]===undefined && delete payload[k]);
+      sbGuardarEmpresa(payload); // en segundo plano, no bloquea el guardado del diagnóstico
+    }
   };
 
   const pgE = pglobal(dims,datosE); const pgS = pglobal(dims,datosS);
@@ -4160,14 +4237,14 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                 {rutEstado==="no_encontrado" && <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>No se encontró este RUT en la base — completa los datos manualmente.</div>}
               </div>
 
-              {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"rubro",l:"Rubro / Actividad"},{k:"tamano",l:"Tamaño de la empresa"},{k:"region",l:"Región",ph:"Ej: Biobío, Metropolitana, La Araucanía…"},{k:"comuna",l:"Comuna",ph:"Ej: Concepción, Coronel…"},{k:"pais",l:"País",ph:"Chile"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"},{k:"facturacionCMPC",l:`Facturación con ${programa.nombre} 2025 (MM$)`,ph:"Ej: 45"}].map(f=>(
+              {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"rubro",l:"Rubro / Actividad"},{k:"tamano",l:"Tamaño de la empresa"},{k:"region",l:"Región"},{k:"comuna",l:"Comuna",ph:"Ej: Concepción, Coronel…"},{k:"pais",l:"País",ph:"Chile"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"}].map(f=>(
                 <div key={f.k}>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{f.l}</label>
-                  {(f.k==="rubro"||f.k==="tamano") ? (
+                  {(f.k==="rubro"||f.k==="tamano"||f.k==="region") ? (
                     <select value={infoGeneral[f.k]||""} onChange={e=>setInfoGeneral(p=>({...p,[f.k]:e.target.value}))}
                       style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:infoGeneral[f.k]?C.oscuro:C.grisCl, fontSize:14, outline:"none", boxSizing:"border-box", cursor:"pointer" }}>
                       <option value="">Selecciona una opción…</option>
-                      {(f.k==="rubro" ? RUBRO_OPCIONES : TAMANO_OPCIONES).map(op=><option key={op} value={op}>{op}</option>)}
+                      {(f.k==="rubro" ? RUBRO_OPCIONES : f.k==="tamano" ? TAMANO_OPCIONES : REGIONES_CHILE).map(op=><option key={op} value={op}>{op}</option>)}
                     </select>
                   ) : f.k==="empresa" ? (
                     <>
