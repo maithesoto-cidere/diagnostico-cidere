@@ -672,23 +672,8 @@ function PantallaBaseEmpresas({ onVolver }) {
         accidentes_laborales: ["accidenteslaborales","naccidenteslaboralesultimoano","accidenteslaboralesultimoano"],
       };
 
-      // Normaliza el rubro libre del Excel a una de las categorías oficiales por palabras clave;
-      // si no reconoce ninguna, cae automáticamente en "Otros".
-      const normalizarRubro = (texto) => {
-        const t = normKey(texto);
-        if (!t) return "";
-        if (t.includes("transporte")) return "Transporte";
-        if (t.includes("construc")||t.includes("obra")||t.includes("edifici")||t.includes("arquitect")) return "Construcción";
-        if (t.includes("forest")||t.includes("silvicultura")) return "Servicios Forestales";
-        if (t.includes("ferreter")) return "Ferretería";
-        if (t.includes("electric")) return "Instalaciones/Mantención Eléctrica";
-        if (t.includes("maestranza")||t.includes("metalmecan")||t.includes("metalic")) return "Maestranzas";
-        if (t.includes("ingenier")) return "Ingeniería y Servicios Técnicos";
-        if (t.includes("capacitac")||t.includes("otec")) return "Capacitación";
-        if (t.includes("mantenci")||t.includes("mantenimiento")||t.includes("industrial")) return "Servicios Industriales";
-        if (t.includes("arriendo")||t.includes("maquinaria")||t.includes("equipo")||t.includes("repuesto")) return "Repuestos y Maquinaria";
-        return "Otros";
-      };
+      // El rubro se normaliza con la misma función normalizarRubro() que usa el resto de la app
+      // (Dashboard, autocompletado, etc.) — así nunca queda desincronizado.
       // Normaliza el tamaño libre del Excel contra la lista oficial (ej. "Micro" → "Microempresa")
       const normalizarTamano = (texto) => {
         const t = normKey(texto);
@@ -1122,16 +1107,19 @@ function mejorDiagnostico(lista) {
 }
 
 function normalizarRubro(rubroRaw) {
-  const r = (rubroRaw||"").toLowerCase().trim();
-  if (!r) return "Otros";
-  // Transporte
-  if (/transp|logíst|logist|flet|camion|carga|distribu/.test(r)) return "Transporte";
-  // Maestranzas
-  if (/maestran|soldadur|estructura metál|estructura metal|calderer|metalmec|metal-mec|metal mec/.test(r)) return "Maestranzas";
-  // Repuestos y Maquinaria
-  if (/repuest|maquinar|equipo|arriendo de maq|venta de maq|herramient|neumátic|neumatic|lubricant/.test(r)) return "Repuestos y Maquinaria";
-  // Servicios Industriales (incluye obras, ingeniería, mantención, aseo industrial, etc.)
-  if (/servicio|industrial|obra|ingenier|construc|mantenc|manten|aseo|montaje|instalac|eléctric|electric|mecánic|mecanic|civil/.test(r)) return "Servicios Industriales";
+  const t = (rubroRaw||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+  if (!t) return "Otros";
+  if (RUBRO_OPCIONES.some(o => o.toLowerCase()===t)) return RUBRO_OPCIONES.find(o => o.toLowerCase()===t);
+  if (t.includes("transporte")) return "Transporte";
+  if (t.includes("construc")||t.includes("obra")||t.includes("edifici")||t.includes("arquitect")) return "Construcción";
+  if (t.includes("forest")||t.includes("silvicultura")) return "Servicios Forestales";
+  if (t.includes("ferreter")) return "Ferretería";
+  if (t.includes("electric")) return "Instalaciones/Mantención Eléctrica";
+  if (t.includes("maestranza")||t.includes("metalmecan")||t.includes("metalic")||t.includes("soldadur")||t.includes("calderer")) return "Maestranzas";
+  if (t.includes("ingenier")) return "Ingeniería y Servicios Técnicos";
+  if (t.includes("capacitac")||t.includes("otec")) return "Capacitación";
+  if (t.includes("mantenci")||t.includes("mantenimiento")||t.includes("industrial")||t.includes("montaje")||t.includes("instalac")||t.includes("aseo")||t.includes("mecanic")||t.includes("civil")) return "Servicios Industriales";
+  if (t.includes("arriendo")||t.includes("maquinaria")||t.includes("equipo")||t.includes("repuesto")||t.includes("herramient")||t.includes("neumatic")||t.includes("lubricant")) return "Repuestos y Maquinaria";
   return "Otros";
 }
 
@@ -1345,6 +1333,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
   const [tooltip, setTooltip] = useState(null); // {x,y,text}
   const [seleccionFichas, setSeleccionFichas] = useState(() => new Set());
   const [menuDescargaAbierto, setMenuDescargaAbierto] = useState(null); // nombre de empresa con el menú de descarga abierto
+  const [menuDescargaMasivaAbierto, setMenuDescargaMasivaAbierto] = useState(false);
   const [duplicadosAbiertos, setDuplicadosAbiertos] = useState(() => new Set());
   const [descargando, setDescargando] = useState(false);
   const [showEditorContenido, setShowEditorContenido] = useState(false);
@@ -1355,30 +1344,54 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
   const diags = (programa.diagnosticos||[]).filter(d=>!filtro||(d.infoGeneral?.empresa||"").toLowerCase().includes(filtro.toLowerCase()));
 
   /* Descarga individual o múltiple (.zip si hay más de una) de Fichas Mentoría */
-  const descargarFichasSeleccionadas = async (dInicialesSeleccionados) => {
-    if (dInicialesSeleccionados.length === 0) return;
+  const descargarFichasSeleccionadas = async (seleccionados, tipo) => {
+    // seleccionados: [{ dInicial, dFinal, nombre }]
+    const validos = seleccionados.filter(s => {
+      if (tipo==="mentoria"||tipo==="inicial") return !!s.dInicial;
+      if (tipo==="final") return !!s.dFinal;
+      if (tipo==="comparativo") return !!s.dInicial && !!s.dFinal;
+      return false;
+    });
+    if (validos.length === 0) { window.alert("Ninguna de las empresas seleccionadas tiene ese tipo de ficha disponible."); return; }
+    const omitidos = seleccionados.length - validos.length;
     setDescargando(true);
     try {
       await cargarLibsDescarga();
-      if (dInicialesSeleccionados.length === 1) {
-        const d = dInicialesSeleccionados[0];
-        const html = buildFichaMentorHTML(dims, d.infoGeneral||{}, d.datosEntrada||{}, d.indicadoresEntrada||{}, programa, null, null, null, null);
-        await descargarFichaPDF(html, { tipo:"mentoria", empresa: d.infoGeneral?.empresa||"Sin_nombre", programaId: programa.id, programaNombre: programa.nombre, diagId: d.id });
+      const construirHTML = (s) => {
+        const le = s.dInicial?.infoGeneral?.logoEmpresa || s.dFinal?.infoGeneral?.logoEmpresa || "";
+        const prog = { ...(programa||{}), logoUrl: programa?.logoUrl||"" };
+        if (tipo === "mentoria") return buildFichaMentorHTML(dims, {...s.dInicial.infoGeneral,logoEmpresa:le}, s.dInicial.datosEntrada||{}, s.dInicial.indicadoresEntrada||{}, prog, null, null, null, null);
+        if (tipo === "inicial") return buildFichaIndividualHTML(dims, {...s.dInicial.infoGeneral,logoEmpresa:le}, s.dInicial.datosEntrada||{}, s.dInicial.indicadoresEntrada||{}, prog, false);
+        if (tipo === "final") {
+          const datosF = Object.keys(s.dFinal.datosSalida||{}).length>0 ? s.dFinal.datosSalida : (s.dFinal.datosEntrada||{});
+          const indsF  = Object.keys(s.dFinal.indicadoresSalida||{}).length>0 ? s.dFinal.indicadoresSalida : (s.dFinal.indicadoresEntrada||{});
+          return buildFichaIndividualHTML(dims, {...s.dFinal.infoGeneral,logoEmpresa:le}, datosF, indsF, prog, true);
+        }
+        if (tipo === "comparativo") return buildComparativoHTML(dims, {...s.dInicial.infoGeneral,logoEmpresa:le}, s.dInicial.datosEntrada||{}, s.dFinal.datosSalida||s.dFinal.datosEntrada||{}, s.dInicial.indicadoresEntrada||{}, s.dFinal.indicadoresSalida||s.dFinal.indicadoresEntrada||{}, prog);
+      };
+      if (validos.length === 1) {
+        const s = validos[0];
+        const html = construirHTML(s);
+        const diagId = (tipo==="final"?s.dFinal:s.dInicial)?.id;
+        await descargarFichaPDF(html, { tipo, empresa: s.nombre||"Sin_nombre", programaId: programa.id, programaNombre: programa.nombre, diagId });
       } else {
         const zip = new JSZip();
         const nombresUsados = {};
-        for (const d of dInicialesSeleccionados) {
-          const html = buildFichaMentorHTML(dims, d.infoGeneral||{}, d.datosEntrada||{}, d.indicadoresEntrada||{}, programa, null, null, null, null);
+        for (const s of validos) {
+          const html = construirHTML(s);
           const blob = await htmlToPdfBlob(html);
-          let filename = nombreArchivoFicha("mentoria", d.infoGeneral?.empresa||"Sin_nombre");
+          let filename = nombreArchivoFicha(tipo, s.nombre||"Sin_nombre");
           if (nombresUsados[filename]) { nombresUsados[filename]++; filename = filename.replace(".pdf", `_${nombresUsados[filename]}.pdf`); }
           else nombresUsados[filename] = 1;
           zip.file(filename, blob);
-          registrarDescarga({ tipo:"mentoria", empresa: d.infoGeneral?.empresa||"Sin_nombre", programaId: programa.id, programaNombre: programa.nombre, diagId: d.id, filename });
+          const diagId = (tipo==="final"?s.dFinal:s.dInicial)?.id;
+          registrarDescarga({ tipo, empresa: s.nombre||"Sin_nombre", programaId: programa.id, programaNombre: programa.nombre, diagId, filename });
         }
         const zipBlob = await zip.generateAsync({ type:"blob" });
-        descargarBlob(zipBlob, `Fichas_Mentoria_${sanitizarNombreArchivo(programa.nombre)}_${formatearFechaArchivo()}.zip`);
+        const etiquetaTipo = {mentoria:"Mentoria",inicial:"Diagnostico_Inicial",final:"Diagnostico_Final",comparativo:"Comparativo"}[tipo];
+        descargarBlob(zipBlob, `Fichas_${etiquetaTipo}_${sanitizarNombreArchivo(programa.nombre)}_${formatearFechaArchivo()}.zip`);
       }
+      if (omitidos > 0) window.alert(`${omitidos} empresa(s) se omitieron porque no tenían ese tipo de ficha disponible.`);
       setSeleccionFichas(new Set());
     } catch(err) {
       alert("Error al generar las fichas: " + err.message);
@@ -2224,45 +2237,6 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                     </div>
                   </div>
 
-                  {/* Comparativo Proveedores — sección de ancho completo, igual estilo que heatmap/mapa */}
-                  <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
-                    <div style={{ padding:"12px 16px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>COMPARATIVO PROVEEDORES</div>
-                    <div style={{ overflowX:"auto" }}>
-                      <table style={{ width:"100%", borderCollapse:"collapse", minWidth:400 }}>
-                        <thead>
-                          <tr style={{ background:`${pColor}08` }}>
-                            <th style={{ padding:"8px 12px", textAlign:"left", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Empresa</th>
-                            <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Base</th>
-                            <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Final</th>
-                            <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Var.</th>
-                            <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
-                            const nv=getNivel(p.pg);
-                            const pgF=p.pgS; const delta=pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
-                            return (
-                              <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}
-                                onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${p.empresa} · Consultor: ${p.consultor}`})}
-                                onMouseLeave={()=>setTooltip(null)}>
-                                <td style={{ padding:"8px 12px", fontSize:12, color:C.oscuro, fontWeight:600 }}>{p.empresa}</td>
-                                <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:nv.color }}>{a5to100(p.pg)}%</td>
-                                <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:pgF!==null?getNivel(pgF).color:C.grisCl }}>{pgF!==null?`${a5to100(pgF)}%`:"—"}</td>
-                                <td style={{ padding:"8px 8px", textAlign:"center", fontSize:12, fontWeight:700, color:delta!==null?(delta>=0?"#16A085":"#E74C3C"):C.grisCl }}>{delta!==null?`${delta>=0?"+":""}${delta}`:""}</td>
-                                <td style={{ padding:"8px 8px", textAlign:"center" }}>
-                                  <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:4,
-                                    background:p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0",
-                                    color:p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"
-                                  }}>{p.estado==="Validado"?"🟢":p.estado==="Descartado"?"🔴":"🟡"} {p.estado||"Pendiente"}</span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
                 </>
               )}
 
@@ -2468,6 +2442,46 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   );
                 })()}
 
+                {/* ── 6. COMPARATIVO PROVEEDORES ── */}
+                <div style={{ background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:14, overflow:"hidden", marginTop:16 }}>
+                  <div style={{ padding:"12px 16px", background:C.fondo, fontSize:12, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1 }}>COMPARATIVO PROVEEDORES</div>
+                  <div style={{ overflowX:"auto" }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse", minWidth:400 }}>
+                      <thead>
+                        <tr style={{ background:`${pColor}08` }}>
+                          <th style={{ padding:"8px 12px", textAlign:"left", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Empresa</th>
+                          <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Base</th>
+                          <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Final</th>
+                          <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Var.</th>
+                          <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, textTransform:"uppercase", borderBottom:`1px solid ${C.borde}` }}>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entradasConPG.sort((a,b)=>b.pg-a.pg).map((p,i)=>{
+                          const nv=getNivel(p.pg);
+                          const pgF=p.pgS; const delta=pgF!==null?a5to100(pgF)-a5to100(p.pg):null;
+                          return (
+                            <tr key={i} style={{ borderBottom:`1px solid ${C.borde}` }}
+                              onMouseEnter={e=>setTooltip({x:e.clientX,y:e.clientY,text:`${p.empresa} · Consultor: ${p.consultor}`})}
+                              onMouseLeave={()=>setTooltip(null)}>
+                              <td style={{ padding:"8px 12px", fontSize:12, color:C.oscuro, fontWeight:600 }}>{p.empresa}</td>
+                              <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:nv.color }}>{a5to100(p.pg)}%</td>
+                              <td style={{ padding:"8px 8px", textAlign:"center", fontSize:13, fontWeight:800, color:pgF!==null?getNivel(pgF).color:C.grisCl }}>{pgF!==null?`${a5to100(pgF)}%`:"—"}</td>
+                              <td style={{ padding:"8px 8px", textAlign:"center", fontSize:12, fontWeight:700, color:delta!==null?(delta>=0?"#16A085":"#E74C3C"):C.grisCl }}>{delta!==null?`${delta>=0?"+":""}${delta}`:""}</td>
+                              <td style={{ padding:"8px 8px", textAlign:"center" }}>
+                                <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:4,
+                                  background:p.estado==="Validado"?"#EAF7F2":p.estado==="Descartado"?"#FFF0F0":"#FFFBF0",
+                                  color:p.estado==="Validado"?"#16A085":p.estado==="Descartado"?"#E74C3C":"#A07820"
+                                }}>{p.estado==="Validado"?"🟢":p.estado==="Descartado"?"🔴":"🟡"} {p.estado||"Pendiente"}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
               </>)}
             </div>
           );
@@ -2478,13 +2492,15 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
           const ds = programa.diagnosticos||[];
           const empresasMap = {};
           ds.forEach(d => {
-            const key = d.infoGeneral?.empresa||d.id;
-            if (!empresasMap[key]) empresasMap[key] = { nombre:key, diags:[] };
+            const nombreReal = (d.infoGeneral?.empresa||"").trim();
+            const key = nombreReal || d.id;
+            if (!empresasMap[key]) empresasMap[key] = { nombre:key, sinNombre:!nombreReal, diags:[] };
             empresasMap[key].diags.push(d);
           });
           const empresas = Object.values(empresasMap).filter(e =>
             !filtro || e.nombre.toLowerCase().includes(filtro.toLowerCase())
           );
+          const normalizarParaOrden = (s) => (s||"").toString().trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
           const fechaEmp = (emp) => {
             const d = mejorDiagnostico(emp.diags.filter(x=>x.tipo==="entrada")) || emp.diags[0];
             return d?.fechaGuardado ? new Date(d.fechaGuardado).getTime() : 0;
@@ -2500,9 +2516,10 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
             return d?.infoGeneral?.estado || "Pendiente revisión";
           };
           empresas.sort((a,b) => {
+            if (a.sinNombre !== b.sinNombre) return a.sinNombre ? 1 : -1; // sin nombre siempre al final
             switch(ordenDiag) {
-              case "az": return a.nombre.localeCompare(b.nombre,"es");
-              case "za": return b.nombre.localeCompare(a.nombre,"es");
+              case "az": return normalizarParaOrden(a.nombre).localeCompare(normalizarParaOrden(b.nombre),"es");
+              case "za": return normalizarParaOrden(b.nombre).localeCompare(normalizarParaOrden(a.nombre),"es");
               case "antiguo": return fechaEmp(a)-fechaEmp(b);
               case "puntajeDesc": return puntajeEmp(b)-puntajeEmp(a);
               case "puntajeAsc": return puntajeEmp(a)-puntajeEmp(b);
@@ -2526,15 +2543,26 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                 <option value="estado">🏷 Por estado</option>
               </select>
               {seleccionFichas.size>0 && (
-                <button disabled={descargando} onClick={()=>{
-                  const seleccionados = empresas
-                    .filter(emp => seleccionFichas.has(emp.nombre))
-                    .map(emp => mejorDiagnostico(emp.diags.filter(d=>d.tipo==="entrada")))
-                    .filter(Boolean);
-                  descargarFichasSeleccionadas(seleccionados);
-                }} style={{ padding:"10px 18px", background: descargando?"#C8CDD4":"linear-gradient(135deg,#9B59B6,#8E44AD)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:descargando?"wait":"pointer", whiteSpace:"nowrap" }}>
-                  {descargando ? "Generando…" : `⬇ Descargar fichas seleccionadas (${seleccionFichas.size})`}
-                </button>
+                <div style={{ position:"relative" }}>
+                  <button disabled={descargando} onClick={()=>setMenuDescargaMasivaAbierto(v=>!v)} style={{ padding:"10px 18px", background: descargando?"#C8CDD4":"linear-gradient(135deg,#9B59B6,#8E44AD)", border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:descargando?"wait":"pointer", whiteSpace:"nowrap" }}>
+                    {descargando ? "Generando…" : `⬇ Descargar fichas seleccionadas (${seleccionFichas.size}) ▾`}
+                  </button>
+                  {menuDescargaMasivaAbierto && (
+                    <div style={{ position:"absolute", top:"calc(100% + 6px)", left:0, background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:10, boxShadow:"0 8px 28px rgba(0,0,0,0.18)", minWidth:260, overflow:"hidden", zIndex:50 }}>
+                      {[["mentoria","🎓 Ficha Mentoría"],["inicial","📋 Ficha Diagnóstico Inicial"],["final","📊 Ficha Diagnóstico Final"],["comparativo","📈 Ficha Comparativo Inicial vs. Final"]].map(([tipo,label])=>(
+                        <button key={tipo} onClick={()=>{
+                          setMenuDescargaMasivaAbierto(false);
+                          const seleccionados = empresas.filter(emp => seleccionFichas.has(emp.nombre)).map(emp => ({
+                            dInicial: mejorDiagnostico(emp.diags.filter(d=>d.tipo==="entrada")),
+                            dFinal: mejorDiagnostico(emp.diags.filter(d=>d.tipo==="salida")),
+                            nombre: emp.nombre,
+                          }));
+                          descargarFichasSeleccionadas(seleccionados, tipo);
+                        }} style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px", background:"transparent", border:"none", borderBottom:`1px solid ${C.borde}`, color:C.oscuro, fontSize:13, cursor:"pointer" }}>{label}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               {!esExterno && <button onClick={onNuevoDiag} style={{ padding:"10px 20px", background:`linear-gradient(135deg,${C.verde},${C.azul})`, border:"none", borderRadius:8, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>+ Nueva empresa</button>}
             </div>
