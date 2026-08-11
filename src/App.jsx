@@ -3067,7 +3067,6 @@ function FichaDiagnostico({ dims, infoGeneral, datosE, datosS, indE, indS, progr
                     ["Representante", infoGeneral.respondente||"—"],
                     ["Cargo", infoGeneral.cargo||"—"],
                     ["Facturación total 2025", infoGeneral.facturacionTotal?`MM$ ${infoGeneral.facturacionTotal}`:"—"],
-                    [`Facturación con ${programa?.nombre||"programa"}`, infoGeneral.facturacionCMPC?`MM$ ${infoGeneral.facturacionCMPC}`:"—"],
                     ["Fecha de aplicación", fecha],
                   ].map(([l,v])=>(
                     <div key={l}>
@@ -3572,12 +3571,11 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
       <div style="font-size:18px;font-weight:700;color:#8A9BB0;letter-spacing:2px;margin-bottom:18px;">EMPRESA</div>
       <div style="font-size:27px;font-weight:800;color:#1C2B3A;margin-bottom:6px;line-height:1.2;" contenteditable="true">${infoGeneral.empresa||"—"}</div>
       <div style="font-size:19px;color:#5A7A9A;margin-bottom:22px;line-height:1.3;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
         ${[
           ["Rubro",infoGeneral.rubro||"No especificado"],
           ["Tamaño",infoGeneral.tamano||"No especificado"],
           ["Facturación 2025",infoGeneral.facturacionTotal?`MM$ ${infoGeneral.facturacionTotal}`:"No registrada"],
-          [`Con ${programa?.nombre||"programa"}`,infoGeneral.facturacionCMPC?`MM$ ${infoGeneral.facturacionCMPC}`:"—"],
         ].map(([l,v])=>`<div style="background:#fff;border-radius:11px;padding:14px 18px;border:2px solid #E4EBF2;">
           <div style="font-size:18px;color:#8A9BB0;margin-bottom:5px;">${l.toUpperCase()}</div>
           <div style="font-size:22px;font-weight:600;color:#1C2B3A;" contenteditable="true">${v}</div>
@@ -3647,6 +3645,7 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   const logoCidere = CIDERE_LOGO_B64;
   const logoEmpresaPrograma = programa?.logoUrl||"";
   const pColor = programa?.color || "#2B7BBF";
+  const pDark = "#1A2E45";
   const pg = pglobal(dims, datos||{});
   const nivel = pg!==null ? getNivel(pg) : null;
   const interp = generarInterpretacion(dims, datos||{});
@@ -3654,46 +3653,45 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
 
   const CSS = `
     @page{size:A4 portrait;margin:10mm 12mm}
-    *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
-    html,body{width:100%;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}
-    body{padding:10mm;display:flex;flex-direction:column;min-height:100vh}
-    h1,h2,h3,p{margin:0}
+    *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;margin:0;padding:0}
+    html,body{width:100%}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:24px;background:#fff;display:flex;flex-direction:column;padding:20px 26px}
+    @media print{button,.no-print{display:none!important}}
+    h1,h2,h3,p{margin:0;padding:0}
     table{width:100%;border-collapse:collapse}
-    @media print{button,.no-print{display:none!important}body{padding:0}}
   `;
 
   const dimBarras = dims.map(d => {
     const p = pdim(d,datos||{}); const pct=p!==null?a5to100(p):0; const n=p!==null?getNivel(p):null;
-    return `<div style="margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-        <span style="font-size:10.5px;color:rgba(255,255,255,0.9);">${d.nombre}</span>
-        <span style="font-size:10.5px;font-weight:700;color:#fff;">${pct}%</span>
+    const esDebil = p!==null && p<3.5;
+    return `<div style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:5px;">
+        <span style="font-size:22px;color:#fff;font-weight:${esDebil?"700":"400"};opacity:${esDebil?"1":"0.8"};line-height:1.25;flex:1;">${d.nombre}</span>
+        <span style="font-size:22px;font-weight:700;color:#fff;flex-shrink:0;">${pct}%</span>
       </div>
-      <div style="height:7px;background:rgba(255,255,255,0.15);border-radius:4px;">
-        <div style="height:100%;width:${pct}%;background:${n?n.color:"rgba(255,255,255,0.7)"};border-radius:4px;"></div>
+      <div style="height:11px;background:rgba(255,255,255,0.15);border-radius:6px;">
+        <div style="height:100%;width:${pct}%;background:${n?.color||"rgba(255,255,255,0.7)"};border-radius:6px;"></div>
       </div>
     </div>`;
   }).join("");
 
   const tablaFilas = dims.map(d => {
     const p = pdim(d,datos||{}); const n=p!==null?getNivel(p):null; const pct=p!==null?a5to100(p):0;
-    const ind = inds?.[d.id];
     return `<tr>
-      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;font-size:11px;font-weight:600;">${d.nombre}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:11px;font-weight:700;color:${n?n.color:"#999"};">${pct}%</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;">${n?`<span style="background:${n.color}18;color:${n.color};font-weight:700;padding:3px 11px;border-radius:4px;font-size:10.5px;">${n.label}</span>`:"—"}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:10.5px;color:#5A7A9A;">${ind||"—"}</td>
+      <td style="padding:14px 18px;border-bottom:1px solid #EEF3F8;font-size:22px;font-weight:600;">${d.nombre}</td>
+      <td style="padding:14px 18px;border-bottom:1px solid #EEF3F8;text-align:center;font-size:22px;font-weight:700;color:${n?n.color:"#999"};">${pct}%</td>
+      <td style="padding:14px 18px;border-bottom:1px solid #EEF3F8;text-align:center;">${n?`<span style="background:${n.color}18;color:${n.color};font-weight:700;padding:5px 16px;border-radius:6px;font-size:18px;">${n.label}</span>`:"—"}</td>
     </tr>`;
   }).join("");
 
   const fortalezasHTML = interp ? interp.fortalezas.map(f=>
-    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:#3BAD8A;font-weight:700;font-size:12px;">✓</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.nombre} <span style="color:#3BAD8A;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="color:#3BAD8A;font-weight:700;font-size:20px;">✓</span><span style="font-size:19px;color:#1C2B3A;">${f.d.nombre} <span style="color:#3BAD8A;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
   ).join("") : "";
   const brechasHTML = interp ? interp.brechas.map(f=>
-    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:#E67E22;font-weight:700;font-size:12px;">▲</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.nombre} <span style="color:#E67E22;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="color:#E67E22;font-weight:700;font-size:20px;">▲</span><span style="font-size:19px;color:#1C2B3A;">${f.d.nombre} <span style="color:#E67E22;font-weight:600;">(${a5to100(f.prom)}%)</span></span></div>`
   ).join("") : "";
   const prioridadesHTML = interp ? interp.prioritarias.map(f=>
-    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><span style="color:${pColor};font-weight:700;font-size:12px;">›</span><span style="font-size:10.5px;color:#1C2B3A;">${f.d.nombre}</span></div>`
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><span style="color:${pColor};font-weight:700;font-size:20px;">›</span><span style="font-size:19px;color:#1C2B3A;">${f.d.nombre}</span></div>`
   ).join("") : "";
 
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
@@ -3701,89 +3699,83 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   <style>${CSS}</style>
   </head><body>
 
-  <!-- ENCABEZADO -->
-  <div style="background:#1A2E45;color:#fff;border-radius:10px;padding:14px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-    <div style="display:flex;align-items:center;gap:14px;">
-      ${logoCidere?`<img src="${logoCidere}" style="height:38px;object-fit:contain;" alt="CIDERE"/>`:`<span style="font-size:15px;font-weight:800;">CIDERE Biobío</span>`}
-      ${logoEmpresaPrograma?`<div style="width:1px;height:38px;background:rgba(255,255,255,0.25);"></div><img src="${logoEmpresaPrograma}" style="height:38px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:5px;padding:2px 8px;" alt="${programa?.nombre||''}"/>`:""}
-      <div style="border-left:1px solid rgba(255,255,255,0.15);padding-left:14px;">
-        <div style="font-size:8.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:2px;margin-bottom:3px;">${programa?.nombre||"Programa"} · Ficha de Diagnóstico</div>
-        <div style="font-size:17px;font-weight:800;">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</div>
+  <!-- ══ ENCABEZADO ══ -->
+  <div style="background:${pDark};padding:20px 28px;border-radius:18px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:nowrap;">
+    <div style="display:flex;align-items:center;gap:20px;min-width:0;">
+      ${logoCidere?`<img src="${logoCidere}" style="height:52px;object-fit:contain;flex-shrink:0;" alt="CIDERE"/>`:`<span style="font-size:26px;font-weight:800;color:#fff;flex-shrink:0;">CIDERE Biobío</span>`}
+      ${logoEmpresaPrograma?`<div style="width:2px;height:52px;background:rgba(255,255,255,0.2);flex-shrink:0;"></div><img src="${logoEmpresaPrograma}" style="height:52px;object-fit:contain;background:rgba(255,255,255,0.92);border-radius:10px;padding:5px 14px;flex-shrink:0;" alt="${programa?.nombre||''}"/>`:""}
+      <div style="border-left:2px solid rgba(255,255,255,0.15);padding-left:20px;min-width:0;">
+        <div style="font-size:13px;color:#90C8F0;letter-spacing:1.2px;margin-bottom:5px;">${(programa?.nombre||"PROGRAMA").toUpperCase()} · FICHA DE DIAGNÓSTICO</div>
+        <div style="font-size:28px;font-weight:800;color:#fff;">${esSalida?"📊 Diagnóstico Final":"📋 Diagnóstico Inicial"}</div>
       </div>
     </div>
-    <div style="text-align:right;">
-      <div style="font-size:8.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;">Fecha</div>
-      <div style="font-size:13px;font-weight:700;">${fecha}</div>
+    <div style="text-align:right;flex-shrink:0;">
+      <div style="font-size:14px;color:#90C8F0;white-space:nowrap;">${fecha.toUpperCase()}</div>
     </div>
   </div>
 
-  <!-- EMPRESA -->
-  <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;">
-    ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:44px;object-fit:contain;border-radius:6px;padding:2px 7px;border:1px solid #DDE6EF;" alt="${infoGeneral.empresa}"/>`:""}
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex:1;">
+  <!-- ══ EMPRESA ══ -->
+  <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:26px 32px;margin-bottom:22px;display:flex;align-items:center;gap:20px;">
+    ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:60px;object-fit:contain;border-radius:8px;padding:3px 9px;border:1px solid #DDE6EF;flex-shrink:0;" alt="${infoGeneral.empresa}"/>`:""}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;flex:1;">
       ${[["Empresa",infoGeneral.empresa||"—"],["Representante",infoGeneral.respondente||"—"],["Cargo",infoGeneral.cargo||"—"],["Rubro",infoGeneral.rubro||"—"]].map(([l,v])=>`
         <div>
-          <div style="font-size:8.5px;color:#8A9BB0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">${l}</div>
-          <div style="font-size:12px;font-weight:700;color:#1C2B3A;">${v}</div>
+          <div style="font-size:18px;color:#8A9BB0;letter-spacing:0.5px;margin-bottom:5px;">${l.toUpperCase()}</div>
+          <div style="font-size:22px;font-weight:700;color:#1C2B3A;">${v}</div>
         </div>`).join("")}
     </div>
   </div>
 
-  <!-- PUNTAJE + BARRAS -->
-  <div style="background:#1A2E45;border-radius:10px;padding:16px 20px;margin-bottom:12px;display:grid;grid-template-columns:150px 1fr;gap:22px;align-items:center;">
-    <div style="text-align:center;border-right:1px solid rgba(255,255,255,0.15);padding-right:22px;">
-      <div style="font-size:8.5px;color:#90C8F0;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Puntaje General</div>
-      <div style="font-size:48px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
-      ${nivel?`<div style="font-size:13px;font-weight:700;color:${nivel.color};margin-top:5px;">${nivel.label}</div>`:""}
-      <div style="margin-top:10px;height:5px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
-        <div style="height:100%;width:${pg!==null?a5to100(pg):0}%;background:${nivel?nivel.color:"#fff"};border-radius:3px;"></div>
+  <!-- ══ PUNTAJE + BARRAS ══ -->
+  <div style="background:${pDark};border-radius:18px;padding:26px 32px;margin-bottom:22px;display:grid;grid-template-columns:260px 1fr;gap:26px;align-items:center;">
+    <div style="text-align:center;border-right:1px solid rgba(255,255,255,0.15);padding-right:26px;">
+      <div style="font-size:18px;color:#90C8F0;letter-spacing:2px;margin-bottom:10px;">PUNTAJE GENERAL</div>
+      <div style="font-size:76px;font-weight:800;color:${nivel?nivel.color:"#fff"};line-height:1;">${pg!==null?a5to100(pg):"—"}%</div>
+      ${nivel?`<div style="font-size:20px;font-weight:700;color:${nivel.color};margin-top:8px;">${nivel.label}</div>`:""}
+      <div style="margin-top:14px;height:6px;background:rgba(255,255,255,0.1);border-radius:5px;overflow:hidden;">
+        <div style="height:100%;width:${pg!==null?a5to100(pg):0}%;background:${nivel?nivel.color:"#fff"};border-radius:5px;"></div>
       </div>
     </div>
     <div>${dimBarras}</div>
   </div>
 
-  <!-- CONTENIDO RESTANTE — crece con flex:1 (contenido real) para llenar la hoja A4 completa -->
-  <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start;gap:12px;">
-
-    <!-- TABLA DIMENSIONES -->
-    <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;">
-      <table>
-        <thead><tr style="background:#EEF3F8;">
-          <th style="padding:10px 14px;text-align:left;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Dimensión</th>
-          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Puntaje</th>
-          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Nivel</th>
-          <th style="padding:10px 14px;text-align:center;font-size:9px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Indicador</th>
-        </tr></thead>
-        <tbody>${tablaFilas}</tbody>
-      </table>
-    </div>
-
-    <!-- SÍNTESIS + FORTALEZAS + BRECHAS + PRIORIDADES -->
-    ${interp?`
-    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;">
-      <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 16px;">
-        <div style="font-size:9px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Síntesis diagnóstica</div>
-        <p style="font-size:10.5px;color:#1C2B3A;line-height:1.65;">${interp.narrativa}</p>
-      </div>
-      <div style="background:#EAF7F2;border:1px solid #C5EAD8;border-radius:10px;padding:14px 16px;">
-        <div style="font-size:9px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">✓ Fortalezas</div>
-        ${fortalezasHTML}
-      </div>
-      <div style="background:#FFF4EC;border:1px solid #F5D5B0;border-radius:10px;padding:14px 16px;">
-        <div style="font-size:9px;font-weight:700;color:#D17A1F;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⚠ Brechas</div>
-        ${brechasHTML}
-      </div>
-      <div style="background:${pColor}12;border:1px solid ${pColor}33;border-radius:10px;padding:14px 16px;">
-        <div style="font-size:9px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🎯 Prioridades</div>
-        ${prioridadesHTML}
-      </div>
-    </div>`:""}
+  <!-- ══ TABLA DIMENSIONES ══ -->
+  <div style="background:#fff;border:2px solid #E4EBF2;border-radius:18px;overflow:hidden;margin-bottom:22px;">
+    <table>
+      <thead><tr style="background:#EEF3F8;">
+        <th style="padding:16px 18px;text-align:left;font-size:16px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:1px;">Dimensión</th>
+        <th style="padding:16px 18px;text-align:center;font-size:16px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:1px;">Puntaje</th>
+        <th style="padding:16px 18px;text-align:center;font-size:16px;color:#8A9BB0;text-transform:uppercase;font-weight:700;letter-spacing:1px;">Nivel</th>
+      </tr></thead>
+      <tbody>${tablaFilas}</tbody>
+    </table>
   </div>
 
-  <!-- PIE -->
-  <div style="border-top:1px solid #E4EBF2;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
-    <span style="font-size:8.5px;color:#A0B0C0;">Generado por CIDERE Biobío · Sistema de Diagnóstico de Capacidades</span>
-    <span style="font-size:8.5px;color:#A0B0C0;">${fecha}</span>
+  <!-- ══ SÍNTESIS + FORTALEZAS + BRECHAS + PRIORIDADES ══ -->
+  ${interp?`
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:16px;margin-bottom:22px;">
+    <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:20px 22px;">
+      <div style="font-size:16px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">📝 Síntesis</div>
+      <p style="font-size:18px;color:#1C2B3A;line-height:1.6;">${interp.narrativa}</p>
+    </div>
+    <div style="background:#EAF7F2;border:2px solid #C5EAD8;border-radius:18px;padding:20px 22px;">
+      <div style="font-size:16px;font-weight:700;color:#3BAD8A;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">✓ Fortalezas</div>
+      ${fortalezasHTML}
+    </div>
+    <div style="background:#FFF4EC;border:2px solid #F5D5B0;border-radius:18px;padding:20px 22px;">
+      <div style="font-size:16px;font-weight:700;color:#D17A1F;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">⚠ Brechas</div>
+      ${brechasHTML}
+    </div>
+    <div style="background:${pColor}12;border:2px solid ${pColor}33;border-radius:18px;padding:20px 22px;">
+      <div style="font-size:16px;font-weight:700;color:${pColor};text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;">🎯 Prioridades</div>
+      ${prioridadesHTML}
+    </div>
+  </div>`:""}
+
+  <!-- ══ PIE ══ -->
+  <div style="border-top:2px solid #E4EBF2;padding-top:14px;display:flex;justify-content:space-between;align-items:center;margin-top:auto;">
+    <span style="font-size:16px;color:#A0B0C0;">Generado por CIDERE Biobío · Sistema de Diagnóstico de Capacidades</span>
+    <span style="font-size:16px;color:#A0B0C0;">${fecha}</span>
   </div>
 
   </body></html>`;
@@ -3804,7 +3796,7 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
     @page{size:A4 portrait;margin:10mm 12mm}
     *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
     html,body{width:100%;font-family:'Segoe UI',Arial,sans-serif;color:#1C2B3A;font-size:10.5px;background:#fff}
-    body{padding:10mm;display:flex;flex-direction:column;min-height:100vh}
+    body{padding:14mm;display:flex;flex-direction:column;gap:16px}
     h1,h2,h3,p{margin:0}
     table{width:100%;border-collapse:collapse}
     @media print{button,.no-print{display:none!important}body{padding:0}}
@@ -3902,7 +3894,7 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   </div>
 
   <!-- CONTENIDO RESTANTE — crece con flex:1 (contenido real) para llenar la hoja A4 completa -->
-  <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start;gap:12px;">
+  <div style="display:flex;flex-direction:column;gap:12px;">
 
     <!-- TABLA COMPARATIVA -->
     <div style="background:#fff;border:1px solid #E4EBF2;border-radius:10px;overflow:hidden;">
@@ -3947,7 +3939,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
   const [pagina, setPagina] = useState(verComparativo ? 7 : 0);
   const [modo, setModo] = useState(esSalidaNueva ? "salida" : verComparativo ? "comparacion" : "entrada");
   const [validErr, setValidErr] = useState([]);
-  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",facturacionCMPC:"",consultor:miNombre||"",modalidad:"",observaciones:"",obsEnMentor:false,notaMentor:"",estado:"Pendiente revisión",region:"",comuna:"",pais:"Chile"});
+  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",consultor:miNombre||"",modalidad:"",observaciones:"",obsEnMentor:false,notaMentor:"",estado:"Pendiente revisión",region:"",comuna:"",pais:"Chile"});
   const [datosE, setDatosE] = useState(esSalidaNueva ? {} : (diagActual?.datosEntrada||{}));
   const [datosS, setDatosS] = useState(esSalidaNueva ? {} : (dFinalRef?.datosSalida||diagActual?.datosSalida||{}));
   const [indE, setIndE] = useState(esSalidaNueva ? {} : (diagActual?.indicadoresEntrada||{}));
