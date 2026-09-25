@@ -665,7 +665,7 @@ function PantallaBaseEmpresas({ onVolver }) {
         pais: ["pais"],
         region: ["region"],
         comuna: ["comuna"],
-        rubro: ["rubro","girocomercial"],
+        rubro: ["rubro","girocomercial","macrocategoria"],
         tamano: ["tamano","tamanodelaempresa","tamanodelaempresasegunfacturacion"],
         representante: ["representante","nombrecompletoparticipante1","participante1"],
         facturacion_total: ["facturaciontotal","facturacion"],
@@ -695,8 +695,8 @@ function PantallaBaseEmpresas({ onVolver }) {
         const obj = {};
         Object.entries(mapaCampos).forEach(([campo, alias]) => {
           const key = alias.find(a => filaNorm[a] !== undefined && filaNorm[a] !== "");
-          obj[campo] = key ? String(filaNorm[key]).trim() : "";
-        });
+          if (key) obj[campo] = String(filaNorm[key]).trim(); // solo se incluye si el archivo trae ese dato —
+        });                                                     // así nunca se borra lo que ya había guardado
         if (obj.rubro) obj.rubro = normalizarRubro(obj.rubro);
         if (obj.tamano) obj.tamano = normalizarTamano(obj.tamano);
         if (obj.region) obj.region = normalizarRegion(obj.region);
@@ -783,7 +783,7 @@ function PantallaBaseEmpresas({ onVolver }) {
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
               <thead>
                 <tr style={{ background:C.fondo }}>
-                  {["RUT","Empresa","Región","Comuna","Rubro","Tamaño","Facturación total","Accidentes",""].map(h=>(
+                  {["RUT","Empresa","Región","Comuna","Macrocategoría","Tamaño","Facturación total","Accidentes",""].map(h=>(
                     <th key={h} style={{ textAlign:"left", padding:"10px 14px", color:C.gris, fontWeight:700, fontSize:11, textTransform:"uppercase", whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -826,7 +826,7 @@ function PantallaBaseEmpresas({ onVolver }) {
               {campo("Comuna","comuna")}
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-              {campoSelect("Rubro","rubro",RUBRO_OPCIONES)}
+              {campoSelect("Macrocategoría","rubro",RUBRO_OPCIONES)}
               {campoSelect("Tamaño","tamano",TAMANO_OPCIONES)}
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
@@ -1086,7 +1086,7 @@ const REGIONES_COORDS = {
 /* ── Normalización de rubros a categorías macro ── */
 // TODO: verificar si conviene guardar rubro_categoria en Supabase; por ahora se deriva del texto libre
 /* ── Opciones fijas para estandarizar Rubro y Tamaño (evita "Pequeña"/"pequeña"/"MEDIANA") ── */
-const RUBRO_OPCIONES = ["Transporte", "Construcción", "Servicios Industriales", "Servicios Forestales", "Instalaciones/Mantención Eléctrica", "Maestranzas", "Ferretería", "Ingeniería y Servicios Técnicos", "Repuestos y Maquinaria", "Capacitación", "Otros"];
+const RUBRO_OPCIONES = ["Insumos", "MRO", "Proyectos", "Servicios Forestales", "Servicios Indirectos", "Servicios Industriales", "Servicios Logísticos", "Transporte", "Otros"];
 const TAMANO_OPCIONES = ["Microempresa", "Pequeña", "Mediana", "Grande"];
 const REGIONES_CHILE = ["Arica y Parinacota","Tarapacá","Antofagasta","Atacama","Coquimbo","Valparaíso","Metropolitana","O'Higgins","Maule","Ñuble","Biobío","La Araucanía","Los Ríos","Los Lagos","Aysén","Magallanes"];
 
@@ -1111,15 +1111,13 @@ function normalizarRubro(rubroRaw) {
   if (!t) return "Otros";
   if (RUBRO_OPCIONES.some(o => o.toLowerCase()===t)) return RUBRO_OPCIONES.find(o => o.toLowerCase()===t);
   if (t.includes("transporte")) return "Transporte";
-  if (t.includes("construc")||t.includes("obra")||t.includes("edifici")||t.includes("arquitect")) return "Construcción";
   if (t.includes("forest")||t.includes("silvicultura")) return "Servicios Forestales";
-  if (t.includes("ferreter")) return "Ferretería";
-  if (t.includes("electric")) return "Instalaciones/Mantención Eléctrica";
-  if (t.includes("maestranza")||t.includes("metalmecan")||t.includes("metalic")||t.includes("soldadur")||t.includes("calderer")) return "Maestranzas";
-  if (t.includes("ingenier")) return "Ingeniería y Servicios Técnicos";
-  if (t.includes("capacitac")||t.includes("otec")) return "Capacitación";
-  if (t.includes("mantenci")||t.includes("mantenimiento")||t.includes("industrial")||t.includes("montaje")||t.includes("instalac")||t.includes("aseo")||t.includes("mecanic")||t.includes("civil")) return "Servicios Industriales";
-  if (t.includes("arriendo")||t.includes("maquinaria")||t.includes("equipo")||t.includes("repuesto")||t.includes("herramient")||t.includes("neumatic")||t.includes("lubricant")) return "Repuestos y Maquinaria";
+  if (t.includes("logistic")||t.includes("bodegaje")||t.includes("almacen")||t.includes("distribuc")) return "Servicios Logísticos";
+  if (t.includes("maestranza")||t.includes("metalmecan")||t.includes("metalic")||t.includes("soldadur")||t.includes("calderer")) return "Servicios Industriales";
+  if (t.includes("construc")||t.includes("obra")||t.includes("edifici")||t.includes("arquitect")||t.includes("ingenier")||t.includes("civil")) return "Proyectos";
+  if (t.includes("capacitac")||t.includes("otec")||t.includes("consultor")||t.includes("asesor")||t.includes("administrat")||t.includes("legal")||t.includes("contab")) return "Servicios Indirectos";
+  if (t.includes("mantenci")||t.includes("mantenimiento")||t.includes("montaje")||t.includes("instalac")||t.includes("aseo")||t.includes("mecanic")||t.includes("electric")) return "MRO";
+  if (t.includes("ferreter")||t.includes("arriendo")||t.includes("maquinaria")||t.includes("equipo")||t.includes("repuesto")||t.includes("herramient")||t.includes("neumatic")||t.includes("lubricant")||t.includes("insumo")) return "Insumos";
   return "Otros";
 }
 
@@ -1982,7 +1980,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                   ${rubrosPdf.length<2 ? `<div style="font-size:10px;color:#8A9BB0;padding:0 15px 13px 15px;">Sin datos suficientes de rubro.</div>` : `
                   <table style="width:100%;border-collapse:collapse;margin-top:8px;">
                     <thead><tr style="background:#F5F8FB;">
-                      <th style="padding:6px 10px;text-align:left;font-size:8px;color:#8A9BB0;font-weight:700;">Rubro</th>
+                      <th style="padding:6px 10px;text-align:left;font-size:8px;color:#8A9BB0;font-weight:700;">Macrocategoría</th>
                       ${dims.map(d=>`<th style="padding:6px 4px;text-align:center;font-size:7.5px;color:#8A9BB0;font-weight:700;">${d.nombre.length>10?d.nombre.slice(0,9)+"…":d.nombre}</th>`).join("")}
                     </tr></thead>
                     <tbody>
@@ -2341,7 +2339,7 @@ function VistaPrograma({ programa, dims, onNuevoDiag, onAbrirDiag, onEliminarDia
                       <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
                         <thead>
                           <tr>
-                            <th style={{ padding:"8px 12px", textAlign:"left", fontSize:11, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}` }}>Rubro</th>
+                            <th style={{ padding:"8px 12px", textAlign:"left", fontSize:11, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}` }}>Macrocategoría</th>
                             {dims.map(d=><th key={d.id} style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}`, maxWidth:80 }}>{d.nombre}</th>)}
                             <th style={{ padding:"8px 8px", textAlign:"center", fontSize:10, color:C.gris, fontWeight:700, borderBottom:`1px solid ${C.borde}` }}>Prom.</th>
                           </tr>
@@ -3573,7 +3571,7 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
       <div style="font-size:19px;color:#5A7A9A;margin-bottom:22px;line-height:1.3;" contenteditable="true">${infoGeneral.respondente||"—"}${infoGeneral.cargo?` · ${infoGeneral.cargo}`:""}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
         ${[
-          ["Rubro",infoGeneral.rubro||"No especificado"],
+          ["Macrocategoría",infoGeneral.rubro||"No especificado"],
           ["Tamaño",infoGeneral.tamano||"No especificado"],
           ["Facturación 2025",infoGeneral.facturacionTotal?`MM$ ${infoGeneral.facturacionTotal}`:"No registrada"],
         ].map(([l,v])=>`<div style="background:#fff;border-radius:11px;padding:14px 18px;border:2px solid #E4EBF2;">
@@ -3718,7 +3716,7 @@ function buildFichaIndividualHTML(dims, infoGeneral, datos, inds, programa, esSa
   <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:26px 32px;margin-bottom:22px;display:flex;align-items:center;gap:20px;">
     ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:60px;object-fit:contain;border-radius:8px;padding:3px 9px;border:1px solid #DDE6EF;flex-shrink:0;" alt="${infoGeneral.empresa}"/>`:""}
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;flex:1;">
-      ${[["Empresa",infoGeneral.empresa||"—"],["Representante",infoGeneral.respondente||"—"],["Cargo",infoGeneral.cargo||"—"],["Rubro",infoGeneral.rubro||"—"]].map(([l,v])=>`
+      ${[["Empresa",infoGeneral.empresa||"—"],["Representante",infoGeneral.respondente||"—"],["Cargo",infoGeneral.cargo||"—"],["Macrocategoría",infoGeneral.rubro||"—"]].map(([l,v])=>`
         <div>
           <div style="font-size:18px;color:#8A9BB0;letter-spacing:0.5px;margin-bottom:5px;">${l.toUpperCase()}</div>
           <div style="font-size:22px;font-weight:700;color:#1C2B3A;">${v}</div>
@@ -3860,7 +3858,7 @@ function buildComparativoHTML(dims, infoGeneral, datosE, datosS, indE, indS, pro
   <div style="background:#F5F8FB;border:1px solid #E4EBF2;border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;">
     ${infoGeneral.logoEmpresa?`<img src="${infoGeneral.logoEmpresa}" style="height:44px;object-fit:contain;border-radius:6px;padding:2px 7px;border:1px solid #DDE6EF;" alt="${infoGeneral.empresa}"/>`:""}
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex:1;">
-      ${[["Empresa",infoGeneral.empresa||"—"],["Representante",infoGeneral.respondente||"—"],["Cargo",infoGeneral.cargo||"—"],["Rubro",infoGeneral.rubro||"—"]].map(([l,v])=>`
+      ${[["Empresa",infoGeneral.empresa||"—"],["Representante",infoGeneral.respondente||"—"],["Cargo",infoGeneral.cargo||"—"],["Macrocategoría",infoGeneral.rubro||"—"]].map(([l,v])=>`
         <div>
           <div style="font-size:8.5px;color:#8A9BB0;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">${l}</div>
           <div style="font-size:12px;font-weight:700;color:#1C2B3A;">${v}</div>
@@ -4257,7 +4255,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                 {rutEstado==="no_encontrado" && <div style={{ fontSize:11, color:C.grisCl, marginTop:4 }}>No se encontró este RUT en la base — completa los datos manualmente.</div>}
               </div>
 
-              {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"rubro",l:"Rubro / Actividad"},{k:"tamano",l:"Tamaño de la empresa"},{k:"region",l:"Región"},{k:"comuna",l:"Comuna",ph:"Ej: Concepción, Coronel…"},{k:"pais",l:"País",ph:"Chile"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"}].map(f=>(
+              {[{k:"empresa",l:"Nombre de la empresa *",ph:"Razón social o nombre comercial"},{k:"respondente",l:"Respondente",ph:"Nombre completo"},{k:"cargo",l:"Cargo",ph:"Ej: Gerente General, Dueño"},{k:"rubro",l:"Macrocategoría"},{k:"tamano",l:"Tamaño de la empresa"},{k:"region",l:"Región"},{k:"comuna",l:"Comuna",ph:"Ej: Concepción, Coronel…"},{k:"pais",l:"País",ph:"Chile"},{k:"facturacionTotal",l:"Facturación total 2025 (MM$)",ph:"Ej: 120"}].map(f=>(
                 <div key={f.k}>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>{f.l}</label>
                   {(f.k==="rubro"||f.k==="tamano"||f.k==="region") ? (
