@@ -91,16 +91,24 @@ async function sbEliminarEmpresa(rut) {
 async function sbImportarEmpresas(lista) {
   const validas = lista.filter(e => e.rut && normalizarRut(e.rut));
   if (validas.length === 0) return { ok:false, error:"No hay filas con RUT válido para importar." };
-  try {
-    const body = validas.map(e => ({ ...e, rut: normalizarRut(e.rut), updated_at: new Date().toISOString() }));
-    const r = await fetch(`${SB_URL}/rest/v1/empresas`, {
-      method: "POST",
-      headers: { ...sbHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify(body)
-    });
-    if (!r.ok) return { ok:false, error: await r.text() };
-    return { ok:true, total: validas.length };
-  } catch(e) { return { ok:false, error: e?.message || "Error desconocido" }; }
+  let ok = 0;
+  const errores = [];
+  for (const e of validas) {
+    try {
+      const body = { ...e, rut: normalizarRut(e.rut), updated_at: new Date().toISOString() };
+      const r = await fetch(`${SB_URL}/rest/v1/empresas`, {
+        method: "POST",
+        headers: { ...sbHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(body)
+      });
+      if (r.ok) ok++;
+      else errores.push(`${e.rut}: ${await r.text()}`);
+    } catch(err) {
+      errores.push(`${e.rut}: ${err?.message||"error desconocido"}`);
+    }
+  }
+  if (ok === 0) return { ok:false, error: errores[0] || "No se pudo importar ninguna fila." };
+  return { ok:true, total: ok, errores: errores.length ? errores : undefined };
 }
 
 /* Carga SheetJS (xlsx) desde CDN bajo demanda, para leer archivos .xlsx/.csv en el navegador */
@@ -711,7 +719,7 @@ function PantallaBaseEmpresas({ onVolver }) {
 
       const res = await sbImportarEmpresas(empresasImport);
       if (res.ok) {
-        setResultadoImport({ ok:true, msg:`✓ Se importaron/actualizaron ${res.total} empresas.` });
+        setResultadoImport({ ok:true, msg:`✓ Se importaron/actualizaron ${res.total} empresas.` + (res.errores ? ` (${res.errores.length} fila(s) con error: ${res.errores.slice(0,3).join(" | ")}${res.errores.length>3?"…":""})` : "") });
         recargar();
       } else {
         setResultadoImport({ ok:false, msg:"Error al importar: " + (res.error||"desconocido") });
