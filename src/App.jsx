@@ -154,6 +154,8 @@ async function sbGetDimsPrograma(programaId) {
           id: p.codigo,
           obligatoria: p.obligatoria,
           cuentaParaPuntaje: p.cuenta_para_puntaje !== false, // por defecto true, salvo que se haya desmarcado explícitamente
+          tipo: p.tipo || "escala_1_5",
+          opciones: Array.isArray(p.opciones) ? p.opciones : [],
           texto: p.texto,
           criterio: p.criterio,
           evidencia: p.evidencia,
@@ -275,10 +277,16 @@ async function sbGuardarContenidoDims(programaId, dimsEditados) {
       for (let pi = 0; pi < dEditada.preguntas.length; pi++) {
         const p = dEditada.preguntas[pi];
         const yaExiste = codigosExistentes.has(p.id);
+        const tipoPregunta = p.tipo || "escala_1_5";
         const body = {
           texto: p.texto, criterio: p.criterio, evidencia: p.evidencia,
-          niveles: p.niveles, obligatoria: p.obligatoria !== false,
-          cuenta_para_puntaje: p.cuentaParaPuntaje !== false, orden: pi + 1,
+          niveles: tipoPregunta==="escala_1_5" ? p.niveles : null,
+          opciones: tipoPregunta==="opcion_multiple" ? (p.opciones||[]) : null,
+          tipo: tipoPregunta,
+          obligatoria: p.obligatoria !== false,
+          // Una pregunta que no es de escala 1-5 nunca puede puntuar (coincide con la restricción de la base de datos)
+          cuenta_para_puntaje: tipoPregunta==="escala_1_5" ? (p.cuentaParaPuntaje !== false) : false,
+          orden: pi + 1,
         };
         if (yaExiste) {
           const rU = await fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&codigo=eq.${encodeURIComponent(p.id)}`, {
@@ -294,7 +302,7 @@ async function sbGuardarContenidoDims(programaId, dimsEditados) {
           codigosExistentes.add(nuevoCodigo);
           const rI = await fetch(`${SB_URL}/rest/v1/preguntas`, {
             method: "POST", headers: sbHeaders,
-            body: JSON.stringify({ ...body, codigo: nuevoCodigo, programa_id: programaId, dimension_id: dimUuid, tipo: "escala_1_5" })
+            body: JSON.stringify({ ...body, codigo: nuevoCodigo, programa_id: programaId, dimension_id: dimUuid })
           });
           if (!rI.ok) return { ok:false, error:`No se pudo crear la pregunta nueva "${p.texto?.slice(0,30)}...".` };
         }
@@ -2801,7 +2809,7 @@ function EditorContenido({ dims, onSave, onClose, programaId }) {
   const upd  = (di,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,[f]:v}));
   const updP = (di,pi,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,[f]:v})}));
   const updN = (di,pi,ni,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,niveles:q.niveles.map((n,k)=>k!==ni?n:v)})}));
-  const addP = (di) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:[...x.preguntas,{id:`${x.id}x${Date.now()}`,obligatoria:true,cuentaParaPuntaje:true,texto:"Nueva pregunta",criterio:"Criterio",evidencia:"",niveles:["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"]}]}));
+  const addP = (di) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:[...x.preguntas,{id:`${x.id}x${Date.now()}`,obligatoria:true,cuentaParaPuntaje:true,tipo:"escala_1_5",opciones:[],texto:"Nueva pregunta",criterio:"Criterio",evidencia:"",niveles:["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"]}]}));
   const delP = (di,pi) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.filter((_,j)=>j!==pi)}));
   const addDim = () => {
     const nuevaDim = { _dimUuid:null, id:data.length+1, nombre:"Nueva dimensión", icono:"◆", acento:"#607D8B", objetivo:"", indicadorObjetivo:{label:"",tipo:"numero",placeholder:""}, preguntas:[] };
@@ -2925,30 +2933,61 @@ function EditorContenido({ dims, onSave, onClose, programaId }) {
                     ))}
                   </div>
                 </div>
-                <div style={{ background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:10, padding:"13px 16px", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
-                  <div><div style={{ fontSize:13, color:C.oscuro, fontWeight:600 }}>¿Cuenta para el puntaje?</div><div style={{ fontSize:11, color:C.gris }}>Si eliges "No cuenta", la respuesta se guarda pero no se usa para calcular el % de la dimensión</div></div>
-                  <div style={{ display:"flex", gap:8 }}>
-                    {[true,false].map(val=>(
-                      <button key={String(val)} onClick={()=>updP(di,pi,"cuentaParaPuntaje",val)} style={{ padding:"7px 13px", borderRadius:7, border:`2px solid ${(p.cuentaParaPuntaje!==false)===val?(val?C.verde:C.grisCl):C.borde}`, background:(p.cuentaParaPuntaje!==false)===val?(val?`${C.verde}12`:"#F8F8FA"):"transparent", color:(p.cuentaParaPuntaje!==false)===val?(val?C.verde:C.gris):C.gris, fontSize:12, fontWeight:700, cursor:"pointer" }}>{val?"● Cuenta para el puntaje":"○ No cuenta (solo informativa)"}</button>
+                <div style={{ background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:10, padding:"13px 16px", marginBottom:14 }}>
+                  <div style={{ fontSize:13, color:C.oscuro, fontWeight:600, marginBottom:8 }}>Tipo de pregunta</div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    {[{v:"escala_1_5",l:"Escala 1-5 (puntúa)"},{v:"opcion_multiple",l:"Opción múltiple (no puntúa)"}].map(op=>(
+                      <button key={op.v} onClick={()=>{
+                        updP(di,pi,"tipo",op.v);
+                        if (op.v==="opcion_multiple") { updP(di,pi,"cuentaParaPuntaje",false); if (!p.opciones||p.opciones.length===0) updP(di,pi,"opciones",["Opción 1","Opción 2","Otra:"]); }
+                      }} style={{ padding:"7px 13px", borderRadius:7, border:`2px solid ${(p.tipo||"escala_1_5")===op.v?C.azul:C.borde}`, background:(p.tipo||"escala_1_5")===op.v?`${C.azul}12`:"transparent", color:(p.tipo||"escala_1_5")===op.v?C.azul:C.gris, fontSize:12, fontWeight:700, cursor:"pointer" }}>{op.l}</button>
                     ))}
                   </div>
                 </div>
+                {(p.tipo||"escala_1_5")==="escala_1_5" ? (
+                  <div style={{ background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:10, padding:"13px 16px", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
+                    <div><div style={{ fontSize:13, color:C.oscuro, fontWeight:600 }}>¿Cuenta para el puntaje?</div><div style={{ fontSize:11, color:C.gris }}>Si eliges "No cuenta", la respuesta se guarda pero no se usa para calcular el % de la dimensión</div></div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      {[true,false].map(val=>(
+                        <button key={String(val)} onClick={()=>updP(di,pi,"cuentaParaPuntaje",val)} style={{ padding:"7px 13px", borderRadius:7, border:`2px solid ${(p.cuentaParaPuntaje!==false)===val?(val?C.verde:C.grisCl):C.borde}`, background:(p.cuentaParaPuntaje!==false)===val?(val?`${C.verde}12`:"#F8F8FA"):"transparent", color:(p.cuentaParaPuntaje!==false)===val?(val?C.verde:C.gris):C.gris, fontSize:12, fontWeight:700, cursor:"pointer" }}>{val?"● Cuenta para el puntaje":"○ No cuenta (solo informativa)"}</button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background:"#FFF8EC", border:"1px solid #F0DBA0", borderRadius:10, padding:"11px 16px", marginBottom:14, fontSize:12, color:"#A07820" }}>Las preguntas de opción múltiple nunca cuentan para el puntaje — la respuesta queda guardada como información aparte.</div>
+                )}
                 <div style={{ marginBottom:12 }}><label style={{ display:"block", fontSize:11, color:C.gris, marginBottom:4, fontWeight:600 }}>TEXTO</label><textarea value={p.texto} onChange={e=>updP(di,pi,"texto",e.target.value)} rows={3} style={{...si,resize:"vertical"}}/></div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
                   <div><label style={{ display:"block", fontSize:11, color:C.gris, marginBottom:4, fontWeight:600 }}>CRITERIO</label><input value={p.criterio} onChange={e=>updP(di,pi,"criterio",e.target.value)} style={si}/></div>
                   <div><label style={{ display:"block", fontSize:11, color:C.gris, marginBottom:4, fontWeight:600 }}>ID <span style={{fontSize:10,color:C.grisCl,fontWeight:400}}>(no editable — protege los datos guardados)</span></label><input value={p.id} readOnly style={{...si, background:"#F0F0F0", color:C.grisCl, cursor:"not-allowed"}}/></div>
                 </div>
                 <div style={{ marginBottom:20 }}><label style={{ display:"block", fontSize:11, color:C.gris, marginBottom:4, fontWeight:600 }}>EJEMPLO EVIDENCIA</label><textarea value={p.evidencia} onChange={e=>updP(di,pi,"evidencia",e.target.value)} rows={2} style={{...si,resize:"vertical"}}/></div>
-                <p style={{ fontSize:11, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Niveles de madurez (1 → 5)</p>
-                {p.niveles.map((nv,ni)=>(
-                  <div key={ni} style={{ marginBottom:10 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                      <div style={{ width:22, height:22, borderRadius:"50%", background:NV_CFG[ni].color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff" }}>{ni+1}</div>
-                      <span style={{ fontSize:11, color:NV_CFG[ni].color, fontWeight:700, textTransform:"uppercase", letterSpacing:1 }}>{NV_CFG[ni].label}</span>
-                    </div>
-                    <textarea value={nv} onChange={e=>updN(di,pi,ni,e.target.value)} rows={2} style={{...si,resize:"vertical",borderColor:NV_CFG[ni].color+"44"}}/>
-                  </div>
-                ))}
+
+                {(p.tipo||"escala_1_5")==="escala_1_5" ? (
+                  <>
+                    <p style={{ fontSize:11, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Niveles de madurez (1 → 5)</p>
+                    {p.niveles.map((nv,ni)=>(
+                      <div key={ni} style={{ marginBottom:10 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                          <div style={{ width:22, height:22, borderRadius:"50%", background:NV_CFG[ni].color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff" }}>{ni+1}</div>
+                          <span style={{ fontSize:11, color:NV_CFG[ni].color, fontWeight:700, textTransform:"uppercase", letterSpacing:1 }}>{NV_CFG[ni].label}</span>
+                        </div>
+                        <textarea value={nv} onChange={e=>updN(di,pi,ni,e.target.value)} rows={2} style={{...si,resize:"vertical",borderColor:NV_CFG[ni].color+"44"}}/>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <p style={{ fontSize:11, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Alternativas (usa "Otra:" para que muestre un campo de texto libre)</p>
+                    {(p.opciones||[]).map((op,oi)=>(
+                      <div key={oi} style={{ display:"flex", gap:8, marginBottom:8, alignItems:"center" }}>
+                        <input value={op} onChange={e=>updP(di,pi,"opciones",(p.opciones||[]).map((x,k)=>k!==oi?x:e.target.value))} style={si}/>
+                        <button onClick={()=>updP(di,pi,"opciones",(p.opciones||[]).filter((_,k)=>k!==oi))} style={{ padding:"7px 10px", background:"#fff5f5", border:"1px solid #fcc", borderRadius:6, color:"#E74C3C", cursor:"pointer", fontSize:12 }}>✕</button>
+                      </div>
+                    ))}
+                    <button onClick={()=>updP(di,pi,"opciones",[...(p.opciones||[]),"Nueva opción"])} style={{ padding:"7px 14px", borderRadius:7, border:`1px dashed ${C.gris}`, background:"transparent", color:C.gris, fontSize:12, fontWeight:600, cursor:"pointer" }}>+ Agregar alternativa</button>
+                  </>
+                )}
               </div>
             );
           })()}
@@ -3459,7 +3498,7 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     const prom = pdim(d, datosE || {});
     const n    = prom !== null ? getNivel(prom) : null;
     const pct  = prom !== null ? a5to100(prom) : null;
-    const respuestas = d.preguntas.map(p => {
+    const respuestas = d.preguntas.filter(p => p.cuentaParaPuntaje!==false).map(p => {
       const val = (datosE || {})[p.id];
       if (val === undefined) return null;
       return { criterio: p.criterio, descripcion: p.niveles[val-1] || "—", valor: val,
@@ -3467,6 +3506,10 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     }).filter(Boolean);
     return { d, prom, n, pct, respuestas };
   });
+
+  const respuestasMultiple = dims.flatMap(d => d.preguntas
+    .filter(p => p.tipo==="opcion_multiple" && (datosE||{})[p.id] !== undefined)
+    .map(p => ({ criterio: p.criterio||p.texto, valor: (datosE||{})[p.id] })));
 
   const areasDebiles   = dimRows.filter(x => x.prom !== null && x.prom < 3.5).sort((a,b) => a.prom - b.prom);
   const areasFortaleza = dimRows.filter(x => x.prom !== null && x.prom >= 3.5).sort((a,b) => b.prom - a.prom);
@@ -3645,6 +3688,15 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
       </div>
       ${infoGeneral.resumenEmpresa?`<p style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${infoGeneral.resumenEmpresa}</p>`:""}
     </div>
+
+    ${respuestasMultiple.length>0?`
+    <!-- OTRAS RESPUESTAS (opción múltiple — no puntúan) -->
+    <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
+      <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Otras respuestas</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        ${respuestasMultiple.map(r=>`<div><span style="font-size:18px;color:#8A9BB0;">${r.criterio.toUpperCase()}: </span><span style="font-size:20px;color:#1C2B3A;font-weight:600;">${r.valor}</span></div>`).join("")}
+      </div>
+    </div>`:""}
 
     <!-- FILA 2: SÍNTESIS DIAGNÓSTICA -->
     <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
@@ -4455,6 +4507,28 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                     {p.obligatoria!==false&&<span style={{ fontSize:10, background:`${C.azul}12`, color:C.azul, borderRadius:4, padding:"1px 6px", fontWeight:700 }}>Obligatoria</span>}
                   </div>
                   <p style={{ fontSize:14, color:C.oscuro, lineHeight:1.6, margin:"0 0 14px 0" }}><strong style={{ color:dim.acento }}>P{idx+1}. </strong>{p.texto}</p>
+                  {(p.tipo==="opcion_multiple") ? (
+                    <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+                      {(p.opciones||[]).map((op,oi)=>{
+                        const esOtra = op.trim().replace(/:$/,"").toLowerCase()==="otra";
+                        const valorActual = datos[p.id]||"";
+                        const sel = esOtra ? valorActual.startsWith("Otra:") : valorActual===op;
+                        return (
+                          <div key={oi}>
+                            <div onClick={()=>{ if(esOtra){ setR(p.id, valorActual.startsWith("Otra:")?valorActual:"Otra: "); } else { setR(p.id, op); } }}
+                              style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:8, cursor:"pointer", border:`2px solid ${sel?dim.acento:C.borde}`, background:sel?`${dim.acento}10`:"#FAFBFC" }}>
+                              <div style={{ width:20,height:20,borderRadius:"50%",flexShrink:0,border:`2px solid ${sel?dim.acento:C.borde}`,background:sel?dim.acento:"transparent" }}/>
+                              <span style={{ fontSize:13,color:sel?C.oscuro:C.gris }}>{op}</span>
+                            </div>
+                            {esOtra && sel && (
+                              <input value={valorActual.replace(/^Otra:\s*/,"")} onChange={e=>setR(p.id,"Otra: "+e.target.value)} placeholder="Especifica…" autoFocus
+                                style={{ width:"100%",marginTop:6,padding:"8px 12px",background:C.fondo,border:`1px solid ${C.borde}`,borderRadius:7,color:C.oscuro,fontSize:13,outline:"none",boxSizing:"border-box" }}/>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
                   <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
                     {p.niveles.map((nivel,ni)=>{
                       const val=ni+1; const sel=datos[p.id]===val; const nc=NV_CFG[ni];
@@ -4469,6 +4543,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                       );
                     })}
                   </div>
+                  )}
                   <div style={{ marginTop:13,paddingTop:13,borderTop:`1px solid ${C.borde}` }}>
                     <label style={{ fontSize:11,color:C.gris,fontWeight:600,textTransform:"uppercase",letterSpacing:0.5,display:"block",marginBottom:3 }}>📎 Evidencia (opcional)</label>
                     <p style={{ fontSize:11,color:C.grisCl,margin:"0 0 5px 0",fontStyle:"italic" }}>{p.evidencia}</p>
