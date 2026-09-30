@@ -3617,6 +3617,16 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   <!-- ══ CONTENIDO RESTANTE — crece con flex:1 (contenido real, no un div vacío) para que el pie siempre quede al final de la hoja A4 ══ -->
   <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start;gap:22px;">
 
+    <!-- RESUMEN DE LA EMPRESA (página web, redes sociales, resumen breve) -->
+    <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
+      <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Resumen de la Empresa</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:${infoGeneral.resumenEmpresa?"14px":"0"};">
+        <div><span style="font-size:16px;color:#8A9BB0;">PÁGINA WEB: </span><span style="font-size:18px;color:#1C2B3A;font-weight:600;">${infoGeneral.paginaWeb||"No registrada"}</span></div>
+        <div><span style="font-size:16px;color:#8A9BB0;">REDES SOCIALES ACTIVAS: </span><span style="font-size:18px;color:#1C2B3A;font-weight:600;">${infoGeneral.tieneRedes||"No especificado"}</span></div>
+      </div>
+      ${infoGeneral.resumenEmpresa?`<p style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${infoGeneral.resumenEmpresa}</p>`:""}
+    </div>
+
     <!-- FILA 2: SÍNTESIS DIAGNÓSTICA -->
     <div style="background:#F5F8FB;border:2px solid #E4EBF2;border-radius:18px;padding:22px 29px;">
       <div style="font-size:18px;font-weight:700;color:#8A9BB0;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;">Síntesis diagnóstica</div>
@@ -3945,7 +3955,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
   const [pagina, setPagina] = useState(verComparativo ? 7 : 0);
   const [modo, setModo] = useState(esSalidaNueva ? "salida" : verComparativo ? "comparacion" : "entrada");
   const [validErr, setValidErr] = useState([]);
-  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",consultor:miNombre||"",modalidad:"",observaciones:"",obsEnMentor:false,notaMentor:"",estado:"Pendiente revisión",region:"",comuna:"",pais:"Chile"});
+  const [infoGeneral, setInfoGeneral] = useState(diagActual?.infoGeneral||{empresa:"",respondente:"",cargo:"",facturacionTotal:"",consultor:miNombre||"",modalidad:"",observaciones:"",obsEnMentor:false,notaMentor:"",estado:"Pendiente revisión",region:"",comuna:"",pais:"Chile",paginaWeb:"",tieneRedes:"",resumenEmpresa:""});
   const [datosE, setDatosE] = useState(esSalidaNueva ? {} : (diagActual?.datosEntrada||{}));
   const [datosS, setDatosS] = useState(esSalidaNueva ? {} : (dFinalRef?.datosSalida||diagActual?.datosSalida||{}));
   const [indE, setIndE] = useState(esSalidaNueva ? {} : (diagActual?.indicadoresEntrada||{}));
@@ -4309,6 +4319,33 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                   )}
                 </div>
               ))}
+
+              <div style={{ gridColumn:"1 / -1", borderTop:`1px solid ${C.borde}`, paddingTop:16, marginTop:4 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Resumen de la empresa (para el mentor)</div>
+                <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:12, marginBottom:12 }}>
+                  <div>
+                    <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Página web</label>
+                    <input value={infoGeneral.paginaWeb||""} onChange={e=>setInfoGeneral(p=>({...p,paginaWeb:e.target.value}))} placeholder="Ej: www.empresa.cl (deja vacío si no tiene)"
+                      style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box" }}/>
+                  </div>
+                  <div>
+                    <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>¿Redes sociales activas?</label>
+                    <select value={infoGeneral.tieneRedes||""} onChange={e=>setInfoGeneral(p=>({...p,tieneRedes:e.target.value}))}
+                      style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:infoGeneral.tieneRedes?C.oscuro:C.grisCl, fontSize:14, outline:"none", boxSizing:"border-box", cursor:"pointer" }}>
+                      <option value="">Selecciona…</option>
+                      <option value="Sí">Sí</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:5 }}>Resumen breve de la empresa</label>
+                  <textarea value={infoGeneral.resumenEmpresa||""} onChange={e=>setInfoGeneral(p=>({...p,resumenEmpresa:e.target.value}))} rows={3}
+                    placeholder="Ej: Empresa familiar de 15 años, provee mantención mecánica a plantas industriales. Equipo de 8 personas, sin presencia digital activa..."
+                    style={{ width:"100%", padding:"10px 14px", background:C.blanco, border:`1px solid ${C.borde}`, borderRadius:8, color:C.oscuro, fontSize:14, outline:"none", boxSizing:"border-box", resize:"vertical", fontFamily:"inherit" }}/>
+                </div>
+              </div>
+
               {(() => {
                 const nombreNorm = (infoGeneral.empresa||"").trim().toLowerCase();
                 if (!nombreNorm) return null;
