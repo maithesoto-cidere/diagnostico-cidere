@@ -35,41 +35,42 @@ async function sbSet(key, value) {
    el resto de la app (formulario, radar, ficha, dashboard, editor, PDFs) no necesite cambios.
    Si algo falla (sin red, tablas vacías, etc.) devuelve null y quien llama debe usar DIMS_BASE
    como respaldo — así la app nunca se queda sin dimensiones para mostrar. */
-/* ── Base de Empresas (tabla "empresas", global — compartida entre todos los programas) ── */
+/* ── Base de Empresas (tabla "empresas"), SEPARADA por programa: la clave es rut + programa_id ── */
 
 const normalizarRut = (rut) => (rut||"").toString().trim().toUpperCase().replace(/\.+/g,"").replace(/\s+/g,"");
 
-async function sbGetEmpresaPorRut(rut) {
-  if (!rut) return null;
+async function sbGetEmpresaPorRut(rut, programaId) {
+  if (!rut || !programaId) return null;
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/empresas?rut=eq.${encodeURIComponent(normalizarRut(rut))}&select=*`, { headers: sbHeaders });
+    const r = await fetch(`${SB_URL}/rest/v1/empresas?rut=eq.${encodeURIComponent(normalizarRut(rut))}&programa_id=eq.${encodeURIComponent(programaId)}&select=*`, { headers: sbHeaders });
     if (!r.ok) return null;
     const rows = await r.json();
     return rows[0] || null;
   } catch(e) { return null; }
 }
 
-async function sbBuscarEmpresasPorNombre(nombre) {
+async function sbBuscarEmpresasPorNombre(nombre, programaId) {
   const q = (nombre||"").trim();
-  if (q.length < 3) return [];
+  if (q.length < 3 || !programaId) return [];
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/empresas?nombre=ilike.*${encodeURIComponent(q)}*&select=*&limit=6`, { headers: sbHeaders });
+    const r = await fetch(`${SB_URL}/rest/v1/empresas?nombre=ilike.*${encodeURIComponent(q)}*&programa_id=eq.${encodeURIComponent(programaId)}&select=*&limit=6`, { headers: sbHeaders });
     if (!r.ok) return [];
     return await r.json();
   } catch(e) { return []; }
 }
 
-async function sbGetEmpresas() {
+async function sbGetEmpresas(programaId) {
+  if (!programaId) return [];
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/empresas?select=*&order=nombre`, { headers: sbHeaders });
+    const r = await fetch(`${SB_URL}/rest/v1/empresas?programa_id=eq.${encodeURIComponent(programaId)}&select=*&order=nombre`, { headers: sbHeaders });
     if (!r.ok) return [];
     return await r.json();
   } catch(e) { return []; }
 }
 
-async function sbGuardarEmpresa(empresa) {
+async function sbGuardarEmpresa(empresa, programaId) {
   try {
-    const body = { ...empresa, rut: normalizarRut(empresa.rut), updated_at: new Date().toISOString() };
+    const body = { ...empresa, rut: normalizarRut(empresa.rut), programa_id: programaId, updated_at: new Date().toISOString() };
     const r = await fetch(`${SB_URL}/rest/v1/empresas`, {
       method: "POST",
       headers: { ...sbHeaders, "Prefer": "resolution=merge-duplicates,return=representation" },
@@ -80,22 +81,23 @@ async function sbGuardarEmpresa(empresa) {
   } catch(e) { return { ok:false, error: e?.message || "Error desconocido" }; }
 }
 
-async function sbEliminarEmpresa(rut) {
+async function sbEliminarEmpresa(rut, programaId) {
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/empresas?rut=eq.${encodeURIComponent(normalizarRut(rut))}`, { method:"DELETE", headers: sbHeaders });
+    const r = await fetch(`${SB_URL}/rest/v1/empresas?rut=eq.${encodeURIComponent(normalizarRut(rut))}&programa_id=eq.${encodeURIComponent(programaId)}`, { method:"DELETE", headers: sbHeaders });
     return { ok: r.ok };
   } catch(e) { return { ok:false, error: e?.message }; }
 }
 
-/* Importa una lista de empresas de una sola vez (upsert masivo por RUT). Filas sin RUT se descartan. */
-async function sbImportarEmpresas(lista) {
+/* Importa una lista de empresas de una sola vez (upsert por RUT+programa). Filas sin RUT se descartan. */
+async function sbImportarEmpresas(lista, programaId) {
   const validas = lista.filter(e => e.rut && normalizarRut(e.rut));
   if (validas.length === 0) return { ok:false, error:"No hay filas con RUT válido para importar." };
+  if (!programaId) return { ok:false, error:"Falta el programa al que pertenecen estas empresas." };
   let ok = 0;
   const errores = [];
   for (const e of validas) {
     try {
-      const body = { ...e, rut: normalizarRut(e.rut), updated_at: new Date().toISOString() };
+      const body = { ...e, rut: normalizarRut(e.rut), programa_id: programaId, updated_at: new Date().toISOString() };
       const r = await fetch(`${SB_URL}/rest/v1/empresas`, {
         method: "POST",
         headers: { ...sbHeaders, "Prefer": "resolution=merge-duplicates,return=minimal" },
@@ -617,7 +619,7 @@ function Modal({ onClose, children, width=480 }) {
 /* ═══════════════════════════════════════════
    BASE DE EMPRESAS (tabla global, todos los programas)
 ═══════════════════════════════════════════ */
-function PantallaBaseEmpresas({ onVolver }) {
+function PantallaBaseEmpresas({ onVolver, programaId, programaNombre }) {
   const [empresas, setEmpresas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
@@ -627,8 +629,8 @@ function PantallaBaseEmpresas({ onVolver }) {
   const [resultadoImport, setResultadoImport] = useState(null);
   const fileInputRef = useRef(null);
 
-  const recargar = async () => { setCargando(true); setEmpresas(await sbGetEmpresas()); setCargando(false); };
-  useEffect(() => { recargar(); }, []);
+  const recargar = async () => { setCargando(true); setEmpresas(await sbGetEmpresas(programaId)); setCargando(false); };
+  useEffect(() => { recargar(); }, [programaId]);
 
   const filtradas = empresas.filter(e => {
     const q = busqueda.trim().toLowerCase();
@@ -642,15 +644,15 @@ function PantallaBaseEmpresas({ onVolver }) {
     if (!editando.rut?.trim()) { window.alert("El RUT es obligatorio."); return; }
     if (!editando.nombre?.trim()) { window.alert("El nombre es obligatorio."); return; }
     setGuardando(true);
-    const res = await sbGuardarEmpresa(editando);
+    const res = await sbGuardarEmpresa(editando, programaId);
     setGuardando(false);
     if (res.ok) { setEditando(null); recargar(); }
     else window.alert("Error al guardar: " + (res.error||"desconocido"));
   };
 
   const eliminar = async (rut, nombre) => {
-    if (!window.confirm(`¿Eliminar "${nombre}" (${rut}) de la base de empresas? Esto no afecta diagnósticos ya guardados.`)) return;
-    const res = await sbEliminarEmpresa(rut);
+    if (!window.confirm(`¿Eliminar "${nombre}" (${rut}) de la base de empresas de ${programaNombre||"este programa"}? Esto no afecta diagnósticos ya guardados.`)) return;
+    const res = await sbEliminarEmpresa(rut, programaId);
     if (res.ok) recargar();
     else window.alert("Error al eliminar.");
   };
@@ -717,7 +719,7 @@ function PantallaBaseEmpresas({ onVolver }) {
         return;
       }
 
-      const res = await sbImportarEmpresas(empresasImport);
+      const res = await sbImportarEmpresas(empresasImport, programaId);
       if (res.ok) {
         setResultadoImport({ ok:true, msg:`✓ Se importaron/actualizaron ${res.total} empresas.` + (res.errores ? ` (${res.errores.length} fila(s) con error: ${res.errores.slice(0,3).join(" | ")}${res.errores.length>3?"…":""})` : "") });
         recargar();
@@ -759,7 +761,7 @@ function PantallaBaseEmpresas({ onVolver }) {
         </div>
         <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom:24, flexWrap:"wrap", gap:12 }}>
           <div>
-            <div style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Base compartida entre todos los programas</div>
+            <div style={{ fontSize:11, color:C.gris, letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Programa {programaNombre||""}</div>
             <h1 style={{ fontSize:26, fontWeight:800, color:C.oscuro, margin:0 }}>Base de Empresas</h1>
             <p style={{ fontSize:13, color:C.gris, margin:"6px 0 0 0" }}>{empresas.length} empresa{empresas.length!==1?"s":""} registrada{empresas.length!==1?"s":""}. Se usa para autocompletar el RUT en los diagnósticos.</p>
           </div>
@@ -1231,7 +1233,7 @@ function PanelActualizacionMasiva({ programa, dims, onAplicar, onClose }) {
 
   useEffect(() => {
     (async () => {
-      const empresas = await sbGetEmpresas();
+      const empresas = await sbGetEmpresas(programa.configId||programa.id);
       const props = [];
       (programa.diagnosticos||[]).forEach(d => {
         if (d.infoGeneral?.rut?.trim()) return; // ya vinculado, no hace falta
@@ -4122,7 +4124,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
       const dimSost = dims.find(d => d.nombre.toLowerCase().includes("sostenibilidad"));
       if (dimSost && rec.indicadoresEntrada?.[dimSost.id]) payload.accidentes_laborales = rec.indicadoresEntrada[dimSost.id];
       Object.keys(payload).forEach(k => payload[k]===undefined && delete payload[k]);
-      sbGuardarEmpresa(payload); // en segundo plano, no bloquea el guardado del diagnóstico
+      sbGuardarEmpresa(payload, programa.configId||programa.id); // en segundo plano, no bloquea el guardado del diagnóstico
     }
   };
 
@@ -4261,7 +4263,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                     const rut = (infoGeneral.rut||"").trim();
                     if (!rut) { setRutEstado(null); return; }
                     setRutEstado("buscando");
-                    const emp = await sbGetEmpresaPorRut(rut);
+                    const emp = await sbGetEmpresaPorRut(rut, programa.configId||programa.id);
                     if (!emp) { setRutEstado("no_encontrado"); setEmpresaEncontrada(null); return; }
                     aplicarDatosEmpresa(emp, false);
                     setEmpresaEncontrada(emp);
@@ -4296,7 +4298,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                           const nombre = (infoGeneral.empresa||"").trim();
                           if (nombre.length < 3) { setSugerenciasEmpresa([]); return; }
                           setBuscandoNombre(true);
-                          const resultados = await sbBuscarEmpresasPorNombre(nombre);
+                          const resultados = await sbBuscarEmpresasPorNombre(nombre, programa.configId||programa.id);
                           setBuscandoNombre(false);
                           setSugerenciasEmpresa(resultados);
                         }}
@@ -5270,7 +5272,7 @@ export default function App() {
                 🗑 Papelera{papelera.length>0?<span style={{position:"absolute",top:-5,right:-5,background:"#E74C3C",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>{papelera.length}</span>:null}
               </button>
               <button onClick={()=>{setShowBackup(true);setImportError("");}} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>💾 Backup</button>
-              <button onClick={()=>setShowBaseEmpresas(true)} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>🏢 Base de Empresas</button>
+              {proyectoActivo && <button onClick={()=>setShowBaseEmpresas(true)} title={`Base de empresas de ${proyectoActivo.nombre}`} style={{ padding:"7px 14px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,color:"rgba(255,255,255,0.8)",fontSize:12,cursor:"pointer",fontWeight:600 }}>🏢 Base de Empresas</button>}
             </>
           )}
           <div style={{ width:30,height:30,borderRadius:"50%",background:`linear-gradient(135deg,${C.verde},${C.azul})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff" }}>C</div>
@@ -5403,7 +5405,7 @@ export default function App() {
       {/* BODY */}
       <div style={{ flex:1,display:"flex",minHeight:0,position:"relative" }}>
         {showBaseEmpresas ? (
-          <PantallaBaseEmpresas onVolver={()=>setShowBaseEmpresas(false)}/>
+          <PantallaBaseEmpresas onVolver={()=>setShowBaseEmpresas(false)} programaId={proyectoActivo?.configId||proyectoActivo?.id} programaNombre={proyectoActivo?.nombre}/>
         ) : (<>
         {!proyectoActivo && !esExterno && (
           <PantallaProyectos proyectos={proyectos} onSeleccionar={p=>{setProyectoActivo(p);setDiagActivo(null);}} onCrear={crearPrograma} onEditar={editarPrograma} onEliminar={eliminarPrograma}/>
