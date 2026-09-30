@@ -153,6 +153,7 @@ async function sbGetDimsPrograma(programaId) {
         .map(p => ({
           id: p.codigo,
           obligatoria: p.obligatoria,
+          cuentaParaPuntaje: p.cuenta_para_puntaje !== false, // por defecto true, salvo que se haya desmarcado explícitamente
           texto: p.texto,
           criterio: p.criterio,
           evidencia: p.evidencia,
@@ -276,7 +277,8 @@ async function sbGuardarContenidoDims(programaId, dimsEditados) {
         const yaExiste = codigosExistentes.has(p.id);
         const body = {
           texto: p.texto, criterio: p.criterio, evidencia: p.evidencia,
-          niveles: p.niveles, obligatoria: p.obligatoria !== false, orden: pi + 1,
+          niveles: p.niveles, obligatoria: p.obligatoria !== false,
+          cuenta_para_puntaje: p.cuentaParaPuntaje !== false, orden: pi + 1,
         };
         if (yaExiste) {
           const rU = await fetch(`${SB_URL}/rest/v1/preguntas?programa_id=eq.${encodeURIComponent(programaId)}&codigo=eq.${encodeURIComponent(p.id)}`, {
@@ -292,7 +294,7 @@ async function sbGuardarContenidoDims(programaId, dimsEditados) {
           codigosExistentes.add(nuevoCodigo);
           const rI = await fetch(`${SB_URL}/rest/v1/preguntas`, {
             method: "POST", headers: sbHeaders,
-            body: JSON.stringify({ ...body, codigo: nuevoCodigo, programa_id: programaId, dimension_id: dimUuid, tipo: "escala_1_5", cuenta_para_puntaje: true })
+            body: JSON.stringify({ ...body, codigo: nuevoCodigo, programa_id: programaId, dimension_id: dimUuid, tipo: "escala_1_5" })
           });
           if (!rI.ok) return { ok:false, error:`No se pudo crear la pregunta nueva "${p.texto?.slice(0,30)}...".` };
         }
@@ -457,8 +459,8 @@ const NV_CFG = [
 ];
 const getNivel   = (p) => p<2?NV_CFG[0]:p<3?NV_CFG[1]:p<4?NV_CFG[2]:p<4.5?NV_CFG[3]:NV_CFG[4];
 const calcBrecha = (e,s) => !e||!s||e>=5?null:Math.max(0,Math.min(100,((s-e)/(5-e))*100));
-const pglobal    = (dims,src) => { const v=dims.map(d=>{const ps=d.preguntas.map(p=>src[p.id]).filter(x=>x!==undefined);return ps.length?ps.reduce((a,b)=>a+b,0)/ps.length:null;}).filter(x=>x!==null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
-const pdim       = (d,src)    => { const v=d.preguntas.map(p=>src[p.id]).filter(x=>x!==undefined);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
+const pglobal    = (dims,src) => { const v=dims.map(d=>{const ps=d.preguntas.filter(p=>p.cuentaParaPuntaje!==false).map(p=>src[p.id]).filter(x=>x!==undefined);return ps.length?ps.reduce((a,b)=>a+b,0)/ps.length:null;}).filter(x=>x!==null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
+const pdim       = (d,src)    => { const v=d.preguntas.filter(p=>p.cuentaParaPuntaje!==false).map(p=>src[p.id]).filter(x=>x!==undefined);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
 
 /* ── Conversión escala 1-5 → % (1→0%, 5→100%) ── */
 const a5to100 = (v) => v===null||v===undefined ? null : Math.round(((v-1)/4)*100);
@@ -2799,7 +2801,7 @@ function EditorContenido({ dims, onSave, onClose, programaId }) {
   const upd  = (di,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,[f]:v}));
   const updP = (di,pi,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,[f]:v})}));
   const updN = (di,pi,ni,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,niveles:q.niveles.map((n,k)=>k!==ni?n:v)})}));
-  const addP = (di) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:[...x.preguntas,{id:`${x.id}x${Date.now()}`,obligatoria:true,texto:"Nueva pregunta",criterio:"Criterio",evidencia:"",niveles:["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"]}]}));
+  const addP = (di) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:[...x.preguntas,{id:`${x.id}x${Date.now()}`,obligatoria:true,cuentaParaPuntaje:true,texto:"Nueva pregunta",criterio:"Criterio",evidencia:"",niveles:["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"]}]}));
   const delP = (di,pi) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.filter((_,j)=>j!==pi)}));
   const addDim = () => {
     const nuevaDim = { _dimUuid:null, id:data.length+1, nombre:"Nueva dimensión", icono:"◆", acento:"#607D8B", objetivo:"", indicadorObjetivo:{label:"",tipo:"numero",placeholder:""}, preguntas:[] };
@@ -2897,6 +2899,7 @@ function EditorContenido({ dims, onSave, onClose, programaId }) {
                 <div key={pi} style={{ background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:10, padding:"12px 16px", marginBottom:8, display:"flex", alignItems:"flex-start", gap:10 }}>
                   <div style={{ flex:1 }}>
                     <span style={{ fontSize:10, fontWeight:700, color:p.obligatoria!==false?C.azul:C.grisCl }}>{p.obligatoria!==false?"● Obligatoria":"○ Opcional"}</span>
+                    {p.cuentaParaPuntaje===false && <span style={{ fontSize:10, fontWeight:700, color:"#E67E22", marginLeft:8 }}>· No cuenta para el puntaje</span>}
                     <div style={{ fontSize:13, color:C.oscuro, marginTop:3 }}>{p.texto}</div>
                     <div style={{ fontSize:11, color:C.gris }}>{p.criterio}</div>
                   </div>
@@ -2919,6 +2922,14 @@ function EditorContenido({ dims, onSave, onClose, programaId }) {
                   <div style={{ display:"flex", gap:8 }}>
                     {[true,false].map(val=>(
                       <button key={String(val)} onClick={()=>updP(di,pi,"obligatoria",val)} style={{ padding:"7px 13px", borderRadius:7, border:`2px solid ${(p.obligatoria!==false)===val?(val?C.azul:C.grisCl):C.borde}`, background:(p.obligatoria!==false)===val?(val?`${C.azul}12`:"#F8F8FA"):"transparent", color:(p.obligatoria!==false)===val?(val?C.azul:C.gris):C.gris, fontSize:12, fontWeight:700, cursor:"pointer" }}>{val?"● Obligatoria":"○ Opcional"}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ background:C.fondo, border:`1px solid ${C.borde}`, borderRadius:10, padding:"13px 16px", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
+                  <div><div style={{ fontSize:13, color:C.oscuro, fontWeight:600 }}>¿Cuenta para el puntaje?</div><div style={{ fontSize:11, color:C.gris }}>Si eliges "No cuenta", la respuesta se guarda pero no se usa para calcular el % de la dimensión</div></div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    {[true,false].map(val=>(
+                      <button key={String(val)} onClick={()=>updP(di,pi,"cuentaParaPuntaje",val)} style={{ padding:"7px 13px", borderRadius:7, border:`2px solid ${(p.cuentaParaPuntaje!==false)===val?(val?C.verde:C.grisCl):C.borde}`, background:(p.cuentaParaPuntaje!==false)===val?(val?`${C.verde}12`:"#F8F8FA"):"transparent", color:(p.cuentaParaPuntaje!==false)===val?(val?C.verde:C.gris):C.gris, fontSize:12, fontWeight:700, cursor:"pointer" }}>{val?"● Cuenta para el puntaje":"○ No cuenta (solo informativa)"}</button>
                     ))}
                   </div>
                 </div>
