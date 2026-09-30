@@ -2872,7 +2872,13 @@ function EditorContenido({ dims, onSave, onClose, programaId }) {
           </div>
         </div>
         <div style={{ flex:1, overflowY:"auto", padding:24, background:C.blanco }}>
-          {pregSel===null ? (
+          {data.length===0 ? (
+            <div style={{ maxWidth:420, margin:"60px auto", textAlign:"center" }}>
+              <div style={{ fontSize:36, marginBottom:12 }}>📋</div>
+              <p style={{ fontSize:15, fontWeight:700, color:C.oscuro, marginBottom:8 }}>Este programa todavía no tiene ninguna dimensión</p>
+              <p style={{ fontSize:13, color:C.gris, marginBottom:20 }}>Usa el botón "+ Agregar dimensión" en la barra lateral izquierda para crear la primera. Necesitas al menos una dimensión con una pregunta para poder guardar.</p>
+            </div>
+          ) : pregSel===null ? (
             <div style={{ maxWidth:660 }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
                 <p style={{ fontSize:11, color:C.gris, textTransform:"uppercase", letterSpacing:1, margin:0 }}>Dimensión {d.id} — {d.nombre}</p>
