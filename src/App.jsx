@@ -159,7 +159,7 @@ async function sbGetDimsPrograma(programaId) {
           texto: p.texto,
           criterio: p.criterio,
           evidencia: p.evidencia,
-          niveles: p.niveles,
+          niveles: (Array.isArray(p.niveles) && p.niveles.length>0) ? p.niveles : ((p.tipo||"escala_1_5")==="escala_1_5" ? ["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"] : []),
         })),
     }));
 
@@ -2808,7 +2808,7 @@ function EditorContenido({ dims, onSave, onClose, programaId }) {
   const d = data[dimSel];
   const upd  = (di,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,[f]:v}));
   const updP = (di,pi,f,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,[f]:v})}));
-  const updN = (di,pi,ni,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,niveles:q.niveles.map((n,k)=>k!==ni?n:v)})}));
+  const updN = (di,pi,ni,v) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.map((q,j)=>j!==pi?q:{...q,niveles:(q.niveles||[]).map((n,k)=>k!==ni?n:v)})}));
   const addP = (di) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:[...x.preguntas,{id:`${x.id}x${Date.now()}`,obligatoria:true,cuentaParaPuntaje:true,tipo:"escala_1_5",opciones:[],texto:"Nueva pregunta",criterio:"Criterio",evidencia:"",niveles:["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"]}]}));
   const delP = (di,pi) => setData(p=>p.map((x,i)=>i!==di?x:{...x,preguntas:x.preguntas.filter((_,j)=>j!==pi)}));
   const addDim = () => {
@@ -2939,6 +2939,7 @@ function EditorContenido({ dims, onSave, onClose, programaId }) {
                     {[{v:"escala_1_5",l:"Escala 1-5 (puntúa)"},{v:"opcion_multiple",l:"Opción múltiple (no puntúa)"}].map(op=>(
                       <button key={op.v} onClick={()=>{
                         updP(di,pi,"tipo",op.v);
+                        if (op.v==="escala_1_5" && (!p.niveles || p.niveles.length===0)) updP(di,pi,"niveles",["Nivel 1","Nivel 2","Nivel 3","Nivel 4","Nivel 5"]);
                         if (op.v==="opcion_multiple") { updP(di,pi,"cuentaParaPuntaje",false); if (!p.opciones||p.opciones.length===0) updP(di,pi,"opciones",["Opción 1","Opción 2","Otra:"]); }
                       }} style={{ padding:"7px 13px", borderRadius:7, border:`2px solid ${(p.tipo||"escala_1_5")===op.v?C.azul:C.borde}`, background:(p.tipo||"escala_1_5")===op.v?`${C.azul}12`:"transparent", color:(p.tipo||"escala_1_5")===op.v?C.azul:C.gris, fontSize:12, fontWeight:700, cursor:"pointer" }}>{op.l}</button>
                     ))}
@@ -2966,7 +2967,7 @@ function EditorContenido({ dims, onSave, onClose, programaId }) {
                 {(p.tipo||"escala_1_5")==="escala_1_5" ? (
                   <>
                     <p style={{ fontSize:11, color:C.gris, textTransform:"uppercase", letterSpacing:1, marginBottom:10 }}>Niveles de madurez (1 → 5)</p>
-                    {p.niveles.map((nv,ni)=>(
+                    {(p.niveles||[]).map((nv,ni)=>(
                       <div key={ni} style={{ marginBottom:10 }}>
                         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
                           <div style={{ width:22, height:22, borderRadius:"50%", background:NV_CFG[ni].color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:"#fff" }}>{ni+1}</div>
@@ -3501,7 +3502,7 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     const respuestas = d.preguntas.filter(p => p.cuentaParaPuntaje!==false).map(p => {
       const val = (datosE || {})[p.id];
       if (val === undefined) return null;
-      return { criterio: p.criterio, descripcion: p.niveles[val-1] || "—", valor: val,
+      return { criterio: p.criterio, descripcion: (p.niveles||[])[val-1] || "—", valor: val,
                nivelLabel: NV_CFG[val-1]?.label || "—", color: NV_CFG[val-1]?.color || "#999" };
     }).filter(Boolean);
     return { d, prom, n, pct, respuestas };
