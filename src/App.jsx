@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Component } from "react";
 
 /* ═══════════════════════════════════════════
    SUPABASE CLIENT (REST directo, sin SDK)
@@ -467,8 +467,8 @@ const NV_CFG = [
 ];
 const getNivel   = (p) => p<2?NV_CFG[0]:p<3?NV_CFG[1]:p<4?NV_CFG[2]:p<4.5?NV_CFG[3]:NV_CFG[4];
 const calcBrecha = (e,s) => !e||!s||e>=5?null:Math.max(0,Math.min(100,((s-e)/(5-e))*100));
-const pglobal    = (dims,src) => { const v=dims.map(d=>{const ps=d.preguntas.filter(p=>p.cuentaParaPuntaje!==false).map(p=>src[p.id]).filter(x=>x!==undefined);return ps.length?ps.reduce((a,b)=>a+b,0)/ps.length:null;}).filter(x=>x!==null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
-const pdim       = (d,src)    => { const v=d.preguntas.filter(p=>p.cuentaParaPuntaje!==false).map(p=>src[p.id]).filter(x=>x!==undefined);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
+const pglobal    = (dims,src) => { const v=dims.map(d=>{const ps=d.preguntas.filter(p=>p.cuentaParaPuntaje!==false).map(p=>src[p.id]).filter(x=>typeof x==="number");return ps.length?ps.reduce((a,b)=>a+b,0)/ps.length:null;}).filter(x=>x!==null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
+const pdim       = (d,src)    => { const v=d.preguntas.filter(p=>p.cuentaParaPuntaje!==false).map(p=>src[p.id]).filter(x=>typeof x==="number");return v.length?v.reduce((a,b)=>a+b,0)/v.length:null; };
 
 /* ── Conversión escala 1-5 → % (1→0%, 5→100%) ── */
 const a5to100 = (v) => v===null||v===undefined ? null : Math.round(((v-1)/4)*100);
@@ -4103,7 +4103,11 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
   const setInd = (did,v) => setI(p=>({...p,[did]:v}));
   const setEv  = (pid,t) => setEvids(p=>({...p,[pid]:t}));
 
-  const pResp = (dimId) => { const d=dims.find(x=>x.id===dimId); return d.preguntas.filter(p=>datos[p.id]!==undefined).length; };
+  // Una pregunta de opción múltiple cuenta como respondida solo si tiene texto (y "Otra:" no está vacía)
+  const respondida = (p, v) => p.tipo==="opcion_multiple"
+    ? (typeof v==="string" && v.trim()!=="" && v.trim().replace(/\s+/g," ")!=="Otra:")
+    : v!==undefined;
+  const pResp = (dimId) => { const d=dims.find(x=>x.id===dimId); return d.preguntas.filter(p=>respondida(p,datos[p.id])).length; };
   const totR  = dims.reduce((a,d)=>a+pResp(d.id),0);
   const totP  = dims.reduce((a,d)=>a+d.preguntas.length,0);
   const dim   = pagina>0&&pagina<=dims.length?dims[pagina-1]:null;
@@ -4111,7 +4115,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
   const navTo = (destino, validar=false) => {
     if (validar && dim) {
       const faltantes = dim.preguntas
-        .filter(p => p.obligatoria !== false && datos[p.id] === undefined)
+        .filter(p => p.obligatoria !== false && !respondida(p, datos[p.id]))
         .map(p => p.id);
       if (faltantes.length > 0) {
         setValidErr(faltantes);
@@ -4256,7 +4260,7 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
         </div>
         {dims.map((d,i)=>{
           const resp=pResp(d.id);
-          const prom=(()=>{const v=d.preguntas.map(p=>datos[p.id]).filter(x=>x!==undefined);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;})();
+          const prom=(()=>{const v=d.preguntas.filter(p=>p.cuentaParaPuntaje!==false).map(p=>datos[p.id]).filter(x=>typeof x==="number");return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;})();
           return (
             <div key={d.id} onClick={()=>navTo(i+1)} style={{ padding:"9px 16px", cursor:"pointer", borderLeft:`3px solid ${pagina===i+1?d.acento:"transparent"}`, background:pagina===i+1?`${d.acento}08`:"transparent" }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -4510,15 +4514,15 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                   {(p.tipo==="opcion_multiple") ? (
                     <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
                       {(p.opciones||[]).map((op,oi)=>{
-                        const esOtra = op.trim().replace(/:$/,"").toLowerCase()==="otra";
-                        const valorActual = datos[p.id]||"";
+                        const esOtra = String(op??"").trim().replace(/:$/,"").toLowerCase()==="otra";
+                        const valorActual = typeof datos[p.id]==="string" ? datos[p.id] : "";
                         const sel = esOtra ? valorActual.startsWith("Otra:") : valorActual===op;
                         return (
                           <div key={oi}>
                             <div onClick={()=>{ if(esOtra){ setR(p.id, valorActual.startsWith("Otra:")?valorActual:"Otra: "); } else { setR(p.id, op); } }}
                               style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", borderRadius:8, cursor:"pointer", border:`2px solid ${sel?dim.acento:C.borde}`, background:sel?`${dim.acento}10`:"#FAFBFC" }}>
                               <div style={{ width:20,height:20,borderRadius:"50%",flexShrink:0,border:`2px solid ${sel?dim.acento:C.borde}`,background:sel?dim.acento:"transparent" }}/>
-                              <span style={{ fontSize:13,color:sel?C.oscuro:C.gris }}>{op}</span>
+                              <span style={{ fontSize:13,color:sel?C.oscuro:C.gris }}>{String(op??"")}</span>
                             </div>
                             {esOtra && sel && (
                               <input value={valorActual.replace(/^Otra:\s*/,"")} onChange={e=>setR(p.id,"Otra: "+e.target.value)} placeholder="Especifica…" autoFocus
@@ -4530,8 +4534,8 @@ function FormDiagnostico({ dims, diagActual, programa, onGuardar, onVolver, mant
                     </div>
                   ) : (
                   <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
-                    {p.niveles.map((nivel,ni)=>{
-                      const val=ni+1; const sel=datos[p.id]===val; const nc=NV_CFG[ni];
+                    {(p.niveles||[]).map((nivel,ni)=>{
+                      const val=ni+1; const sel=datos[p.id]===val; const nc=NV_CFG[ni]||NV_CFG[4];
                       return (
                         <div key={ni} onClick={()=>setR(p.id,val)} style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"10px 14px", borderRadius:8, cursor:"pointer", border:`2px solid ${sel?nc.color:C.borde}`, background:sel?`${nc.color}10`:"#FAFBFC", transition:"all 0.12s" }}>
                           <div style={{ width:26,height:26,borderRadius:"50%",flexShrink:0,border:`2px solid ${sel?nc.color:C.borde}`,background:sel?nc.color:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:sel?"#fff":C.gris }}>{val}</div>
@@ -4751,6 +4755,30 @@ function SyncButton({ proyectos }) {
 /* ═══════════════════════════════════════════
    ROOT
 ═══════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════
+   RED DE SEGURIDAD — si una pantalla falla, muestra el error en vez de quedar en blanco
+═══════════════════════════════════════════ */
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error("Error en pantalla:", error, info); }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:40 }}>
+        <div style={{ maxWidth:520, background:"#FFF8F8", border:"2px solid #E74C3C", borderRadius:14, padding:"28px 32px" }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>⚠️</div>
+          <div style={{ fontSize:16, fontWeight:800, color:"#C0392B", marginBottom:8 }}>Esta pantalla tuvo un problema</div>
+          <p style={{ fontSize:13, color:"#555", margin:"0 0 12px 0" }}>Tu información guardada está a salvo. Puedes volver e intentar de nuevo; si se repite, envía este mensaje a quien administra la plataforma:</p>
+          <pre style={{ fontSize:11, background:"#fff", border:"1px solid #F0C8C8", borderRadius:8, padding:10, whiteSpace:"pre-wrap", wordBreak:"break-word", color:"#7A2A2A", margin:"0 0 16px 0" }}>{String(this.state.error?.message||this.state.error)}</pre>
+          <button onClick={()=>{ this.setState({ error:null }); this.props.onVolver?.(); }} style={{ padding:"10px 22px", background:"#E74C3C", border:"none", borderRadius:8, color:"#fff", fontWeight:700, cursor:"pointer" }}>← Volver</button>
+        </div>
+      </div>
+    );
+  }
+}
+
 export default function App() {
   const [logueado, setLogueado] = useState(false);
   const [proyectos, setProyectos] = useState([]);
@@ -5500,7 +5528,7 @@ export default function App() {
           <VistaPrograma programa={proyectoActivo} dims={dims} onNuevoDiag={()=>setDiagActivo({diag:null,esNuevo:true})} onAbrirDiag={d=>setDiagActivo({diag:d,esNuevo:false})} onEliminarDiag={eliminarDiag} onVolver={esExterno?salirExterno:()=>{setProyectoActivo(null);setDiagActivo(null);}} esAdmin={esAdmin} esExterno={!!esExterno} onDimsGuardados={recargarDims} onActualizarMasivo={actualizarDiagnosticosMasivo}/>
         )}
         {proyectoActivo && diagActivo && !esExterno && (
-          <FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims} miNombre={miNombre}/>
+          <ErrorBoundary key={diagActivo.diag?.id||"nuevo"} onVolver={()=>setDiagActivo(null)}><FormDiagnostico dims={dims} diagActual={diagActivo.diag} programa={proyectoActivo} onGuardar={guardarDiag} onVolver={()=>setDiagActivo(null)} mantenimientoActivo={mantenimientoActivo} onActividad={setMiActividad} onDimsGuardados={recargarDims} miNombre={miNombre}/></ErrorBoundary>
         )}
         </>)}
       </div>
