@@ -3522,6 +3522,9 @@ function capitalizarNombre(s, { siglasLegales = false } = {}) {
   }).join("");
 }
 
+// El criterio de la pregunta solo se muestra si tiene contenido real (no vacío ni el texto de relleno "Criterio")
+const criterioUtil = (c) => { const t = limpiarTexto(c); return t && t.toLowerCase() !== "criterio" ? t : ""; };
+
 const capitalizarFrase = (s) => { const t = limpiarTexto(s); return t ? t.charAt(0).toUpperCase() + t.slice(1) : ""; };
 
 // Facturación: siempre "$X millones". Valores ≥ 1.000.000 se interpretan como pesos; los menores, como millones (MM$).
@@ -3577,7 +3580,7 @@ function generarSintesisMentoria(dims, datos, nombreEmpresa) {
     ? `Todas sus dimensiones superan el 75%; la de menor puntaje es ${peor.d.nombre} (${peor.pct}%).`
     : `Su mayor brecha está en ${peor.d.nombre} (${peor.pct}%)${descMin ? `: ${descMin}` : ""}.`;
 
-  const crit = debil ? limpiarTexto(debil.criterio) : "";
+  const crit = debil ? criterioUtil(debil.criterio) : "";
   const s3 = crit
     ? `Primer paso de la mentoría: abordar «${crit.charAt(0).toLowerCase() + crit.slice(1)}».`
     : `Primer paso de la mentoría: priorizar ${peor.d.nombre}.`;
@@ -3614,11 +3617,12 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     const respuestas = d.preguntas.filter(p => p.cuentaParaPuntaje !== false).map(p => {
       const val = (datosE || {})[p.id];
       if (typeof val !== "number") return null;
-      return { descripcion: limpiarTexto((p.niveles || [])[val - 1]) || NO_INFORMADO, valor: val, tramo: tramoFicha(a5to100(val)) };
+      return { criterio: criterioUtil(p.criterio), descripcion: limpiarTexto((p.niveles || [])[val - 1]) || NO_INFORMADO, valor: val, tramo: tramoFicha(a5to100(val)) };
     }).filter(Boolean);
     return { d, prom, pct, tramo, respuestas };
   });
 
+  const areasFortaleza = dimRows.filter(x => x.prom !== null && x.prom >= 3.5).sort((a,b) => b.prom - a.prom);
   const areasDebiles   = dimRows.filter(x => x.prom !== null && x.prom < 3.5).sort((a,b) => a.prom - b.prom);
 
   // Toda empresa debe tener al menos 1 área a trabajar en la mentoría (máx. 3).
@@ -3672,9 +3676,9 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     const fPct      = esPrincipal ? 45 : 32;
     const fLabel    = esPrincipal ? "Situación detectada" : "Detalle";
     const fLabelSz  = esPrincipal ? 18 : 15;
-    const fTextoSz  = esPrincipal ? 20 : 16;
+    const fTextoSz  = esPrincipal ? 19 : 16;
     const padHeader = esPrincipal ? "14px 27px" : "10px 20px";
-    const padBody   = esPrincipal ? "18px 27px" : "12px 20px";
+    const padBody   = esPrincipal ? "15px 27px" : "11px 20px";
     return `
     <div style="border:3px solid ${pColor}55;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;height:100%;">
       <div style="background:${pColor};padding:${padHeader};display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
@@ -3689,13 +3693,21 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
       </div>
       <div style="padding:${padBody};background:#fff;flex:1;display:flex;flex-direction:column;justify-content:center;">
         <div style="font-size:${fLabelSz}px;font-weight:700;color:${LBL};text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;">${fLabel}</div>
-        ${malas.length ? malas.map(r=>`<div style="font-size:${fTextoSz}px;color:#22364A;line-height:1.4;margin-bottom:9px;padding-left:16px;border-left:6px solid ${tramo.color};">${r.descripcion}</div>`).join("") : `<div style="font-size:${fTextoSz}px;color:#5F6F80;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
+        ${malas.length ? malas.map(r=>`<div style="font-size:${fTextoSz}px;color:#22364A;line-height:1.4;margin-bottom:9px;padding-left:16px;border-left:6px solid ${tramo.color};">${r.criterio ? `<strong style="color:#1C2B3A;">${r.criterio}:</strong> ` : ""}${r.descripcion}</div>`).join("") : `<div style="font-size:${fTextoSz}px;color:#5F6F80;font-style:italic;">Sin observaciones puntuales registradas en esta dimensión.</div>`}
       </div>
     </div>`;
   };
   const [areaPrincipal, ...areasSecundarias] = areasParaTrabajar;
   const areaPrincipalHTML = areaPrincipal ? renderAreaCard(areaPrincipal, true) : "";
   const areasSecundariasHTML = areasSecundarias.map(a => renderAreaCard(a, false)).join("");
+
+  // ── FORTALEZAS (el % usa el color de su tramo) ──
+  const fortalezasHTML = areasFortaleza.slice(0,4).map(({ d, pct, tramo }) =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 18px;background:#fff;border:1px solid #DCE5EE;border-radius:11px;">
+      <span style="font-size:22px;font-weight:600;color:#1C2B3A;">${d.nombre}</span>
+      <span style="font-size:22px;font-weight:700;color:${tramo.texto};">${pct}%</span>
+    </div>`
+  ).join("");
 
   // Espacio para el logo del programa: muestra el logo; si no hay (o no carga), deja un recuadro rotulado
   const logoProgramaHTML = `<div style="display:flex;align-items:center;flex-shrink:0;">
@@ -3751,12 +3763,9 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
 
     <div style="background:${pDark};border-radius:18px;padding:22px 30px;">
       <div style="font-size:18px;font-weight:700;color:#C9E3F6;letter-spacing:2px;margin-bottom:8px;">MADUREZ GENERAL</div>
-      <div style="display:flex;align-items:flex-end;gap:18px;margin-bottom:16px;">
+      <div style="display:flex;align-items:flex-end;gap:18px;margin-bottom:18px;">
         <div style="font-size:76px;font-weight:800;color:${tramoG?tramoG.color:"#fff"};line-height:1;">${pgPct!==null?pgPct:"—"}%</div>
         ${tramoG?`<div style="font-size:27px;font-weight:700;color:${tramoG.color};margin-bottom:14px;">${tramoG.label}</div>`:""}
-      </div>
-      <div style="height:6px;background:rgba(255,255,255,0.18);border-radius:5px;overflow:hidden;margin-bottom:18px;">
-        <div style="height:100%;width:${pgPct!==null?pgPct:0}%;background:${tramoG?tramoG.color:"#fff"};border-radius:5px;"></div>
       </div>
       ${dimBarras}
       ${leyendaHTML}
@@ -3766,12 +3775,12 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
   <!-- ══ SÍNTESIS (antes del área prioritaria) ══ -->
   <div style="background:#F5F8FB;border:2px solid #DCE5EE;border-radius:18px;padding:18px 29px;margin-bottom:18px;">
       <div style="font-size:18px;font-weight:700;color:${LBL};text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;">Síntesis diagnóstica</div>
-      <p style="font-size:21px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${sintesis}</p>
+      <p style="font-size:20px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${sintesis}</p>
     </div>
 
   <!-- ══ ÁREA PRIORITARIA ══ -->
-  <div style="margin-bottom:18px;">
-    <div style="font-size:18px;font-weight:700;color:${LBL};text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;">Área prioritaria a trabajar en la mentoría</div>
+  <div style="margin-bottom:16px;">
+    <div style="font-size:18px;font-weight:700;color:${LBL};text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;">Área prioritaria a trabajar en la mentoría</div>
     <div style="margin-bottom:${areasSecundarias.length?"16px":"0"};">${areaPrincipalHTML}</div>
     ${areasSecundarias.length ? `
     <div style="font-size:15px;font-weight:700;color:${LBL};text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;">Otras áreas a considerar</div>
@@ -3780,12 +3789,19 @@ function buildFichaMentorHTML(dims, infoGeneral, datosE, indE, programa, objetiv
     </div>` : ""}
   </div>
 
-  <!-- ══ NOTA PARA EL MENTOR (solo si existe) ══ -->
+  <!-- ══ FORTALEZAS Y NOTA PARA EL MENTOR ══ -->
   <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start;">
-    ${notaInterna?`<div style="background:#FFFBF0;border-radius:18px;padding:22px 29px;border-left:6px solid #E8A020;">
-      <div style="font-size:18px;font-weight:700;color:#7A5C10;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Nota para el mentor</div>
-      <div style="font-size:15px;color:#7A5C10;margin-bottom:14px;">Disposición, expectativas y poder de decisión de quien participa</div>
-      <div style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
+    ${(areasFortaleza.length>0 || notaInterna) ? `
+    <div style="display:grid;grid-template-columns:${areasFortaleza.length>0 && notaInterna ? "1fr 1fr" : "1fr"};gap:18px;">
+      ${areasFortaleza.length>0?`<div style="background:#F5F8FB;border:2px solid #DCE5EE;border-radius:18px;padding:14px 29px;">
+        <div style="font-size:18px;font-weight:700;color:#1E7A44;text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;">Fortalezas</div>
+        <div style="display:grid;grid-template-columns:${notaInterna?"1fr":"1fr 1fr"};gap:10px 14px;">${fortalezasHTML}</div>
+      </div>`:""}
+      ${notaInterna?`<div style="background:#FFFBF0;border-radius:18px;padding:22px 29px;border-left:6px solid #E8A020;">
+        <div style="font-size:18px;font-weight:700;color:#7A5C10;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">Nota para el mentor</div>
+        <div style="font-size:15px;color:#7A5C10;margin-bottom:14px;">Disposición, expectativas y poder de decisión de quien participa</div>
+        <div style="font-size:22px;color:#1C2B3A;line-height:1.5;" contenteditable="true">${notaInterna}</div>
+      </div>`:""}
     </div>`:""}
   </div>
 
